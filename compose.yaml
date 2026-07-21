@@ -1,0 +1,52 @@
+name: cameron-ai
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: cameron-ai-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-mydb}
+    ports:
+      - "${POSTGRES_PORT:-5544}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  # MinIO S3-compatible object storage for file uploads
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: cameron-ai-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+    ports:
+      - "${S3_API_PORT:-9100}:9000" # S3 API
+      - "${S3_CONSOLE_PORT:-9101}:9001" # MinIO Console (Web UI)
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Automatically create default buckets on startup
+  createbuckets:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: on-failure
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set localminio http://minio:9000 ${S3_ACCESS_KEY_ID:-minioadmin} ${S3_SECRET_ACCESS_KEY:-minioadmin};
+      /usr/bin/mc mb localminio/${S3_BUCKET_NAME:-uploads} --ignore-existing;
+      /usr/bin/mc anonymous set download localminio/${S3_BUCKET_NAME:-uploads};
+      exit 0;
+      "
+
+volumes:
+  db_data:
+  minio_data:

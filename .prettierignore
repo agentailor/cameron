@@ -1,0 +1,12 @@
+# Build outputs
+.next
+out
+build
+coverage
+
+# Dependencies
+node_modules
+
+# Generated
+.prisma
+**/*.tsbuildinfo
