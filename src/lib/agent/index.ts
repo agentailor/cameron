@@ -22,11 +22,7 @@ import { createAgent, humanInTheLoopMiddleware } from "langchain";
  * match the `name` given to each tool in ./tools/*. This is the declarative replacement for the old
  * hand-built `tool_approval` graph node.
  */
-const MUTATING_TOOL_NAMES = [
-  "log_expense",
-  "import_transactions_csv",
-  "create_category",
-] as const;
+const MUTATING_TOOL_NAMES = ["log_expense", "import_transactions_csv", "create_category"] as const;
 
 let setupPromise: Promise<void> | null = null;
 

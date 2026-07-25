@@ -91,7 +91,10 @@ export function validateSelect(sql: string): ValidationResult {
 
   // Must START with select or with.
   if (!/^\s*(select|with)\b/.test(lower)) {
-    return { ok: false, reason: "Only SELECT queries are allowed (optionally a WITH … SELECT CTE)." };
+    return {
+      ok: false,
+      reason: "Only SELECT queries are allowed (optionally a WITH … SELECT CTE).",
+    };
   }
 
   // A WITH clause must resolve to a SELECT, never a data-modifying CTE (WITH ... INSERT/UPDATE/DELETE).
@@ -104,7 +107,10 @@ export function validateSelect(sql: string): ValidationResult {
   for (const kw of FORBIDDEN_KEYWORDS) {
     const re = new RegExp(`\\b${kw}\\b`, "i");
     if (re.test(normalized)) {
-      return { ok: false, reason: `Disallowed keyword "${kw.toUpperCase()}" — only read-only SELECT is permitted.` };
+      return {
+        ok: false,
+        reason: `Disallowed keyword "${kw.toUpperCase()}" — only read-only SELECT is permitted.`,
+      };
     }
   }
 

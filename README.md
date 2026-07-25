@@ -6,6 +6,7 @@
 
 _Complete agent workflow: user input → tool approval → execution → streaming response_
 
+[![Release](https://img.shields.io/github/v/release/agentailor/cameron?label=release&color=blue&logo=github)](https://github.com/agentailor/cameron/releases/latest)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-16.2-black?logo=next.js)](https://nextjs.org/)
 [![LangGraph](https://img.shields.io/badge/LangGraph.js-1.2-green?logo=langchain)](https://langchain-ai.github.io/langgraphjs/)
@@ -31,15 +32,23 @@ build its own capabilities. It's built for two audiences at once:
 
 ### Built in public, one tag per article
 
-Cameron ships as a linear series of tagged releases — `v0`, `v1`, `v2`, … — one (or two) per
-article. A reader learning a given topic checks out the tag for the article that taught it. This
-is **`v0`: the foundation** — the chat loop, streaming, persistence, dynamic MCP tool loading,
-human-in-the-loop approvals, and multi-model support that everything else is built on.
+Cameron ships as a linear series of tagged releases — `v1`, `v2`, `v3`, … — one (or two) per
+article. A reader learning a given topic checks out the tag for the article that taught it.
 
-> **Seeded from a starter.** Cameron's v0 foundation is copied from
+The release badge above always points at the current one; whatever it shows is what `main` is.
+The series opens with **[`v1`: Cameron is born](https://github.com/agentailor/cameron/releases/tag/v1)** —
+the persona and hard rules, a transaction store you own, approval-gated finance tools, and CSV
+import. It's the first release where Cameron stops being a generic chat starter and becomes
+itself.
+
+> **Seeded from a starter.** The foundation Cameron builds on — the chat loop, streaming,
+> persistence, dynamic MCP tool loading, human-in-the-loop approvals, and multi-model support —
+> comes from
 > [`fullstack-langgraph-nextjs-agent`](https://github.com/agentailor/fullstack-langgraph-nextjs-agent),
-> a generic LangGraph.js + Next.js agent starter. Cameron is its own project with its own identity
-> and roadmap; the starter keeps its job as the reusable scaffold. Full credit and thanks to it.
+> a generic LangGraph.js + Next.js agent starter. That inherited base is referred to as **v0**
+> throughout these docs; it is not a Cameron release and carries no `v0` tag — Cameron's own
+> history starts at `v1`. The starter keeps its job as the reusable scaffold. Full credit and
+> thanks to it.
 
 ---
 
@@ -55,7 +64,11 @@ Happy to jump on a short call.
 
 ---
 
-## Features (v0 foundation)
+## Features (inherited foundation)
+
+The capabilities below come from the starter Cameron is seeded from — the "v0" base described
+above. For what `v1` adds on top (persona, transaction store, finance tools, CSV import), see the
+[v1 release notes](https://github.com/agentailor/cameron/releases/tag/v1).
 
 ### **Dynamic Tool Loading with MCP**
 
@@ -124,12 +137,13 @@ Happy to jump on a short call.
 
 ## Roadmap
 
-Cameron grows one tagged release at a time. Highlights of what's ahead:
+Cameron grows one tagged release at a time. Highlights of what's ahead — see the
+[releases page](https://github.com/agentailor/cameron/releases) for what has actually shipped:
 
 | Version | Theme                   | What ships                                                                                                              |
 | ------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| **v0**  | Foundation              | This release — the chat loop, streaming, persistence, MCP, HITL approvals.                                              |
-| **v1**  | Cameron is born         | Persona, transaction schema, core finance tools, seed data. "Meet Cameron."                                             |
+| _v0_    | Inherited foundation    | Not a Cameron release — the starter's chat loop, streaming, persistence, MCP, HITL approvals.                           |
+| **v1**  | Cameron is born         | Persona, transaction store, approval-gated finance tools, CSV import.                                                   |
 | **v2**  | Memory                  | Budgets and preferences as long-term memory; summarization of aging history.                                            |
 | **v3**  | External data           | A standalone bank MCP server Cameron consumes as a client.                                                              |
 | **v4+** | Skills → self-extension | Skills, document ingestion, evals, autonomy, channels, delegation, and eventually Cameron writing its own capabilities. |

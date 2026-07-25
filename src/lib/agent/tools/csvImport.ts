@@ -59,7 +59,9 @@ const mappingSchema = z.object({
   externalId: z
     .string()
     .optional()
-    .describe("Header of a column with a source-native unique id (used to avoid duplicate imports)"),
+    .describe(
+      "Header of a column with a source-native unique id (used to avoid duplicate imports)",
+    ),
 });
 
 export const importTransactionsCsvTool = tool(
@@ -67,7 +69,12 @@ export const importTransactionsCsvTool = tool(
     const text = await extractTextContent(input.fileKey);
     const mapping = input.mapping as ColumnMapping;
 
-    const { rows, skipped: unparsable, badDateRows, headers } = mapCsvToTransactions(text, {
+    const {
+      rows,
+      skipped: unparsable,
+      badDateRows,
+      headers,
+    } = mapCsvToTransactions(text, {
       mapping,
       account: input.account as Account,
       currency: input.currency,
@@ -102,8 +109,12 @@ export const importTransactionsCsvTool = tool(
       });
     }
 
-    const { imported, skipped: duplicates, categorized, categoriesCreated } =
-      await transactionRepo.importWithCategories(rows);
+    const {
+      imported,
+      skipped: duplicates,
+      categorized,
+      categoriesCreated,
+    } = await transactionRepo.importWithCategories(rows);
 
     // Summary ONLY — the rows themselves never go back to the model. Category counts, unmapped
     // headers, and a bounded sample of bad-date rows make silent data-quality loss visible.

@@ -143,14 +143,13 @@ function parseAmount(raw: string | undefined): number | null {
   return Math.abs(value);
 }
 
-function resolveType(
-  raw: string | undefined,
-  opts: ImportOptions,
-): TransactionType {
+function resolveType(raw: string | undefined, opts: ImportOptions): TransactionType {
   const fallback = opts.typeDefault ?? TransactionType.expense;
   if (!raw) return fallback;
   const v = raw.trim().toLowerCase();
-  const income = (opts.typeValues?.income ?? ["income", "credit", "in"]).map((s) => s.toLowerCase());
+  const income = (opts.typeValues?.income ?? ["income", "credit", "in"]).map((s) =>
+    s.toLowerCase(),
+  );
   const expense = (opts.typeValues?.expense ?? ["expense", "debit", "out"]).map((s) =>
     s.toLowerCase(),
   );
@@ -170,7 +169,10 @@ const DATE_INVALID = Symbol("date-invalid");
  * The parsed wall-clock components are reinterpreted as UTC so the stored calendar day matches what
  * the file says regardless of server timezone (local-midnight → UTC would slip the date a day).
  */
-function parseDate(raw: string | undefined, format?: string): Date | typeof DATE_MISSING | typeof DATE_INVALID {
+function parseDate(
+  raw: string | undefined,
+  format?: string,
+): Date | typeof DATE_MISSING | typeof DATE_INVALID {
   const value = raw?.trim();
   if (!value) return DATE_MISSING;
   // Without a declared format we cannot disambiguate DD/MM from MM/DD — refuse to guess.
@@ -245,4 +247,3 @@ export function mapCsvToTransactions(
 
   return { rows, skipped, badDateRows, headers };
 }
-
