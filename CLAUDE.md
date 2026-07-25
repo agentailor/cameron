@@ -42,14 +42,14 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
 - **Persistent Memory**: Uses LangGraph's Postgres checkpointer for conversation history
 - **Built-in finance tools** (always registered server-side in `index.ts`, provider-agnostic Zod):
   - `src/lib/agent/tools/finance.ts` — `log_expense` (mutating), `query_transactions` (read-only,
-    bounded raw rows — for *listing* matching transactions, not totals).
+    bounded raw rows — for _listing_ matching transactions, not totals).
   - `src/lib/agent/tools/analytics.ts` — `describe_finance_schema` (static curated schema doc) and
     `run_sql` (read-only). `run_sql` answers aggregate/analytical questions (totals, top-N, group-by)
     the fixed queries can't. It is **SELECT-only and cannot mutate**: static validation lives in
     `src/lib/finance/sqlGuard.ts` (single statement, SELECT/WITH only, DML/DDL deny-list with
-    comments+strings stripped), and the *real* guard is `src/lib/repositories/analyticsRepository.ts`
+    comments+strings stripped), and the _real_ guard is `src/lib/repositories/analyticsRepository.ts`
     — the one sanctioned raw-SQL site — which runs every query inside a `BEGIN TRANSACTION READ ONLY`
-    + `statement_timeout`, always rolls back, and hard-caps returned rows. Both tools auto-approve.
+    - `statement_timeout`, always rolls back, and hard-caps returned rows. Both tools auto-approve.
   - `src/lib/agent/tools/categories.ts` — `list_categories` (read-only) and `create_category`
     (mutating/gated).
   - `src/lib/agent/tools/csvImport.ts` — `inspect_csv` (read-only) + `import_transactions_csv`

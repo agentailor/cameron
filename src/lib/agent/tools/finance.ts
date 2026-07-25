@@ -65,11 +65,22 @@ export const logExpense = tool(
       "— never log an amount without a short human-readable label. This mutates financial records " +
       "and will require the user's approval.",
     schema: z.object({
-      amount: z.number().positive().describe("The transaction amount as a positive decimal, e.g. 12.50"),
-      type: z.enum(["expense", "income"]).describe("Whether money went out (expense) or in (income)"),
-      note: z.string().min(1).describe("Required short label for the transaction, e.g. 'Coffee at the corner cafe'"),
+      amount: z
+        .number()
+        .positive()
+        .describe("The transaction amount as a positive decimal, e.g. 12.50"),
+      type: z
+        .enum(["expense", "income"])
+        .describe("Whether money went out (expense) or in (income)"),
+      note: z
+        .string()
+        .min(1)
+        .describe("Required short label for the transaction, e.g. 'Coffee at the corner cafe'"),
       account: accountEnum.describe("Which account the transaction belongs to"),
-      currency: z.string().optional().describe(`ISO currency code; defaults to ${DEFAULT_CURRENCY}`),
+      currency: z
+        .string()
+        .optional()
+        .describe(`ISO currency code; defaults to ${DEFAULT_CURRENCY}`),
       category: z.string().optional().describe("Category name, e.g. 'Groceries' (created if new)"),
       merchant: z.string().optional().describe("Merchant / payee name"),
       description: z.string().optional().describe("Optional longer detail beyond the note"),
@@ -119,13 +130,27 @@ export const queryTransactions = tool(
       "text). Read-only. Returns a bounded list — use filters to narrow results. Prefer the " +
       "`category` filter over `text` when the user names a spending category (e.g. Dining, Groceries).",
     schema: z.object({
-      from: z.string().optional().describe("ISO date; only transactions on/after this are returned"),
+      from: z
+        .string()
+        .optional()
+        .describe("ISO date; only transactions on/after this are returned"),
       to: z.string().optional().describe("ISO date; only transactions on/before this are returned"),
       type: z.enum(["expense", "income"]).optional().describe("Filter by expense or income"),
       account: accountEnum.optional().describe("Filter by account"),
-      category: z.string().optional().describe("Filter by category name, e.g. 'Dining' (exact, case-sensitive)"),
-      text: z.string().optional().describe("Case-insensitive substring match on note/description/merchant"),
-      limit: z.number().int().positive().optional().describe("Max rows to return (default 50, hard cap 200)"),
+      category: z
+        .string()
+        .optional()
+        .describe("Filter by category name, e.g. 'Dining' (exact, case-sensitive)"),
+      text: z
+        .string()
+        .optional()
+        .describe("Case-insensitive substring match on note/description/merchant"),
+      limit: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Max rows to return (default 50, hard cap 200)"),
     }),
   },
 );

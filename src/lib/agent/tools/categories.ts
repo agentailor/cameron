@@ -59,7 +59,10 @@ export const createCategory = tool(
     schema: z.object({
       name: z.string().min(1).describe("The category name, e.g. 'Groceries'"),
       icon: z.string().optional().describe("Optional icon hint for later reports/charts"),
-      color: z.string().optional().describe("Optional color hint (e.g. hex) for later reports/charts"),
+      color: z
+        .string()
+        .optional()
+        .describe("Optional color hint (e.g. hex) for later reports/charts"),
     }),
   },
 );

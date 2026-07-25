@@ -115,7 +115,12 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   // approveAllTools omits the middleware entirely, so no interrupt is ever created.
   const middleware = cfg?.approveAllTools
     ? []
-    : [humanInTheLoopMiddleware({ interruptOn, descriptionPrefix: "This action needs your approval" })];
+    : [
+        humanInTheLoopMiddleware({
+          interruptOn,
+          descriptionPrefix: "This action needs your approval",
+        }),
+      ];
 
   return createAgent({
     model: llm,

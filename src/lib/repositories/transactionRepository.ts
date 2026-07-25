@@ -168,9 +168,7 @@ export async function importWithCategories(rows: ImportRow[]): Promise<ImportRes
 
   return db.transaction(async (tx) => {
     const names = [
-      ...new Set(
-        rows.map((r) => r.categoryName?.trim()).filter((n): n is string => Boolean(n)),
-      ),
+      ...new Set(rows.map((r) => r.categoryName?.trim()).filter((n): n is string => Boolean(n))),
     ];
 
     const nameToId = new Map<string, string>();
