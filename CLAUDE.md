@@ -116,6 +116,10 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
   for renames/data moves that codegen can't express (see `0000_init_snake_case.sql`).
 - **Checkpointer is separate**: the LangGraph `PostgresSaver` (`src/lib/agent/memory.ts`) manages
   its own tables via its own `pg` connection and does NOT go through Drizzle or the repositories.
+- **Deleting a thread spans BOTH stores**: the `thread` row (Drizzle) and the checkpointer's tables
+  holding the messages. `DELETE /api/agent/threads` calls `deleteThreadCheckpoints(id)`
+  (`src/lib/agent/memory.ts`) before `threadRepo.remove(id)`; any new deletion path must clear both,
+  or the messages are orphaned. `setupCheckpointer()` in the same file is the shared setup guard.
 
 ### MCP Server Management
 

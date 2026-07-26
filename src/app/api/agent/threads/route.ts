@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Thread } from "@/types/message";
 import type { ThreadRecord } from "@/types/mcp";
 import * as threadRepo from "@/lib/repositories/threadRepository";
+import { deleteThreadCheckpoints } from "@/lib/agent/memory";
 import { UpdateThreadBody, DeleteThreadBody } from "./schema";
 
 export const dynamic = "force-dynamic";
@@ -52,15 +53,18 @@ export async function DELETE(req: NextRequest) {
     }
     const { id } = parsed.data;
 
-    // Delete the thread metadata (returns false if it did not exist).
+    const existing = await threadRepo.getById(id);
+    if (!existing) {
+      return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+    }
+
+    // Checkpoints before metadata: a failure here leaves the thread visible and retryable.
+    await deleteThreadCheckpoints(id);
+
     const deleted = await threadRepo.remove(id);
     if (!deleted) {
       return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     }
-
-    // Note: LangGraph checkpoint data will become orphaned but won't affect functionality
-    // The checkpointer will simply not find any thread metadata for this thread_id
-    // Future versions could implement direct checkpoint deletion via SQL if needed
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (e: unknown) {
