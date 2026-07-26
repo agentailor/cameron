@@ -51,3 +51,6 @@ scratches
 
 # local planning notes (north-star + progress tracker), not tracked
 .planning
+
+# throwaway local scripts, not tracked
+.tmp-test

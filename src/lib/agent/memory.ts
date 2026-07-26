@@ -29,4 +29,34 @@ export const getHistory = async (threadId: string): Promise<BaseMessage[]> => {
   return Array.isArray(history?.channel_values?.messages) ? history.channel_values.messages : [];
 };
 
+/**
+ * Deletes a thread's conversation history (`checkpoints`, `checkpoint_blobs`, `checkpoint_writes`).
+ *
+ * These tables are owned by the checkpointer, not Drizzle, so deleting a thread must clear them
+ * alongside the `thread` row or the messages are orphaned. A no-op when the thread has no history.
+ */
+export const deleteThreadCheckpoints = async (threadId: string): Promise<void> => {
+  await setupCheckpointer();
+  await postgresCheckpointer.deleteThread(threadId);
+};
+
 export const postgresCheckpointer = createPostgresMemory();
+
+let setupPromise: Promise<void> | null = null;
+
+/**
+ * One-time initialization for the Postgres checkpointer — ensures its tables/extensions exist.
+ * Idempotent and shared by every entry point that touches checkpoint data (agent creation and
+ * thread deletion), so deleting a thread can never hit a missing table on a fresh database.
+ */
+export async function setupCheckpointer(): Promise<void> {
+  if (!setupPromise) {
+    setupPromise = postgresCheckpointer.setup().catch((err) => {
+      // Reset so a future call can retry if initial setup failed.
+      setupPromise = null;
+      console.error("Failed to setup postgres checkpointer:", err);
+      throw err;
+    });
+  }
+  await setupPromise;
+}
