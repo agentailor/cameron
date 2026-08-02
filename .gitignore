@@ -54,3 +54,7 @@ scratches
 
 # throwaway local scripts, not tracked
 .tmp-test
+
+# Skills
+.agents/*
+skills-lock.json

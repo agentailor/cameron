@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, inArray, lte, or, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, lte, or, type SQL } from "drizzle-orm";
 import db from "@/lib/database/db";
 import { categories, transactions } from "@/lib/database/schema";
 import { Account, TransactionType, type Transaction } from "@/types/finance";
@@ -64,11 +64,28 @@ export interface TransactionFilters {
 /** Hard cap so a query can never dump the whole table into the model. */
 const MAX_LIMIT = 200;
 
+/** Default page size when the caller doesn't ask for one. */
+const DEFAULT_LIMIT = 50;
+
 function toIso(d: Date | string): string {
   return typeof d === "string" ? d : d.toISOString();
 }
 
-export async function list(filters: TransactionFilters = {}): Promise<Transaction[]> {
+/**
+ * A bounded page plus how many matched. `total` is what makes truncation visible — `rows` alone
+ * leaves "50 of 50" and "50 of 847" indistinguishable.
+ */
+export interface TransactionPage {
+  rows: Transaction[];
+  /**
+   * Total matching the filters, ignoring the limit. Counted only when the page came back full;
+   * otherwise it IS `rows.length`. Keep both branches exact — callers derive `truncated` from
+   * `total > rows.length`, so an approximation here would misreport truncation.
+   */
+  total: number;
+}
+
+export async function list(filters: TransactionFilters = {}): Promise<TransactionPage> {
   const conditions: SQL[] = [];
   if (filters.from) conditions.push(gte(transactions.occurredAt, toIso(filters.from)));
   if (filters.to) conditions.push(lte(transactions.occurredAt, toIso(filters.to)));
@@ -85,15 +102,26 @@ export async function list(filters: TransactionFilters = {}): Promise<Transactio
     if (textMatch) conditions.push(textMatch);
   }
 
-  const limit = Math.min(filters.limit ?? 50, MAX_LIMIT);
+  const limit = Math.min(filters.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
+  const where = conditions.length ? and(...conditions) : undefined;
 
   const rows = await db
     .select()
     .from(transactions)
-    .where(conditions.length ? and(...conditions) : undefined)
+    .where(where)
     .orderBy(desc(transactions.occurredAt))
     .limit(limit);
-  return rows.map(toDomain);
+
+  // Only pay for the COUNT when the page came back full — a short page cannot be truncated.
+  // Not in one transaction with the select: a concurrent insert can make `total` over-report,
+  // which is benign (it prompts the agent to narrow, never to over-claim).
+  let total = rows.length;
+  if (rows.length === limit) {
+    const [counted] = await db.select({ value: count() }).from(transactions).where(where);
+    total = counted?.value ?? rows.length;
+  }
+
+  return { rows: rows.map(toDomain), total };
 }
 
 export async function getById(id: string): Promise<Transaction | null> {

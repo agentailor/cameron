@@ -109,13 +109,17 @@ export function unmappedHeaders(headers: string[], mapping: ColumnMapping): stri
   return headers.filter((h) => !used.has(h));
 }
 
-/** Parse raw CSV text into typed records (header row -> keys). */
-function parseRecords(csvText: string): Record<string, string>[] {
+/**
+ * Parse raw CSV text into typed records plus the parsed header row. `fields` comes from Papa's
+ * metadata, so a header-only file still reports its headers (deriving them from the first record
+ * would report none, making "no data" indistinguishable from "not a CSV").
+ */
+function parseRecords(csvText: string): { records: Record<string, string>[]; fields: string[] } {
   const result = Papa.parse<Record<string, string>>(csvText, {
     header: true,
     skipEmptyLines: true,
   });
-  return result.data;
+  return { records: result.data, fields: result.meta.fields ?? [] };
 }
 
 /**
@@ -123,10 +127,9 @@ function parseRecords(csvText: string): Record<string, string>[] {
  * This is all the agent ever sees — never the full data set.
  */
 export function inspectCsv(csvText: string, sampleSize = 5): CsvPreview {
-  const records = parseRecords(csvText);
-  const headers = records.length > 0 ? Object.keys(records[0]) : [];
+  const { records, fields } = parseRecords(csvText);
   return {
-    headers,
+    headers: fields,
     sampleRows: records.slice(0, sampleSize),
     totalRows: records.length,
   };
@@ -207,8 +210,7 @@ export function mapCsvToTransactions(
   headers: string[];
 } {
   const { mapping } = opts;
-  const records = parseRecords(csvText);
-  const headers = records.length > 0 ? Object.keys(records[0]) : [];
+  const { records, fields: headers } = parseRecords(csvText);
   const rows: ImportRow[] = [];
   const badDateRows: BadDateRow[] = [];
   let skipped = 0;

@@ -126,7 +126,18 @@ export const runSql = tool(
     const bounded = enforceLimit(input.query, MAX_SQL_ROWS);
     try {
       const result = await runReadOnlyQuery(bounded, MAX_SQL_ROWS);
-      return JSON.stringify(result);
+      // "truncated" alone isn't enough — say how to get a complete answer.
+      return JSON.stringify({
+        ...result,
+        ...(result.truncated
+          ? {
+              note:
+                `Results were capped at ${MAX_SQL_ROWS} rows, so this is a PARTIAL result — do ` +
+                "not treat it as complete. Aggregate in SQL instead (GROUP BY / SUM / COUNT), " +
+                "add a narrower WHERE, or use ORDER BY with an explicit LIMIT for a top-N.",
+            }
+          : {}),
+      });
     } catch (err) {
       // Surface the DB error text (e.g. unknown column) so the agent can fix its query.
       const message = err instanceof Error ? err.message : String(err);
