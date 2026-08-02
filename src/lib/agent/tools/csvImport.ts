@@ -27,8 +27,33 @@ const accountEnum = z.enum(["CHECKING", "SAVINGS", "CREDIT", "CASH"]);
 
 export const inspectCsvTool = tool(
   async (input) => {
-    const text = await extractTextContent(input.fileKey);
+    // A bad fileKey or an unreadable file must come back as a structured, actionable error —
+    // a raw throw gives the agent nothing to correct and it retries the same call.
+    let text: string;
+    try {
+      text = await extractTextContent(input.fileKey);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return JSON.stringify({
+        error: "file_unreadable",
+        message:
+          `Could not read the file for fileKey "${input.fileKey}": ${message}. Use the exact ` +
+          "fileKey from the attachment reference ([Attached file: … fileKey: <key>]) — do not " +
+          "invent or guess one, and ask the user to re-upload if there is no such reference.",
+      });
+    }
+
     const preview = inspectCsv(text, 5);
+    if (preview.headers.length === 0) {
+      return JSON.stringify({
+        error: "no_columns_found",
+        message:
+          "The file parsed but has no header row or no data rows, so there are no columns to " +
+          "map. Confirm the upload is a CSV with a header row.",
+        totalRows: preview.totalRows,
+      });
+    }
+
     // Return only headers + a few sample rows + a count. Never the full data.
     return JSON.stringify(preview);
   },

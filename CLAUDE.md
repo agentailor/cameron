@@ -12,10 +12,14 @@ pnpm db:migrate               # Apply pending Drizzle migrations
 
 # Development
 pnpm dev                      # Next.js with Turbopack (http://localhost:3100)
-pnpm build                    # Production build
-pnpm lint                     # ESLint
+pnpm build                    # Production build (needs Postgres up — collects API route data)
+pnpm lint                     # ESLint (currently broken: `next lint` was removed in Next 16)
 pnpm format                   # Prettier formatting
 pnpm format:check             # Check formatting
+
+# Tests (free, offline — no DB, no model, no API keys)
+pnpm test                     # Vitest, run once
+pnpm test:watch               # Vitest, watch mode
 
 # Database (Drizzle)
 pnpm db:generate              # Generate a migration after editing schema.ts
@@ -42,7 +46,10 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
 - **Persistent Memory**: Uses LangGraph's Postgres checkpointer for conversation history
 - **Built-in finance tools** (always registered server-side in `index.ts`, provider-agnostic Zod):
   - `src/lib/agent/tools/finance.ts` — `log_expense` (mutating), `query_transactions` (read-only,
-    bounded raw rows — for _listing_ matching transactions, not totals).
+    bounded raw rows — for _listing_ matching transactions, not totals). `query_transactions`
+    returns `{ returned, matched, truncated, transactions, hint? }`: `matched` is the true total
+    ignoring the limit, so a capped page is **visibly** partial. Never report a bare row count as
+    a total — that was a real bug (see [docs/TESTING.md](docs/TESTING.md)).
   - `src/lib/agent/tools/analytics.ts` — `describe_finance_schema` (static curated schema doc) and
     `run_sql` (read-only). `run_sql` answers aggregate/analytical questions (totals, top-N, group-by)
     the fixed queries can't. It is **SELECT-only and cannot mutate**: static validation lives in
@@ -57,8 +64,7 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     **fails loud** (returns an error, imports nothing) if a mapped column doesn't exist, rather than
     silently dropping the field. Dates are parsed with an agent-supplied `dateFormat` (date-fns
     pattern, confirmed with the user) — never guessed; unparseable rows are reported in `badDateRows`
-    (bounded) + `skippedBadDate`, not dated `now()`. See
-    [.planning/csv-import-flow.md](.planning/csv-import-flow.md).
+    (bounded) + `skippedBadDate`, not dated `now()`.
 - **Tool Approval**: Human-in-the-loop via `humanInTheLoopMiddleware`. Approval is gated **per-tool**
   through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
   `import_transactions_csv`, `create_category`); read tools (incl. `run_sql`) and MCP tools
@@ -102,6 +108,11 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
   SINGLE `db.transaction`, so a failed insert rolls back any categories created. Rows carry the
   category as a NAME (`ImportRow.categoryName`); the repo maps names→ids. The CSV import tool uses this
   instead of per-row category calls.
+- **Bounded reads report the true total**: `transactionRepository.list` returns
+  `{ rows, total }` (a `TransactionPage`), not a bare array. `total` is the count matching the
+  filters _ignoring_ the limit, so callers can tell a capped page from a complete one; the COUNT
+  only runs when the page came back full. New bounded list functions should follow this shape —
+  returning rows alone makes truncation invisible to the agent.
 - **Error translation** lives in the repositories: a duplicate name surfaces as `ConflictError`
   (→ HTTP 409); a missing row returns `null`/`false` (→ HTTP 404). Routes check return values, not
   driver error codes.
@@ -201,6 +212,35 @@ To switch to AWS S3, Cloudflare R2, or other S3-compatible storage:
 - `@aws-sdk/client-s3` - S3 client (works with MinIO + AWS S3)
 - `@aws-sdk/lib-storage` - Multipart uploads for large files
 - Storage utilities in `src/lib/storage/`
+
+## Testing
+
+Unit tests only, via Vitest — see [docs/TESTING.md](docs/TESTING.md) for the full rationale.
+
+- **`pnpm test` must stay free**: no model calls, no network, no DB, no API keys. Verify by
+  stopping Postgres — the suite still passes. Anything needing those belongs in the future eval
+  layer.
+- **Tests live BESIDE the code** they test (`finance.test.ts` next to `finance.ts`), so a tool +
+  its test is a self-contained unit that ports to another project. This comes from the
+  [`tool-design`](https://github.com/agentailor/skills) skill and is deliberate; the future
+  `eval/` tree is the opposite shape (centralized at the repo root, cross-cutting, paid).
+- **Tool tests assert on the returned JSON payload** via `callTool` in
+  `src/lib/agent/tools/testing.ts` — the same surface a future eval grades against, so assertions
+  survive the move. Repositories are stubbed with `vi.mock`; fixtures (`makeTransaction`,
+  `makeCategory`) live alongside the helper.
+- **The defect class**: a tool description is a contract with a non-deterministic caller, and
+  nothing else verifies the implementation honors it. When adding a tool, add its test in the same
+  commit and cover every truncation / error / empty-result path — that's where agents get misled.
+- Evals are coming in a future version; `pnpm test` stays unit-only and free regardless.
+
+### Skills
+
+Tool conventions here follow the [`tool-design`](https://github.com/agentailor/skills) skill.
+It's installed locally but gitignored (`.agents/`, `skills-lock.json`) — reinstall with:
+
+```bash
+npx skills add agentailor/skills --skill tool-design
+```
 
 ## Langfuse Observability
 

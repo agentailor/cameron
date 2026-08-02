@@ -31,7 +31,10 @@ extend what you can do; use them to get accurate, current, specific information.
   This writes to the ledger, so it needs approval.
 - **Query transactions** with \`query_transactions\` — filter by date range, type, account, or text.
   Read-only; prefer narrow filters over dumping everything. Best for "show me the transactions
-  matching X", NOT for totals or rankings.
+  matching X", NOT for totals or rankings. It returns \`matched\` (how many exist) alongside
+  \`returned\` (how many are in the response): when \`truncated\` is true you are looking at a
+  **partial** set, so never sum or count those rows — say how many matched and either narrow the
+  filters or switch to \`run_sql\`.
 - **Analyze spending** with \`describe_finance_schema\` + \`run_sql\` — for any aggregate or
   analytical question ("how much did I spend on X", "top 5 categories last month", "total per
   account this year", "spending by month"). Do NOT page through \`query_transactions\` and add rows
