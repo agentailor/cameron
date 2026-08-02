@@ -5,7 +5,8 @@ import { Account, TransactionType, type Category, type Transaction } from "@/typ
 
 /**
  * Invoke a tool the way the agent does and parse its JSON payload. Returns an `any`-valued record
- * so tests can reach into nested fields without casting.
+ * so tests can reach into nested fields without casting — the trade-off is that a typo'd field
+ * name is not a type error, so assert with `toBe`/`toMatchObject`, which still fail on undefined.
  */
 export async function callTool<T = Record<string, any>>(
   tool: StructuredToolInterface,

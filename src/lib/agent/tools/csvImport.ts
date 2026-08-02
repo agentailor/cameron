@@ -44,13 +44,23 @@ export const inspectCsvTool = tool(
     }
 
     const preview = inspectCsv(text, 5);
+    // Distinguish "not a CSV" from "a CSV with nothing in it" — they need different replies.
     if (preview.headers.length === 0) {
       return JSON.stringify({
         error: "no_columns_found",
         message:
-          "The file parsed but has no header row or no data rows, so there are no columns to " +
-          "map. Confirm the upload is a CSV with a header row.",
+          "No header row could be parsed, so there are no columns to map. Confirm the upload is " +
+          "a CSV with a header row.",
         totalRows: preview.totalRows,
+      });
+    }
+    if (preview.totalRows === 0) {
+      return JSON.stringify({
+        error: "no_data_rows",
+        message:
+          "The file has a valid header row but no data rows, so there is nothing to import. " +
+          "Tell the user the file is empty and ask for one containing transactions.",
+        headers: preview.headers,
       });
     }
 

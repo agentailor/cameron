@@ -47,6 +47,16 @@ describe("inspectCsv", () => {
   it("handles an empty file without throwing", () => {
     expect(inspectCsv("")).toMatchObject({ headers: [], sampleRows: [], totalRows: 0 });
   });
+
+  // Headers come from the parsed header row, not from the first record — so a header-only file
+  // still reports its columns instead of looking identical to a non-CSV.
+  it("reports headers for a file with a header row but no data", () => {
+    expect(inspectCsv("Date,Libellé,Montant")).toMatchObject({
+      headers: ["Date", "Libellé", "Montant"],
+      sampleRows: [],
+      totalRows: 0,
+    });
+  });
 });
 
 describe("validateMapping", () => {

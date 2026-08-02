@@ -77,7 +77,11 @@ function toIso(d: Date | string): string {
  */
 export interface TransactionPage {
   rows: Transaction[];
-  /** Total matching the filters, ignoring the limit. */
+  /**
+   * Total matching the filters, ignoring the limit. Counted only when the page came back full;
+   * otherwise it IS `rows.length`. Keep both branches exact — callers derive `truncated` from
+   * `total > rows.length`, so an approximation here would misreport truncation.
+   */
   total: number;
 }
 
@@ -109,6 +113,8 @@ export async function list(filters: TransactionFilters = {}): Promise<Transactio
     .limit(limit);
 
   // Only pay for the COUNT when the page came back full — a short page cannot be truncated.
+  // Not in one transaction with the select: a concurrent insert can make `total` over-report,
+  // which is benign (it prompts the agent to narrow, never to over-claim).
   let total = rows.length;
   if (rows.length === limit) {
     const [counted] = await db.select({ value: count() }).from(transactions).where(where);

@@ -59,6 +59,18 @@ describe("inspect_csv", () => {
 
     expect(result.error).toBe("no_columns_found");
   });
+
+  // A header-only file is a VALID csv with nothing in it — a different problem from "not a csv",
+  // and the user needs a different answer for each.
+  it("distinguishes a header-only file from an unparseable one", async () => {
+    vi.mocked(extractTextContent).mockResolvedValue("Date,Libellé,Montant");
+
+    const result = await callTool(inspectCsvTool, { fileKey: "uploads/headers-only.csv" });
+
+    expect(result.error).toBe("no_data_rows");
+    // The headers parsed fine — report them so the agent can say what the file contained.
+    expect(result.headers).toEqual(["Date", "Libellé", "Montant"]);
+  });
 });
 
 describe("import_transactions_csv", () => {
