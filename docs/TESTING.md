@@ -8,6 +8,12 @@ pnpm test          # run once — free, offline, no DB
 pnpm test:watch    # watch mode
 ```
 
+## CI
+
+`.github/workflows/ci.yml` runs `pnpm test` + `tsc --noEmit` on every PR and push to `main`.
+`release.yml` runs the same on a `v*` tag and only publishes the GitHub Release if they pass —
+so a tag can never ship a red suite.
+
 ## The rule: `pnpm test` is always free
 
 No model calls, no network, no database, no API keys. That is what makes it safe to run on every

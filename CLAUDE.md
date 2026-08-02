@@ -232,6 +232,8 @@ Unit tests only, via Vitest — see [docs/TESTING.md](docs/TESTING.md) for the f
   nothing else verifies the implementation honors it. When adding a tool, add its test in the same
   commit and cover every truncation / error / empty-result path — that's where agents get misled.
 - Evals are coming in a future version; `pnpm test` stays unit-only and free regardless.
+- **CI** (`.github/workflows/`): `ci.yml` gates PRs on `pnpm test` + `tsc --noEmit`; `release.yml`
+  gates `v*` tags on the same before publishing the release.
 
 ### Skills
 
