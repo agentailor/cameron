@@ -73,7 +73,7 @@ export const ModelConfiguration = ({
               const defaults: Record<string, string> = {
                 google: "gemini-3-flash-preview",
                 openai: "gpt-4o",
-                anthropic: "claude-sonnet-4-5",
+                anthropic: "claude-haiku-4-5",
               };
               setModel(defaults[newProvider] ?? "");
             }}

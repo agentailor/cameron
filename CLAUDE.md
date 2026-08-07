@@ -156,6 +156,13 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
 - `ensureAgent()` ensures Postgres checkpointer is initialized before agent creation
 - MCP servers queried from database on each agent creation for dynamic tool loading
 - Supports OpenAI/Google/Anthropic models via `AgentConfigOptions`
+- **Default model is `anthropic` / `claude-haiku-4-5`, defined in THREE places that must stay in
+  sync**: `DEFAULT_MODEL_PROVIDER`/`DEFAULT_MODEL_NAME` (`src/lib/agent/util.ts`, server),
+  `UISettingsContext` (client initial state), and the provider-switch map in
+  `ModelConfiguration.tsx`. The UI sends `provider`/`model` as query params on every request, so
+  the **client default wins** — changing only the server constant has no effect on the app.
+  Existing users keep their `localStorage` choice (`agent_model_settings`); a new default only
+  applies to fresh browsers.
 
 ### API Route Patterns
 

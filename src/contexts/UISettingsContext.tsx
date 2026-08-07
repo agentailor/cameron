@@ -42,11 +42,13 @@ export const UISettingsProvider = ({ children }: UISettingsProviderProps) => {
   const saved = loadSettings();
 
   const [hideToolMessages, setHideToolMessages] = useState(false);
+  // Defaults must match DEFAULT_MODEL_PROVIDER/NAME in lib/agent/util.ts — these are sent as
+  // query params on every request, so they override the server's default.
   const [provider, setProviderState] = useState<string>(
-    typeof saved.provider === "string" ? saved.provider : "google",
+    typeof saved.provider === "string" ? saved.provider : "anthropic",
   );
   const [model, setModelState] = useState<string>(
-    typeof saved.model === "string" ? saved.model : "gemini-3-flash-preview",
+    typeof saved.model === "string" ? saved.model : "claude-haiku-4-5",
   );
   const [approveAllTools, setApproveAllToolsState] = useState<boolean>(
     typeof saved.approveAllTools === "boolean" ? saved.approveAllTools : false,

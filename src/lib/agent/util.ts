@@ -214,5 +214,10 @@ export function sanitizeTool(tool: DynamicStructuredTool): DynamicStructuredTool
 
   return tool;
 }
+/**
+ * Default model. Keep in sync with the client-side defaults in UISettingsContext and
+ * ModelConfiguration — the UI sends provider/model on every request, so a mismatch means the
+ * server default silently never applies.
+ */
 export const DEFAULT_MODEL_PROVIDER = "anthropic";
-export const DEFAULT_MODEL_NAME = "claude-sonnet-4-6";
+export const DEFAULT_MODEL_NAME = "claude-haiku-4-5";
