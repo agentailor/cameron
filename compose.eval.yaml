@@ -1,0 +1,62 @@
+# Sandbox infrastructure for `pnpm eval` — the same stack as compose.yaml on its own ports and
+# volumes. Ports are hardcoded, not `${VAR:-default}`: inheriting the variables would let a stray
+# POSTGRES_PORT point evals at the dev database.
+#
+#   docker compose -f compose.eval.yaml up -d
+#   docker compose -f compose.eval.yaml down -v   # discard everything
+
+name: cameron-eval
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: cameron-eval-db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: cameron_eval
+    ports:
+      - "5545:5432"
+    volumes:
+      - eval_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d cameron_eval"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: cameron-eval-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9110:9000" # S3 API
+      - "9111:9001" # MinIO Console
+    volumes:
+      - eval_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  createbuckets:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: on-failure
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set localminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb localminio/uploads --ignore-existing;
+      /usr/bin/mc anonymous set download localminio/uploads;
+      exit 0;
+      "
+
+volumes:
+  eval_db_data:
+  eval_minio_data:
