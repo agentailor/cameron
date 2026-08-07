@@ -38,6 +38,8 @@ yarn-error.log*
 .env.production.local
 # isolated env for AI-run live tests (holds secrets; never commit)
 .env.ai-test
+# env for eval runs (holds an API key; never commit) — see .env.eval.example
+.env.eval
 
 # vercel
 .vercel

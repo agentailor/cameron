@@ -180,10 +180,10 @@ DATABASE_URL="postgresql://user:password@localhost:5544/mydb?schema=public"
 OPENAI_API_KEY="sk-..."
 GOOGLE_API_KEY="..."
 ANTHROPIC_API_KEY="sk-ant-..."
-
-# Optional: Default model
-DEFAULT_MODEL="gpt-4o-mini"  # or "gemini-1.5-flash" or "claude-sonnet-4-5"
 ```
+
+Cameron defaults to Anthropic `claude-haiku-4-5`. Switch provider and model at any time from
+the model picker in the UI — the choice is saved to `localStorage`, not the environment.
 
 ### 3. Start Services
 
