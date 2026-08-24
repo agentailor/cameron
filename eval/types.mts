@@ -18,6 +18,12 @@ export interface RunCapture {
   finalText: string;
   trajectory: ToolCall[];
   toolResults: ToolResult[];
+  /**
+   * Tool calls the approval gate PAUSED before running. Empty unless the case set `approval`.
+   * The only evidence a mutation was gated rather than executed — `trajectory` looks identical
+   * either way.
+   */
+  interrupts: ToolCall[];
   /** Set if invoke threw — a crash is a graded failure, not a harness failure. */
   error?: string;
 }
@@ -30,7 +36,8 @@ export interface GradeResult {
 
 export interface Grader {
   id: string;
-  grade: (capture: RunCapture) => GradeResult;
+  /** May be async: `rowCountInStore` reads the sandbox database back. */
+  grade: (capture: RunCapture) => GradeResult | Promise<GradeResult>;
 }
 
 export interface EvalCase {
@@ -40,7 +47,16 @@ export interface EvalCase {
   graders: Grader[];
   /**
    * Agents are non-deterministic: the same prompt can pass once and fail the next time. Run n
-   * times and require passK. Omit for a single run.
+   * times and require passK. Omit to get RUN_POLICY.verdict.
    */
   runs?: { n: number; passK: number };
+  /**
+   * Run with the human-in-the-loop middleware LIVE and answer its interrupt with this decision.
+   * Omit to auto-approve everything. Implies the case mutates, so the fixture is reset per run.
+   */
+  approval?: "allow" | "deny";
+  /** Reported as skipped, never executed. Keeps a known-red case (and its reason) on the books. */
+  skip?: boolean;
+  /** Free-form labels for filtering/grouping. Not used by the runner. */
+  tags?: string[];
 }

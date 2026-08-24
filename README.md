@@ -139,14 +139,7 @@ above. For what `v1` adds on top (persona, transaction store, finance tools, CSV
 
 Cameron grows one tagged release at a time. Highlights of what's ahead — see the
 [releases page](https://github.com/agentailor/cameron/releases) for what has actually shipped:
-
-| Version | Theme                   | What ships                                                                                                              |
-| ------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| _v0_    | Inherited foundation    | Not a Cameron release — the starter's chat loop, streaming, persistence, MCP, HITL approvals.                           |
-| **v1**  | Cameron is born         | Persona, transaction store, approval-gated finance tools, CSV import.                                                   |
-| **v2**  | Memory                  | Budgets and preferences as long-term memory; summarization of aging history.                                            |
-| **v3**  | External data           | A standalone bank MCP server Cameron consumes as a client.                                                              |
-| **v4+** | Skills → self-extension | Skills, document ingestion, evals, autonomy, channels, delegation, and eventually Cameron writing its own capabilities. |
+See [Cameron roadmap](https://blog.agentailor.com/cameron) for upcoming versions.
 
 ## Quick Start
 
