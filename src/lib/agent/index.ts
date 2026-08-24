@@ -15,14 +15,8 @@ import { csvImportTools } from "./tools/csvImport";
 import { analyticsTools } from "./tools/analytics";
 import { categoryTools } from "./tools/categories";
 import { createAgent, humanInTheLoopMiddleware } from "langchain";
-
-/**
- * Built-in tools that MUTATE the ledger. Only these pause for human approval; read-only tools
- * (query_transactions, inspect_csv) and dynamically-loaded MCP tools auto-approve. The names must
- * match the `name` given to each tool in ./tools/*. This is the declarative replacement for the old
- * hand-built `tool_approval` graph node.
- */
-const MUTATING_TOOL_NAMES = ["log_expense", "import_transactions_csv", "create_category"] as const;
+// Lives in ./capabilities so the page can read it without importing this file's deps.
+import { MUTATING_TOOL_NAMES } from "./capabilities";
 
 /**
  * Create a new agent instance with the given configuration.
