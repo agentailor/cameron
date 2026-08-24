@@ -26,6 +26,13 @@ export const Header = ({ toggleSidebar }: HeaderProps) => {
             </Link>
           </div>
         </div>
+
+        <Link
+          href="/capabilities"
+          className="rounded-md px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+        >
+          Capabilities
+        </Link>
       </div>
     </header>
   );

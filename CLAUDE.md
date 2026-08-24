@@ -69,7 +69,18 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
   through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
   `import_transactions_csv`, `create_category`); read tools (incl. `run_sql`) and MCP tools
   auto-approve. `approveAllTools` omits the middleware entirely. Decisions: `allow`→approve,
-  `deny`→reject (with an explanatory follow-up).
+  `deny`→reject (with an explanatory follow-up). `MUTATING_TOOL_NAMES` is defined in
+  `src/lib/agent/capabilities.ts` (not `index.ts`) so the capabilities page can read it without
+  pulling in the agent graph; `index.ts` imports it from there.
+- **Capabilities page** (`/capabilities`, `src/app/capabilities/page.tsx`): a plain server component
+  listing the built-in tools with their real names/descriptions and an approval badge, so the only
+  way to learn what Cameron can do isn't reading the source. Data comes from
+  `listCapabilities()` in `src/lib/agent/capabilities.ts`, which is derived from the same tool arrays
+  `index.ts` registers — a new tool appears with no UI edit. That module is deliberately a **leaf**:
+  it must not import `agent/index.ts`. The CSV entries are the one hand-transcribed exception
+  (`tools/csvImport.ts` imports the S3 client, which throws at module load when S3 env vars are
+  unset); `capabilities.test.ts` pins them to the real tools so they can't drift. Deliberately
+  minimal — the design is expected to change.
 
 ### Data Flow
 
