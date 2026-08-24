@@ -8,24 +8,61 @@ import { randomUUID } from "node:crypto";
  * DATABASE_URL at import time, and the eval database's name isn't known until runtime.
  */
 
-/** Ground truth — kept in one place so cases and graders can't disagree with the data. */
-const DINING_COUNT = 262;
+/**
+ * Ground truth. Sizes are load-bearing, not arbitrary:
+ *
+ * - Dining (262) deliberately exceeds `query_transactions`' 200-row cap, so any attempt to total it
+ *   by listing MUST truncate. That trap is the whole point of the truncation case.
+ * - Groceries (40) and Transport (12) stay well under the cap, so they never truncate — and they
+ *   give the ranking case something to actually rank. Their totals are distinct and ordered, so
+ *   "biggest category" has one correct answer.
+ */
+const SPEND = [
+  { category: "Dining", count: 262, cycle: 20 },
+  { category: "Groceries", count: 40, cycle: 12 },
+  { category: "Transport", count: 12, cycle: 5 },
+] as const;
 
-/** Amounts cycle 1.00…20.00 (see the insert below), so the total is exact and derivable. */
-function diningTotalMajor(count: number): number {
+/** A little income, so `type = 'expense'` filtering is a real discriminator and not a no-op. */
+const INCOME = [
+  { note: "Salary", amountMinor: 500_000 },
+  { note: "Freelance invoice", amountMinor: 125_000 },
+] as const;
+
+/**
+ * Amounts cycle 1.00…cycle.00 (see the insert below), so every total is exact and derivable.
+ * Hardcoding these constants would silently go stale the moment the fixture changes, and then the
+ * eval fails for the wrong reason.
+ */
+function cycledTotalMajor(count: number, cycle: number): number {
   let minor = 0;
-  for (let i = 0; i < count; i++) minor += ((i % 20) + 1) * 100;
+  for (let i = 0; i < count; i++) minor += ((i % cycle) + 1) * 100;
   return minor / 100;
 }
 
+function spendFixture({ category, count, cycle }: (typeof SPEND)[number]) {
+  return { category, count, cycle, totalMajor: cycledTotalMajor(count, cycle) };
+}
+
+const dining = spendFixture(SPEND[0]);
+const groceries = spendFixture(SPEND[1]);
+const transport = spendFixture(SPEND[2]);
+
 export const FIXTURE = {
-  dining: {
-    category: "Dining",
-    count: DINING_COUNT,
-    // Derived from the same formula that seeds the rows — a hardcoded constant silently goes
-    // stale the moment the fixture changes, and then the eval fails for the wrong reason.
-    totalMajor: diningTotalMajor(DINING_COUNT),
-  },
+  dining,
+  groceries,
+  transport,
+  /** Every seeded category, biggest spend first — the ranking case's expected order. */
+  categoriesBySpend: [dining, groceries, transport].sort((a, b) => b.totalMajor - a.totalMajor),
+  /** Seeded expense rows across all categories. The approval cases assert deltas against this. */
+  expenseCount: SPEND.reduce((n, s) => n + s.count, 0),
+  incomeCount: INCOME.length,
+  transactionCount: SPEND.reduce((n, s) => n + s.count, 0) + INCOME.length,
+  /**
+   * A category name that is NOT seeded. The recovery case asks about it: `query_transactions`
+   * reports it as unknown, and the agent must not read that as "you have no transactions".
+   */
+  unknownCategory: "Entertainment",
 } as const;
 
 export async function seed(url: string): Promise<void> {
@@ -33,33 +70,70 @@ export async function seed(url: string): Promise<void> {
   await client.connect();
   try {
     const now = new Date().toISOString();
-    const categoryId = randomUUID();
-    await client.query(
-      `INSERT INTO category (id, name, icon, color, created_at, updated_at)
-       VALUES ($1, $2, NULL, NULL, $3, $3)`,
-      [categoryId, FIXTURE.dining.category, now],
-    );
 
-    // Cycle 1.00…20.00 so the total is a known constant, and spread dates across 2026.
+    const categoryIds = new Map<string, string>();
+    for (const { category } of SPEND) {
+      const id = randomUUID();
+      categoryIds.set(category, id);
+      await client.query(
+        `INSERT INTO category (id, name, icon, color, created_at, updated_at)
+         VALUES ($1, $2, NULL, NULL, $3, $3)`,
+        [id, category, now],
+      );
+    }
+
     const values: string[] = [];
     const params: unknown[] = [];
-    for (let i = 0; i < FIXTURE.dining.count; i++) {
-      const amountMinor = ((i % 20) + 1) * 100;
-      const occurredAt = new Date(Date.UTC(2026, 0, 1 + (i % 300), 12)).toISOString();
+    const addRow = (row: {
+      occurredAt: string;
+      amountMinor: number;
+      type: "expense" | "income";
+      note: string;
+      categoryId: string | null;
+      externalId: string;
+    }) => {
       const base = params.length;
       values.push(
-        `($${base + 1}, $${base + 2}, $${base + 3}, 'expense', $${base + 4}, 'USD', NULL, NULL, $${base + 5}, 'CHECKING', 'eval', $${base + 6}, $${base + 7}, $${base + 7})`,
+        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, 'USD', NULL, NULL, ` +
+          `$${base + 6}, 'CHECKING', 'eval', $${base + 7}, $${base + 8}, $${base + 8})`,
       );
       params.push(
         randomUUID(),
-        occurredAt,
-        amountMinor,
-        `Dining ${i + 1}`,
-        categoryId,
-        `eval-dining-${i + 1}`,
+        row.occurredAt,
+        row.amountMinor,
+        row.type,
+        row.note,
+        row.categoryId,
+        row.externalId,
         now,
       );
+    };
+
+    // Cycle 1.00…cycle.00 so each category's total is a known constant, and spread dates across 2026.
+    for (const { category, count, cycle } of SPEND) {
+      for (let i = 0; i < count; i++) {
+        addRow({
+          occurredAt: new Date(Date.UTC(2026, 0, 1 + (i % 300), 12)).toISOString(),
+          amountMinor: ((i % cycle) + 1) * 100,
+          type: "expense",
+          note: `${category} ${i + 1}`,
+          categoryId: categoryIds.get(category) ?? null,
+          externalId: `eval-${category.toLowerCase()}-${i + 1}`,
+        });
+      }
     }
+
+    // Income is uncategorized on purpose — it also covers COALESCE(name,'Uncategorized') in SQL.
+    INCOME.forEach((row, i) => {
+      addRow({
+        occurredAt: new Date(Date.UTC(2026, i, 28, 12)).toISOString(),
+        amountMinor: row.amountMinor,
+        type: "income",
+        note: row.note,
+        categoryId: null,
+        externalId: `eval-income-${i + 1}`,
+      });
+    });
 
     await client.query(
       `INSERT INTO transaction

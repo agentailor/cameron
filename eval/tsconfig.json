@@ -1,0 +1,16 @@
+{
+  // The root tsconfig's `include` is "**/*.ts", which does NOT match .mts — so the whole eval tree
+  // was invisible to `tsc --noEmit`. This config exists so `pnpm typecheck:eval` actually checks it.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    // Cases import "./seed.mts" and "../src/lib/agent/capabilities.ts" by their real filenames,
+    // which is what tsx resolves at runtime.
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": ["**/*.mts", "../src/lib/agent/capabilities.ts", "../src/types/**/*.ts"],
+  "exclude": ["../node_modules"]
+}

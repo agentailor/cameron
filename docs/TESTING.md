@@ -1,11 +1,15 @@
 # Testing
 
-Cameron has unit tests today. Evals are coming in a future version; how they'll be implemented
-will be documented once they exist.
+Two layers, deliberately separate:
+
+- **Unit tests** (this doc) — free, offline, run on every change and in CI.
+- **Evals** ([eval/README.md](../eval/README.md)) — drive the real agent against a sandbox Postgres.
+  Slow, paid, non-deterministic; run on demand, never in CI.
 
 ```bash
 pnpm test          # run once — free, offline, no DB
 pnpm test:watch    # watch mode
+pnpm eval          # evals — needs the sandbox stack and an API key
 ```
 
 ## CI
@@ -13,6 +17,10 @@ pnpm test:watch    # watch mode
 `.github/workflows/ci.yml` runs `pnpm test` + `tsc --noEmit` on every PR and push to `main`.
 `release.yml` runs the same on a `v*` tag and only publishes the GitHub Release if they pass —
 so a tag can never ship a red suite.
+
+Evals are **not** in CI (they cost money and need a model). Their code is still worth typechecking,
+though, and the root `tsc --noEmit` misses it: `tsconfig.json`'s `include` is `**/*.ts`, which does
+not match the eval tree's `.mts` files. `pnpm typecheck:eval` covers them and is free.
 
 ## The rule: `pnpm test` is always free
 
@@ -29,8 +37,8 @@ the pattern comes from the portable
 [`tool-design`](https://github.com/agentailor/skills) skill: "write the tool, write its test
 beside it" shouldn't require adopting this repo's directory structure.
 
-Evals will live in their own top-level tree with their own config and scripts, since they are
-cross-cutting (they exercise the whole agent, not one module) and paid. `pnpm test` stays
+Evals live in their own top-level tree ([eval/](../eval/)) with their own config and scripts, since
+they are cross-cutting (they exercise the whole agent, not one module) and paid. `pnpm test` stays
 unit-only and free regardless.
 
 ## What the tool tests assert
@@ -70,9 +78,10 @@ A unit test proves `truncated: true` is present in the payload. It cannot prove 
 _noticed_ it — that it didn't sum a capped page and report the figure as the year's total. Nor can
 it catch mis-selection between two plausible tools (`query_transactions` vs `run_sql`).
 
-Those failures need a model in the loop, which is the eval layer. Deferring evals is a resource
-decision, not a statement that the risk is absent: the truncation bug was found by reading, not by
-a signal.
+Those failures need a model in the loop, which is the eval layer — see
+[eval/README.md](../eval/README.md). Both of those exact defects now have cases
+(`cases/truncation.cases.mts`, `cases/analysis.cases.mts`), as does the approval gate. Worth
+remembering how the truncation bug was found in the first place: by reading, not by a signal.
 
 ## Adding a test
 

@@ -249,9 +249,43 @@ Unit tests only, via Vitest — see [docs/TESTING.md](docs/TESTING.md) for the f
 - **The defect class**: a tool description is a contract with a non-deterministic caller, and
   nothing else verifies the implementation honors it. When adding a tool, add its test in the same
   commit and cover every truncation / error / empty-result path — that's where agents get misled.
-- Evals are coming in a future version; `pnpm test` stays unit-only and free regardless.
+- `pnpm test` stays unit-only and free regardless of what the eval layer grows into.
 - **CI** (`.github/workflows/`): `ci.yml` gates PRs on `pnpm test` + `tsc --noEmit`; `release.yml`
   gates `v*` tags on the same before publishing the release.
+
+## Evals (`eval/`)
+
+Slow, paid, non-deterministic runs against the **real agent** and a **sandbox Postgres**. Never in
+CI, never part of `pnpm test`. Full detail in [eval/README.md](eval/README.md).
+
+```bash
+docker compose -f compose.eval.yaml up -d   # sandbox stack (Postgres 5545, MinIO 9110)
+pnpm eval                                   # the gate — every case, 3 runs each
+EVAL_MODE=fast pnpm eval <id> -v            # iterate on one case; NOT a verdict
+pnpm typecheck:eval                         # free — the root tsc misses this tree
+```
+
+- **Cases are grouped by defect class, not feature** (`eval/cases/*.cases.mts`): tool mis-selection,
+  unnoticed truncation, the approval gate, prompt contracts. A case earns its place by covering
+  something a unit test provably cannot.
+- **Deterministic graders only — no LLM judge.** Viable because the assertion target is usually a
+  number, which has one spelling. Two rules when authoring: never let a negative grader stand alone
+  (it passes vacuously on a run that did nothing), and only string-match **atomic** targets — assert
+  structural facts (which tool ran, what's in the DB) instead of claims.
+- **`FIXTURE` (`eval/seed.mts`) is the single source of truth** for expected figures, all derived
+  from the seeding formula. Never hardcode a total in a case. Dining's 262 rows deliberately exceed
+  `query_transactions`' 200-row cap — that truncation trap is the point.
+- **Approval cases** set `approval: "allow" | "deny"`, which keeps the HITL middleware live (plain
+  `approveAllTools` omits it entirely). Paused calls land on `RunCapture.interrupts` — the only
+  evidence the gate fired, since `trajectory` looks identical either way. These cases mutate, so the
+  fixture is re-seeded before each run.
+- **Every run writes `eval/results/latest.json`** (plus a timestamped copy; both gitignored) with
+  per-run grader verdicts, trajectories, interrupts, and final answers. Read that file rather than
+  asking for pasted console output — the console text scrolls away and can't be diffed.
+- **`eval/tsconfig.json` exists** because the root tsconfig's `include` covers only `.ts`, not
+  `.mts` — the whole eval tree was invisible to `tsc --noEmit`. Use `pnpm typecheck:eval`.
+- **Not yet covered**: CSV import (needs multi-turn + a MinIO fixture) — the next increment, and the
+  highest-value gap, since a wrong date format imports silently-wrong data.
 
 ### Skills
 

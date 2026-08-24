@@ -40,6 +40,10 @@ yarn-error.log*
 .env.ai-test
 # env for eval runs (holds an API key; never commit) — see .env.eval.example
 .env.eval
+# Eval run artifacts — ignore the generated JSON by pattern, not the whole directory, so the
+# folder stays usable for tracked source (a viewer) later.
+eval/results/report-*.json
+eval/results/latest.json
 
 # vercel
 .vercel
