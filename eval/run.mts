@@ -106,11 +106,9 @@ async function main() {
         continue;
       }
 
-      // Fast mode collapses every case to a single run — for iterating, where you want the
-      // trajectory rather than a statistically meaningful verdict. Otherwise a case that doesn't
-      // declare a policy gets the majority verdict: defaulting to a single run would make a green
-      // suite mean nothing.
-      const policy = FAST_MODE ? RUN_POLICY.fast : (testCase.runs ?? RUN_POLICY.verdict);
+      // One run unless the case opts into repeats. `EVAL_MODE=fast` forces one everywhere, which
+      // also collapses the repeating cases while iterating.
+      const policy = FAST_MODE ? RUN_POLICY.fast : (testCase.runs ?? RUN_POLICY.single);
       const { n, passK } = policy;
       process.stdout.write(`  ${testCase.id} `);
 

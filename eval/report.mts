@@ -19,7 +19,8 @@ function fileTimestamp(date: Date): string {
 export interface ReportCase {
   id: string;
   description?: string;
-  prompt: string;
+  /** A single turn, or the turns replayed for a multi-turn case. */
+  prompt: string | string[];
   tags?: string[];
   /** `approval` implies the HITL middleware ran live for this case. */
   approval?: "allow" | "deny";
@@ -44,8 +45,8 @@ export interface ReportFile {
     timestamp: string;
     provider: string;
     model: string;
-    /** `fast` runs once per case — a green report in this mode is NOT a verdict. */
-    mode: "fast" | "verdict";
+    /** `fast` collapses every case to one run, including the ones that opt into repeats. */
+    mode: "fast" | "repeats";
     passed: number;
     graded: number;
     skipped: number;
@@ -92,7 +93,7 @@ export function buildReport(
       timestamp: new Date().toISOString(),
       provider: meta.provider,
       model: meta.model,
-      mode: meta.fast ? "fast" : "verdict",
+      mode: meta.fast ? "fast" : "repeats",
       passed: cases.filter((c) => c.passed && !c.skipped).length,
       graded,
       skipped,

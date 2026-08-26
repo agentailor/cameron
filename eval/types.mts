@@ -43,11 +43,16 @@ export interface Grader {
 export interface EvalCase {
   id: string;
   description?: string;
-  prompt: string;
+  /**
+   * The user turn(s), replayed in order on one thread. A string is a single turn; an array is a
+   * conversation — needed whenever the behavior under test is the agent stopping to ask, since a
+   * single turn cannot express the user's answer.
+   */
+  prompt: string | string[];
   graders: Grader[];
   /**
-   * Agents are non-deterministic: the same prompt can pass once and fail the next time. Run n
-   * times and require passK. Omit to get RUN_POLICY.verdict.
+   * Run n times and require passK (pass@k). Omit for a single run — repeats are opt-in, and only
+   * worth spending where behavior actually varies. See "Run policy" in eval/README.md.
    */
   runs?: { n: number; passK: number };
   /**

@@ -10,22 +10,22 @@ Unlike `pnpm test`, these are **slow, paid, and non-deterministic**. They are ne
 ```bash
 docker compose -f compose.eval.yaml up -d   # sandbox stack (Postgres 5545, MinIO 9110) — once
 cp .env.eval.example .env.eval              # then add your ANTHROPIC_API_KEY
-pnpm eval                                   # the gate: every case, majority verdict
+pnpm eval                                   # every case
 ```
 
-| Command               | What it does                                                                               |
-| --------------------- | ------------------------------------------------------------------------------------------ |
-| `pnpm eval`           | All cases. Each runs 3× (see _Run policy_). This is the only run whose green is a verdict. |
-| `pnpm eval approval`  | Only cases matching `approval` — by **id substring or tag**.                               |
-| `pnpm eval -v`        | Print per-run timing, the tool trajectory, and anything the approval gate paused.          |
-| `pnpm typecheck:eval` | Typecheck the eval tree. Free — the root `tsc` misses it (see below).                      |
+| Command               | What it does                                                                      |
+| --------------------- | --------------------------------------------------------------------------------- |
+| `pnpm eval`           | All cases. Most run once; a few repeat (see _Run policy_).                        |
+| `pnpm eval approval`  | Only cases matching `approval` — by **id substring or tag**.                      |
+| `pnpm eval -v`        | Print per-run timing, the tool trajectory, and anything the approval gate paused. |
+| `pnpm typecheck:eval` | Typecheck the eval tree. Free — the root `tsc` misses it (see below).             |
 
 Two env vars change what a run does. **`VAR=value pnpm eval` is bash syntax and does NOT work in
 PowerShell** — there is no inline env-var prefix, so the assignment is passed as an argument and the
 run silently does the wrong thing (the runner now detects this and tells you). On Windows:
 
 ```powershell
-$env:EVAL_MODE="fast"; pnpm eval          # 1 run per case — iterating, NOT a verdict
+$env:EVAL_MODE="fast"; pnpm eval          # force 1 run per case, collapsing the repeats
 $env:EVAL_MODEL="claude-sonnet-5"; pnpm eval
 Remove-Item Env:EVAL_MODE                 # clear it again — $env: persists for the session
 ```
@@ -61,6 +61,7 @@ So a case earns its place by guarding a **defect class**, not by exercising a fe
 | `cases/truncation.cases.mts` | A capped page is never reported as a complete total.                                               |
 | `cases/approval.cases.mts`   | Cameron's first hard rule: no mutation without human approval; a denial writes nothing.            |
 | `cases/discipline.cases.mts` | Prompt contracts — no double-prompting on mutations; recovering from an unknown category.          |
+| `cases/csvImport.cases.mts`  | CSV import — an ambiguous date format, and a mapped column that must be copied verbatim.           |
 
 ## The fixture
 
@@ -75,6 +76,12 @@ Every expected figure is **derived from the same formula that seeds the rows** a
 `FIXTURE`. Never hardcode a total in a case: a hardcoded constant goes stale the moment the fixture
 changes, and then the eval fails for the wrong reason.
 
+`seed()` also uploads a small **CSV fixture** to the eval object store for the import cases. It is
+built to make a wrong import _detectable_: dates are `dd/MM/yyyy` with a day ≤ 12, so `05/07/2026`
+is valid under both readings (5 July vs 7 May) and a wrong format imports cleanly with no error —
+only the stored month differs. Its category header is accented (`Catégorie`) and its type column is
+French, so a translated mapping is rejected and English type defaults do not apply.
+
 ## Graders
 
 All deterministic, all in `graders.mts`. `grade()` may be async (one grader reads the DB back).
@@ -88,6 +95,10 @@ All deterministic, all in `graders.mts`. `grade()` may be async (one grader read
 
 **Ground truth** — `rowCountInStore(table, n)` (async; reads the sandbox DB),
 `toolResultMatches(name, predicate, opts)` (reads what the agent actually _saw_)
+
+**Imported data** (async; all read the sandbox DB) — `importedRowCount(n)`,
+`importedInMonth(month, wrongMonth)`, `importedCategories(...names)`, plus
+`toolCalledWith(name, predicate, label)` for asserting a chosen argument
 
 ### Two rules for writing a case
 
@@ -104,15 +115,52 @@ structural fact instead — what tool was called, what is in the database.
 This is why a finance agent can stay judge-free where a RAG agent cannot: the thing under assertion
 is usually a number.
 
-## Run policy
+## Run policy (pass@k)
 
-Declared in `config.mts`. A case that doesn't set `runs` gets **`verdict`**.
+Declared in `config.mts`. A case that doesn't set `runs` runs **once**.
 
-| Policy    | Runs      | Use for                                                                                        |
-| --------- | --------- | ---------------------------------------------------------------------------------------------- |
-| `verdict` | 3, need 2 | Default. Absorbs normal model variance.                                                        |
-| `strict`  | 3, need 3 | Correctness and safety — a wrong total or an escaped mutation is never acceptable at any rate. |
-| `fast`    | 1         | `EVAL_MODE=fast` only. Directional signal, never a verdict.                                    |
+| Policy     | Runs      | Use for                                                            |
+| ---------- | --------- | ------------------------------------------------------------------ |
+| `single`   | 1         | The default. A structural assertion that is near-deterministic.    |
+| `majority` | 3, need 2 | Behavior known to vary run to run.                                 |
+| `strict`   | 3, need 3 | A wrong outcome that is silent, unrecoverable, or both.            |
+| `fast`     | 1         | `EVAL_MODE=fast` only — forces one run everywhere while iterating. |
+
+### Why repeat a case at all
+
+The same prompt can pass once and fail the next time. That is not noise to be averaged away — it is
+a property of the system under test, and sometimes it is the finding.
+
+A case in this suite demonstrated it. Asked about a category that doesn't exist, `run_sql` returns
+SQL `NULL` — indistinguishable from a category that exists with no spending. One run stopped there
+and guessed, answering _"you don't have any transactions categorized as Entertainment yet"_, which
+wrongly implies the category exists. A rerun of the same prompt called `list_categories` and
+answered correctly.
+
+Either run alone would have misled: the first says "broken", the second says "fine". The pair says
+**recovery is intermittent** — roughly a coin flip on a plausible-but-wrong answer. That is the
+actionable version, and only repetition produces it.
+
+### Choosing n and k
+
+`pass@k` means: run `n` times, require `k` passes. Two knobs, two different questions.
+
+- **`n`** is how much evidence you buy. Three is a reasonable starter — enough to catch a coin-flip
+  behavior, cheap enough to run often. Raise it when you are specifically measuring stability
+  (does this flip 1 time in 10?), not as a general setting.
+- **`k`** encodes how much a failure costs. `k = n` (unanimous) for outcomes that are silent or
+  unrecoverable — a mutation escaping the approval gate, a CSV imported on the wrong dates. `k` at a
+  majority for behavior that varies legitimately, where you want the common case to be right.
+
+### Why the default here is 1
+
+Repeats buy information only where behavior is actually unstable. Most cases here assert something
+structural and near-deterministic — did the gate pause, did the rows land in July — and running
+those three times spends three times as much to learn the same thing.
+
+A project that **gates merges** on its evals would default the other way, because there an
+unrepeated green cannot be told apart from a lucky one. This suite is a teaching artifact and gates
+nothing, so repeats are opt-in per case, and each `runs:` says in a comment why it earned one.
 
 ## Reports
 
@@ -132,8 +180,22 @@ jq '[.cases[] | select(.passed | not) | .id]' eval/results/latest.json   # what 
 jq '.cases[] | select(.id == "denied-expense-writes-nothing")' eval/results/latest.json
 ```
 
-`meta.mode` records whether the run was a verdict or `fast`, so a one-run iteration can't later be
-mistaken for a gate run.
+`meta.mode` records whether repeats ran or `EVAL_MODE=fast` collapsed them, so a report always
+says how much evidence is behind it.
+
+## Multi-turn cases
+
+A case's `prompt` may be an array. Turns replay in order on one `thread_id`, so the Postgres
+checkpointer carries the conversation — no message history is rebuilt by hand. Each invoke returns
+the whole thread, so the runner collects only what is new; otherwise earlier tool calls would be
+counted again on every turn.
+
+Use it wherever the behavior under test is the agent **stopping to ask** — a single turn cannot
+express the user's answer. CSV import is the current example: it must confirm an ambiguous date
+format before writing anything.
+
+Grade the **consequence, not the conversation.** Whether the agent asked is a claim with many
+phrasings, and there is no judge here; what it did afterwards is a fact in the database.
 
 ## Approval cases
 
@@ -164,10 +226,9 @@ recorded reason is a tracked finding; a deleted one is lost.
 
 ## Known gaps
 
-- **CSV import is not covered** — the `inspect_csv` → propose → confirm date format → import
-  handshake is multi-turn, and `runCase` sends a single message. This is the **next increment**, and
-  it is the highest-value gap: a wrong date format produces a clean, _successful_ import with
-  transactions on the wrong dates. Every other failure here is loud; that one is silent.
+- **Attachments are simulated, not uploaded through the app.** CSV cases put the reference the
+  chat route would inject (`[Attached file: … fileKey: …]`) straight in the prompt; the upload
+  endpoint itself is not exercised.
 - **The SSE/service layer is bypassed.** Evals call `getAgent()` directly, so streaming, thread
   persistence, and attachment handling are out of scope.
 - **The root `tsconfig.json` does not cover this tree** — its `include` is `**/*.ts`, which doesn't

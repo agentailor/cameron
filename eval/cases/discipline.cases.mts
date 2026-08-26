@@ -26,7 +26,7 @@ export const cases: EvalCase[] = [
       // And that it didn't dither: one proposal, not a retry loop.
       toolCallCountAtMost("log_expense", 1),
     ],
-    runs: RUN_POLICY.verdict,
+    runs: RUN_POLICY.single,
     tags: ["prompt-contract", "approval"],
   },
   {
@@ -43,7 +43,8 @@ export const cases: EvalCase[] = [
       // spelling — so this survives having no judge.
       statesAnyOf(FIXTURE.categoriesBySpend.map((c) => c.category)),
     ],
-    runs: RUN_POLICY.verdict,
+    // Observed flipping between guessing and recovering.
+    runs: RUN_POLICY.majority,
     tags: ["prompt-contract", "empty-results"],
   },
 ];

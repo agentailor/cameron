@@ -27,7 +27,7 @@ export const cases: EvalCase[] = [
       // Exactly one new row — catches a double-write as loudly as a missing one.
       rowCountInStore("transaction", FIXTURE.transactionCount + 1),
     ],
-    runs: RUN_POLICY.strict,
+    runs: RUN_POLICY.single,
     tags: ["approval", "mutation"],
   },
   {

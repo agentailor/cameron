@@ -17,15 +17,21 @@ export const MODEL = {
 } as const;
 
 /**
- * How many times to run each case, and how many must pass.
+ * How many times to run each case, and how many must pass (pass@k).
  *
- * Agents are non-deterministic: one run proves nothing about a flaky behavior. `verdict` is the
- * default — repeat and require a majority. `fast` (EVAL_MODE=fast) drops to a single run for
- * iterating, where you just want to see the trajectory and don't need the count to mean anything.
+ * The default is ONE run. Repeating is opt-in per case, because repeats buy information only where
+ * the behavior is genuinely unstable — see "Run policy" in eval/README.md for when to spend them.
+ *
+ * A project that gates merges on its evals would default the other way: there, an unrepeated green
+ * can't be told apart from a lucky one. Cameron's suite is a teaching artifact and gates nothing,
+ * so paying 3x on every case buys nothing on most of them.
  */
 export const RUN_POLICY = {
-  verdict: { n: 3, passK: 2 },
-  /** Unanimous — for cases where any failure is a real defect. */
+  /** The default. Enough for a structural assertion that is near-deterministic. */
+  single: { n: 1, passK: 1 },
+  /** Repeat and require a majority — for behavior known to vary run to run. */
+  majority: { n: 3, passK: 2 },
+  /** Unanimous — for a wrong outcome that is silent, unrecoverable, or both. */
   strict: { n: 3, passK: 3 },
   fast: { n: 1, passK: 1 },
 } as const;

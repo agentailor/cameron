@@ -260,14 +260,18 @@ CI, never part of `pnpm test`. Full detail in [eval/README.md](eval/README.md).
 
 ```bash
 docker compose -f compose.eval.yaml up -d   # sandbox stack (Postgres 5545, MinIO 9110)
-pnpm eval                                   # the gate — every case, 3 runs each
-EVAL_MODE=fast pnpm eval <id> -v            # iterate on one case; NOT a verdict
+pnpm eval                                   # every case (most run once; a few repeat)
+EVAL_MODE=fast pnpm eval <id> -v            # force one run while iterating
 pnpm typecheck:eval                         # free — the root tsc misses this tree
 ```
 
 - **Cases are grouped by defect class, not feature** (`eval/cases/*.cases.mts`): tool mis-selection,
   unnoticed truncation, the approval gate, prompt contracts. A case earns its place by covering
   something a unit test provably cannot.
+- **Run policy is pass@k, defaulting to ONE run.** Repeats are opt-in per case (`RUN_POLICY.majority`
+  / `.strict`) and each carries a comment saying why it earned one — they buy information only where
+  behavior actually varies. A repo that gates merges on evals would default the other way; this suite
+  gates nothing.
 - **Deterministic graders only — no LLM judge.** Viable because the assertion target is usually a
   number, which has one spelling. Two rules when authoring: never let a negative grader stand alone
   (it passes vacuously on a run that did nothing), and only string-match **atomic** targets — assert
@@ -284,8 +288,10 @@ pnpm typecheck:eval                         # free — the root tsc misses this 
   asking for pasted console output — the console text scrolls away and can't be diffed.
 - **`eval/tsconfig.json` exists** because the root tsconfig's `include` covers only `.ts`, not
   `.mts` — the whole eval tree was invisible to `tsc --noEmit`. Use `pnpm typecheck:eval`.
-- **Not yet covered**: CSV import (needs multi-turn + a MinIO fixture) — the next increment, and the
-  highest-value gap, since a wrong date format imports silently-wrong data.
+- **Multi-turn**: a case's `prompt` may be an array; turns replay on one `thread_id` and the
+  checkpointer carries the conversation. For any behavior that requires the agent to stop and ask —
+  CSV import is the current example. Grade the **consequence** (what ended up in the DB) rather than
+  the conversation: whether it asked is a claim with many spellings, and there is no judge.
 
 ### Skills
 
