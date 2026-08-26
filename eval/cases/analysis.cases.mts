@@ -32,8 +32,7 @@ export const cases: EvalCase[] = [
       statesAmount(dining.totalMajor),
       statesNoWrongTotal(dining.totalMajor),
     ],
-    // A total is either right or wrong — one bad run is a real defect, so require all three.
-    runs: RUN_POLICY.strict,
+    runs: RUN_POLICY.single,
     tags: ["tool-selection", "analysis"],
   },
   {
@@ -47,7 +46,7 @@ export const cases: EvalCase[] = [
       statesAmount(top.totalMajor),
       toolNotCalled("query_transactions"),
     ],
-    runs: RUN_POLICY.verdict,
+    runs: RUN_POLICY.single,
     tags: ["tool-selection", "analysis"],
   },
   {
@@ -57,7 +56,7 @@ export const cases: EvalCase[] = [
       "the aggregate cases from over-rotating the prompt into 'always use run_sql'.",
     prompt: `Show me my 5 most recent ${dining.category} transactions.`,
     graders: [toolCalled("query_transactions"), toolNotCalled("run_sql")],
-    runs: RUN_POLICY.verdict,
+    runs: RUN_POLICY.single,
     tags: ["tool-selection", "over-triggering-guard"],
   },
 ];

@@ -1,5 +1,11 @@
 import { MUTATING_TOOL_NAMES } from "../src/lib/agent/capabilities.ts";
-import { countRows, type CountableTable } from "./db.mts";
+import {
+  countImportedRows,
+  countRows,
+  importedCategoryNames,
+  importedMonths,
+  type CountableTable,
+} from "./db.mts";
 import type { Grader, RunCapture } from "./types.mts";
 
 /**
@@ -260,6 +266,99 @@ export function toolResultMatches(
         hit,
         hit ? undefined : `no ${name} result matched ${opts.label ?? "the predicate"}`,
       );
+    },
+  };
+}
+
+/**
+ * Every imported row landed on `month`, and none on `wrongMonth`.
+ *
+ * The CSV date cases hinge on this: an ambiguous `05/07/2026` parses cleanly under both
+ * `dd/MM/yyyy` and `MM/dd/yyyy`, so a wrong format imports successfully with no error and no bad
+ * rows. The stored calendar month is the only evidence of which reading the agent used.
+ */
+export function importedInMonth(month: number, wrongMonth: number): Grader {
+  const id = `importedInMonth(${month})`;
+  return {
+    id,
+    grade: async () => {
+      const months = await importedMonths();
+      if (months.length === 0) return result(id, false, "nothing was imported");
+      const wrong = months.filter((m) => m.month !== month);
+      if (wrong.length === 0) return result(id, true);
+      const misread = wrong.some((m) => m.month === wrongMonth);
+      return result(
+        id,
+        false,
+        `imported rows landed on month(s) ${wrong.map((m) => `${m.month} (${m.count})`).join(", ")}` +
+          (misread ? ` — month ${wrongMonth} means the date format was read backwards` : ""),
+      );
+    },
+  };
+}
+
+/** How many rows the import actually wrote. `0` is what a rejected mapping looks like. */
+export function importedRowCount(expected: number): Grader {
+  const id = `importedRowCount(${expected})`;
+  return {
+    id,
+    grade: async () => {
+      const actual = await countImportedRows();
+      return result(
+        id,
+        actual === expected,
+        actual === expected
+          ? undefined
+          : `${actual} rows imported, expected ${expected}` +
+              (actual === 0 ? " — nothing was written (mapping rejected, or never imported)" : ""),
+      );
+    },
+  };
+}
+
+/**
+ * Imported rows carry these categories. Guards the silent-data-loss path: an unmapped or
+ * mistranslated category column imports rows with no category at all rather than failing.
+ */
+export function importedCategories(...names: string[]): Grader {
+  const id = `importedCategories(${names.join(",")})`;
+  return {
+    id,
+    grade: async () => {
+      const found = await importedCategoryNames();
+      if (found.length === 0) {
+        return result(id, false, "no imported row has a category — the category column was lost");
+      }
+      const missing = names.filter((n) => !found.includes(n));
+      return result(
+        id,
+        missing.length === 0,
+        missing.length ? `missing ${missing.join(", ")}; found ${found.join(", ")}` : undefined,
+      );
+    },
+  };
+}
+
+/** A tool was called with an argument matching `predicate` — e.g. the dateFormat it chose. */
+export function toolCalledWith(
+  name: string,
+  predicate: (args: Record<string, unknown>) => boolean,
+  label: string,
+): Grader {
+  const id = `toolCalledWith(${name},${label})`;
+  return {
+    id,
+    grade: (c: RunCapture) => {
+      const calls = c.trajectory.filter((t) => t.name === name);
+      if (calls.length === 0) return result(id, false, `${name} was never called`);
+      const hit = calls.some((t) => {
+        try {
+          return predicate(t.args);
+        } catch {
+          return false;
+        }
+      });
+      return result(id, hit, hit ? undefined : `no ${name} call matched ${label}`);
     },
   };
 }

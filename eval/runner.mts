@@ -79,38 +79,44 @@ export async function runCase(agent: Agent, testCase: EvalCase): Promise<RunCapt
   const trajectory: ToolCall[] = [];
   const toolResults: ToolResult[] = [];
   const interrupts: ToolCall[] = [];
+  const turns = Array.isArray(testCase.prompt) ? testCase.prompt : [testCase.prompt];
 
   try {
-    let result = await agent.invoke({ messages: [new HumanMessage(testCase.prompt)] }, config);
-    collect(result.messages, trajectory, toolResults);
-    let finalText = lastAssistantText(result.messages);
-    let seen = result.messages.length;
+    let finalText = "";
+    // Every turn reuses one thread_id, so the Postgres checkpointer carries the conversation
+    // forward — no message history is replayed by hand.
+    let seen = 0;
 
-    // With `approval` set the middleware is live, so a mutating call pauses instead of running.
-    // Answer it the way the UI would and let the graph finish, so `finalText` is the closing reply
-    // rather than whatever the model said on its way into the gate.
-    if (testCase.approval) {
-      const actions = await pendingActions(agent, threadId);
-      interrupts.push(...actions);
+    for (const turn of turns) {
+      let result = await agent.invoke({ messages: [new HumanMessage(turn)] }, config);
+      // The checkpointer accumulates, so each invoke returns the WHOLE thread. Collecting it
+      // wholesale would count earlier tool calls again on every turn.
+      let fresh = result.messages.slice(seen);
+      collect(fresh, trajectory, toolResults);
+      seen = result.messages.length;
+      finalText = lastAssistantText(fresh) || finalText;
 
-      if (actions.length > 0) {
-        const decision: Decision =
-          testCase.approval === "allow"
-            ? { type: "approve" }
-            : { type: "reject", message: "The user denied this action." };
-        // One decision per action request, positionally aligned — the middleware batches a turn's
-        // approval-requiring calls into a single interrupt.
-        const resume: HITLResponse = { decisions: actions.map(() => decision) };
+      // With `approval` set the middleware is live, so a mutating call pauses instead of running.
+      // Answer it the way the UI would and let the graph finish before the next turn starts.
+      if (testCase.approval) {
+        const actions = await pendingActions(agent, threadId);
+        interrupts.push(...actions);
 
-        result = await agent.invoke(new Command({ resume }), config);
-        // The checkpointer accumulates, so a resumed invoke returns the WHOLE thread — collecting
-        // it wholesale would count every pre-interrupt tool call twice and quietly break
-        // `toolCallCountAtMost`. Take only what's new. (`slice` past the end yields [], so this is
-        // still correct if a future version returns just the delta.)
-        const fresh = result.messages.slice(seen);
-        collect(fresh, trajectory, toolResults);
-        seen = result.messages.length;
-        finalText = lastAssistantText(fresh) || finalText;
+        if (actions.length > 0) {
+          const decision: Decision =
+            testCase.approval === "allow"
+              ? { type: "approve" }
+              : { type: "reject", message: "The user denied this action." };
+          // One decision per action request, positionally aligned — the middleware batches a
+          // turn's approval-requiring calls into a single interrupt.
+          const resume: HITLResponse = { decisions: actions.map(() => decision) };
+
+          result = await agent.invoke(new Command({ resume }), config);
+          fresh = result.messages.slice(seen);
+          collect(fresh, trajectory, toolResults);
+          seen = result.messages.length;
+          finalText = lastAssistantText(fresh) || finalText;
+        }
       }
     }
 

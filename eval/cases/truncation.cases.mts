@@ -39,7 +39,6 @@ export const cases: EvalCase[] = [
         { whenCalled: true, label: "truncated/matched" },
       ),
     ],
-    // A wrong total is never acceptable at any rate.
     runs: RUN_POLICY.strict,
     tags: ["truncation", "correctness"],
   },

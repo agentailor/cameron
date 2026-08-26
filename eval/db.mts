@@ -74,7 +74,8 @@ export async function resetToFixture(): Promise<void> {
   await withClient((c) =>
     c.query(`TRUNCATE TABLE ${SEEDED_TABLES.join(", ")} RESTART IDENTITY CASCADE`),
   );
-  await seed(DATABASE.url);
+  // The CSV fixture lives in the object store, which TRUNCATE doesn't touch.
+  await seed(DATABASE.url, { withCsv: false });
 }
 
 /** Count rows in a seeded table. The only way to prove what a run actually wrote. */
@@ -85,5 +86,47 @@ export async function countRows(table: CountableTable): Promise<number> {
       `SELECT COUNT(*)::int AS count FROM ${table}`,
     );
     return Number(rows[0]?.count ?? 0);
+  });
+}
+
+/** Rows imported from a CSV, i.e. everything the fixture did not seed. */
+export async function countImportedRows(): Promise<number> {
+  assertEvalDatabase();
+  return withClient(async (c) => {
+    const { rows } = await c.query<{ count: string }>(
+      "SELECT COUNT(*)::int AS count FROM transaction WHERE source <> 'eval'",
+    );
+    return Number(rows[0]?.count ?? 0);
+  });
+}
+
+/**
+ * Calendar months (1-12) the imported rows landed on, with a count each.
+ *
+ * The whole point of the CSV date cases: a wrong `dateFormat` imports successfully and silently,
+ * and the stored month is the only thing that distinguishes 5 July from 7 May.
+ */
+export async function importedMonths(): Promise<{ month: number; count: number }[]> {
+  assertEvalDatabase();
+  return withClient(async (c) => {
+    const { rows } = await c.query<{ month: string; count: string }>(
+      `SELECT EXTRACT(MONTH FROM occurred_at)::int AS month, COUNT(*)::int AS count
+       FROM transaction WHERE source <> 'eval'
+       GROUP BY 1 ORDER BY 1`,
+    );
+    return rows.map((r) => ({ month: Number(r.month), count: Number(r.count) }));
+  });
+}
+
+/** Imported rows that got a category, by category name. Proves a mapped column was not dropped. */
+export async function importedCategoryNames(): Promise<string[]> {
+  assertEvalDatabase();
+  return withClient(async (c) => {
+    const { rows } = await c.query<{ name: string }>(
+      `SELECT DISTINCT cat.name FROM transaction t
+       JOIN category cat ON cat.id = t.category_id
+       WHERE t.source <> 'eval' ORDER BY 1`,
+    );
+    return rows.map((r) => r.name);
   });
 }
