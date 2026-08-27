@@ -103,7 +103,7 @@ export function ThreadList({ onOpenMCPConfig }: ThreadListProps) {
   };
 
   return (
-    <nav className="flex h-full flex-col border-r border-gray-200 bg-white/60 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/60">
+    <nav className="border-border /60 flex h-full flex-col border-r bg-white/60 backdrop-blur-sm">
       <div className="space-y-2 px-3 pt-3 pb-2">
         <div className="flex gap-2">
           <button
@@ -131,12 +131,12 @@ export function ThreadList({ onOpenMCPConfig }: ThreadListProps) {
           </button>
         </div>
         <div className="group relative">
-          <Search className="absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+          <Search className="text-muted-foreground absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Search threads..."
-            className="w-full rounded-md border border-gray-300/70 bg-white/40 py-1.5 pr-2 pl-8 text-xs focus:ring-2 focus:ring-blue-500/40 focus:outline-none dark:border-gray-700/70 dark:bg-gray-800/40"
+            className="border-border/70 focus:ring-brand/40 /70 /40 w-full rounded-md border bg-white/40 py-1.5 pr-2 pl-8 text-xs focus:ring-2 focus:outline-none"
           />
         </div>
       </div>
@@ -219,22 +219,24 @@ export function ThreadList({ onOpenMCPConfig }: ThreadListProps) {
               )}
               <div className="text-muted-foreground/70 mt-1 flex items-center gap-2 text-[10px]">
                 <span>{thread.id.slice(0, 6)}</span>
-                <span className="h-1 w-1 rounded-full bg-gray-300 dark:bg-gray-600" />
+                <span className="bg-muted-foreground h-1 w-1 rounded-full" />
                 <span>{new Date(thread.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
           );
         })}
         {filtered.length === 0 && (
-          <div className="px-3 py-6 text-center text-xs text-gray-400">No threads found.</div>
+          <div className="text-muted-foreground px-3 py-6 text-center text-xs">
+            No threads found.
+          </div>
         )}
       </div>
 
       {/* MCP Configuration Button */}
-      <div className="border-t border-gray-200 p-3">
+      <div className="border-border border-t p-3">
         <button
           onClick={onOpenMCPConfig}
-          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-gray-50 px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100"
+          className="bg-muted/40 text-muted-foreground hover:bg-muted flex w-full cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-medium transition-colors"
         >
           <Settings className="h-4 w-4" />
           Configure MCP Servers

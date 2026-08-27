@@ -6,8 +6,28 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
+    monospace;
+
+  /* Brand tokens. `--brand` is the amber accent; it is NOT shadcn's `--accent`,
+     which means hover-background here. */
+  --color-brand: var(--brand);
+  --color-brand-bright: var(--brand-bright);
+  --color-brand-dim: var(--brand-dim);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-faint: var(--faint);
+  --color-term-red: var(--term-red);
+  --color-term-yellow: var(--term-yellow);
+  --color-term-green: var(--term-green);
+  /* Dark inset surfaces: SQL blocks and result tables — machinery is dark, the page is paper. */
+  --color-inset: var(--inset);
+  --color-inset-chrome: var(--inset-chrome);
+  --color-inset-border: var(--inset-border);
+  --color-inset-foreground: var(--inset-foreground);
+  --color-inset-muted: var(--inset-muted);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -43,73 +63,105 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* Paper ground, ink text, one amber accent, zero-chroma neutrals. Values are mapped ONTO
+   shadcn's semantic names so ui/* components pick up the identity without edits. */
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.13 0.028 261.692);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.13 0.028 261.692);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.13 0.028 261.692);
-  --primary: oklch(0.21 0.034 264.665);
-  --primary-foreground: oklch(0.985 0.002 247.839);
-  --secondary: oklch(0.967 0.003 264.542);
-  --secondary-foreground: oklch(0.21 0.034 264.665);
-  --muted: oklch(0.967 0.003 264.542);
-  --muted-foreground: oklch(0.551 0.027 264.364);
-  --accent: oklch(0.967 0.003 264.542);
-  --accent-foreground: oklch(0.21 0.034 264.665);
+
+  /* Core palette */
+  --paper: #f7f4ee;
+  --ink: #0b0b0b;
+  --brand: #f59e0b;
+  --brand-bright: #fbbf24;
+  --brand-dim: #b45309; /* amber text/icons on paper — raw brand fails contrast */
+  --brand-soft: oklch(0.78 0.16 75 / 0.15);
+  --brand-foreground: #0b0b0b; /* ink on an amber fill */
+  --term-red: #ff5f56;
+  --term-yellow: #ffbd2e;
+  --term-green: #27c93f;
+
+  /* Dark insets stay dark in both themes (see .dark for the deeper variant) */
+  --inset: #0b0d0e;
+  --inset-chrome: #15181a;
+  --inset-border: oklch(0.27 0 0);
+  --inset-foreground: #e8e6e1;
+  --inset-muted: oklch(0.45 0 0);
+
+  /* shadcn semantics */
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: #fffefb;
+  --card-foreground: var(--ink);
+  --popover: #fffefb;
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--paper);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: var(--ink);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: #6b6862; /* 5.06:1 on paper — AA */
+  --faint: #a8a79f; /* decorative only (2.2:1) — never body or label text */
+  --accent: oklch(0.93 0 0); /* hover surface, NOT the brand accent */
+  --accent-foreground: var(--ink);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.928 0.006 264.531);
-  --input: oklch(0.928 0.006 264.531);
-  --ring: oklch(0.707 0.022 261.325);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0.002 247.839);
-  --sidebar-foreground: oklch(0.13 0.028 261.692);
-  --sidebar-primary: oklch(0.21 0.034 264.665);
-  --sidebar-primary-foreground: oklch(0.985 0.002 247.839);
-  --sidebar-accent: oklch(0.967 0.003 264.542);
-  --sidebar-accent-foreground: oklch(0.21 0.034 264.665);
-  --sidebar-border: oklch(0.928 0.006 264.531);
-  --sidebar-ring: oklch(0.707 0.022 261.325);
+  --border: #e0dcd2;
+  --input: #e0dcd2;
+  --ring: var(--brand);
+
+  /* Amber ramp — one hue, so a chart needs no second color */
+  --chart-1: #f59e0b;
+  --chart-2: #d97706;
+  --chart-3: #b45309;
+  --chart-4: #92400e;
+  --chart-5: #78350f;
+
+  --sidebar: oklch(1 0 0 / 50%);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-foreground);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: #ededea;
+  --sidebar-ring: var(--brand);
 }
 
 .dark {
-  --background: oklch(0.13 0.028 261.692);
-  --foreground: oklch(0.985 0.002 247.839);
-  --card: oklch(0.21 0.034 264.665);
-  --card-foreground: oklch(0.985 0.002 247.839);
-  --popover: oklch(0.21 0.034 264.665);
-  --popover-foreground: oklch(0.985 0.002 247.839);
-  --primary: oklch(0.928 0.006 264.531);
-  --primary-foreground: oklch(0.21 0.034 264.665);
-  --secondary: oklch(0.278 0.033 256.848);
-  --secondary-foreground: oklch(0.985 0.002 247.839);
-  --muted: oklch(0.278 0.033 256.848);
-  --muted-foreground: oklch(0.707 0.022 261.325);
-  --accent: oklch(0.278 0.033 256.848);
-  --accent-foreground: oklch(0.985 0.002 247.839);
+  --background: var(--ink);
+  --foreground: var(--paper);
+  --card: oklch(0.2 0 0);
+  --card-foreground: var(--paper);
+  --popover: oklch(0.2 0 0);
+  --popover-foreground: var(--paper);
+  --primary: var(--paper);
+  --primary-foreground: var(--ink);
+  --secondary: oklch(0.27 0 0);
+  --secondary-foreground: var(--paper);
+  --muted: oklch(0.27 0 0);
+  --muted-foreground: oklch(0.71 0 0);
+  --accent: oklch(0.27 0 0);
+  --accent-foreground: var(--paper);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.21 0.034 264.665);
-  --sidebar-foreground: oklch(0.985 0.002 247.839);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0.002 247.839);
-  --sidebar-accent: oklch(0.278 0.033 256.848);
-  --sidebar-accent-foreground: oklch(0.985 0.002 247.839);
+  --ring: var(--brand);
+
+  --faint: oklch(0.45 0 0);
+
+  /* On ink, amber text no longer needs dimming — brighten instead */
+  --brand-dim: var(--brand-bright);
+
+  /* Machinery must still read as inset when the page itself is dark */
+  --inset: #060708;
+  --inset-chrome: #15181a;
+
+  --sidebar: oklch(0.16 0 0);
+  --sidebar-foreground: var(--paper);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-foreground);
+  --sidebar-accent: oklch(0.27 0 0);
+  --sidebar-accent-foreground: var(--paper);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  --sidebar-ring: var(--brand);
 }
 
 @layer base {
@@ -118,5 +170,22 @@
   }
   body {
     @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: var(--brand);
+    color: var(--brand-foreground);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
   }
 }

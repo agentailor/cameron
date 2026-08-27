@@ -45,8 +45,8 @@ export const HumanMessage = ({ message }: HumanMessageProps) => {
         <div
           className={cn(
             "rounded-2xl px-4 py-2",
-            "bg-gray-300/50 text-gray-800",
-            "backdrop-blur-sm supports-[backdrop-filter]:bg-gray-300/50",
+            "bg-card border-border text-foreground border",
+            "supports-[backdrop-filter]:bg-card/90 backdrop-blur-sm",
           )}
         >
           {/* File Attachments */}
@@ -55,7 +55,7 @@ export const HumanMessage = ({ message }: HumanMessageProps) => {
               {attachments.map((attachment) => (
                 <div
                   key={attachment.key}
-                  className="flex items-center gap-2 rounded-md bg-gray-400/30 px-2 py-1 text-xs"
+                  className="bg-muted flex items-center gap-2 rounded-md px-2 py-1 text-xs"
                 >
                   {attachment.type.startsWith("image/") ? (
                     <>
@@ -89,8 +89,8 @@ export const HumanMessage = ({ message }: HumanMessageProps) => {
           </div>
         </div>
       </div>
-      <div className="bg-primary/10 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full">
-        <UserIcon className="text-primary h-5 w-5" />
+      <div className="bg-brand/15 flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+        <UserIcon className="text-brand-dim h-5 w-5" />
       </div>
     </div>
   );

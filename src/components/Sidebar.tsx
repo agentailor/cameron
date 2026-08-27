@@ -28,7 +28,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggle, children }) => {
           width: isOpen ? 256 : 0,
         }}
         transition={{ duration: 0.3, ease: "easeInOut" }}
-        className={`fixed top-0 left-0 z-30 h-screen overflow-hidden border-r border-gray-100 bg-white md:sticky ${
+        className={`border-sidebar-border bg-sidebar fixed top-0 left-0 z-30 h-screen overflow-hidden border-r md:sticky ${
           isOpen ? "flex" : "hidden md:flex"
         }`}
       >
@@ -36,7 +36,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggle, children }) => {
           <div className="mb-6 flex items-center justify-between">
             <button
               onClick={toggle}
-              className="cursor-pointer rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 md:hidden"
+              className="text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer rounded-full p-2 transition-colors md:hidden"
               aria-label="Close sidebar"
             >
               <X size={20} />
@@ -53,7 +53,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggle, children }) => {
         className={`fixed top-4 left-4 z-40 cursor-pointer rounded-md p-2 transition-all duration-300 md:hidden ${
           isOpen
             ? "pointer-events-none opacity-0"
-            : "border border-gray-200 bg-white opacity-100 shadow-sm hover:bg-gray-50"
+            : "border-border hover:bg-muted/40 border bg-white opacity-100 shadow-sm"
         }`}
         aria-label="Toggle navigation"
       >

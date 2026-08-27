@@ -10,7 +10,9 @@ import { useUISettings } from "@/contexts/UISettingsContext";
 const ToolMessage = dynamic(() => import("./ToolMessage").then((m) => m.ToolMessage), {
   ssr: false,
   loading: () => (
-    <div className="rounded bg-gray-50 p-4 text-sm text-gray-500">Loading tool output…</div>
+    <div className="bg-muted/40 text-muted-foreground rounded p-4 text-sm">
+      Loading tool output…
+    </div>
   ),
 });
 

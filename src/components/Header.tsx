@@ -12,7 +12,7 @@ export const Header = ({ toggleSidebar }: HeaderProps) => {
         <div className="flex items-center">
           <button
             onClick={toggleSidebar}
-            className="mr-4 cursor-pointer rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+            className="text-muted-foreground hover:bg-muted hover:text-foreground mr-4 cursor-pointer rounded-md p-2 transition-colors"
             aria-label="Toggle navigation"
           >
             <PanelLeftClose size={25} />
@@ -20,7 +20,7 @@ export const Header = ({ toggleSidebar }: HeaderProps) => {
 
           <div className="flex items-center">
             <Link href="/" className="flex items-center">
-              <span className="hidden text-xl font-semibold text-gray-800 sm:block">
+              <span className="text-foreground hidden text-xl font-semibold sm:block">
                 Cameron AI
               </span>
             </Link>
@@ -29,7 +29,7 @@ export const Header = ({ toggleSidebar }: HeaderProps) => {
 
         <Link
           href="/capabilities"
-          className="rounded-md px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+          className="text-muted-foreground hover:bg-muted hover:text-foreground rounded-md px-3 py-2 text-sm transition-colors"
         >
           Capabilities
         </Link>

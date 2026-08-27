@@ -230,13 +230,13 @@ export function MCPServerForm({ isOpen, onClose, onSaved, server }: MCPServerFor
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-lg bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-gray-200 p-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+        <div className="border-border flex items-center justify-between border-b p-4">
+          <h2 className="text-foreground text-lg font-semibold">
             {server ? "Edit MCP Server" : "Configure MCP Servers"}
           </h2>
           <button
             onClick={onClose}
-            className="cursor-pointer text-gray-400 transition-colors hover:text-gray-600"
+            className="text-muted-foreground hover:text-muted-foreground cursor-pointer transition-colors"
           >
             <X size={20} />
           </button>
@@ -246,13 +246,13 @@ export function MCPServerForm({ isOpen, onClose, onSaved, server }: MCPServerFor
           <div className="space-y-4">
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="text-foreground block text-sm font-medium">
                   MCP Server Configuration (JSON)
                 </label>
                 <button
                   type="button"
                   onClick={formatJson}
-                  className="flex items-center gap-1.5 rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-200"
+                  className="bg-muted text-muted-foreground hover:bg-muted flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors"
                   title="Format JSON"
                 >
                   <Wand2 size={12} />
@@ -270,7 +270,7 @@ export function MCPServerForm({ isOpen, onClose, onSaved, server }: MCPServerFor
                       ? "border-red-300 bg-red-50/30 focus:border-red-500"
                       : isValidJson && jsonInput.trim()
                         ? "focus:border-primary border-green-300 bg-green-50/20"
-                        : "focus:border-primary border-gray-300"
+                        : "focus:border-primary border-border"
                   }`}
                   placeholder="Enter JSON configuration..."
                 />
@@ -286,7 +286,7 @@ export function MCPServerForm({ isOpen, onClose, onSaved, server }: MCPServerFor
                 )}
               </div>
               {validationError && <p className="mt-1 text-xs text-red-600">{validationError}</p>}
-              <p className="mt-2 text-xs text-gray-500">
+              <p className="text-muted-foreground mt-2 text-xs">
                 Configure both local (stdio) and remote (http) MCP servers. Paste JSON to
                 auto-format.
               </p>
@@ -300,10 +300,10 @@ export function MCPServerForm({ isOpen, onClose, onSaved, server }: MCPServerFor
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-gray-200 bg-gray-50 p-4">
+        <div className="border-border bg-muted/40 flex items-center justify-end gap-3 border-t p-4">
           <button
             onClick={onClose}
-            className="cursor-pointer rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+            className="border-border text-foreground hover:bg-muted/40 cursor-pointer rounded-md border bg-white px-4 py-2 text-sm font-medium transition-colors"
           >
             Cancel
           </button>

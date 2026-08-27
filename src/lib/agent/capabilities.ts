@@ -1,6 +1,7 @@
 import { financeTools } from "./tools/finance";
 import { analyticsTools } from "./tools/analytics";
 import { categoryTools } from "./tools/categories";
+import { MUTATING_TOOL_NAMES as MUTATING_TOOL_NAMES_LOCAL } from "./mutatingTools";
 
 /**
  * Built-in tools for the /capabilities page, derived from the arrays agent/index.ts registers.
@@ -25,11 +26,7 @@ const CSV_IMPORT_CAPABILITIES = [
 ];
 
 /** Tools that mutate the ledger and pause for approval. Names must match ./tools/*. */
-export const MUTATING_TOOL_NAMES = [
-  "log_expense",
-  "import_transactions_csv",
-  "create_category",
-] as const;
+export { MUTATING_TOOL_NAMES } from "./mutatingTools";
 
 export interface Capability {
   name: string;
@@ -46,7 +43,7 @@ const GROUPS: { label: string; tools: { name: string; description: string }[] }[
   { label: "Analysis", tools: analyticsTools },
 ];
 
-const mutating = new Set<string>(MUTATING_TOOL_NAMES);
+const mutating = new Set<string>(MUTATING_TOOL_NAMES_LOCAL);
 
 export function listCapabilities(): Capability[] {
   return GROUPS.flatMap(({ label, tools }) =>

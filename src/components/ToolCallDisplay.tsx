@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { ChevronDown, ChevronRight, Settings2Icon, Check, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Settings2Icon, Check, X, Lock } from "lucide-react";
 import type { ToolCall, FunctionCall, ToolApprovalCallbacks } from "@/types/message";
+import { isMutatingTool } from "@/lib/agent/mutatingTools";
 
 interface ToolCallDisplayProps {
   toolCalls?: ToolCall[];
@@ -12,7 +13,7 @@ interface ToolCallDisplayProps {
 const formatArgs = (args: Record<string, unknown> | string) => {
   const argsToFormat = typeof args === "string" ? JSON.parse(args) : args;
   return (
-    <pre className="overflow-x-auto rounded bg-gray-100 p-2 text-sm">
+    <pre className="bg-inset text-inset-foreground overflow-x-auto rounded p-2 font-mono text-sm">
       {JSON.stringify(argsToFormat, null, 2)}
     </pre>
   );
@@ -28,50 +29,88 @@ const ToolCallItem: React.FC<{
   const [isExpanded, setIsExpanded] = useState(false);
   const [responded, setResponded] = useState(false);
 
+  const isPendingApproval = Boolean(showApprovalButtons && id && approvalCallbacks && !responded);
+
+  // A gate awaiting a decision is the one place amber appears: it means "this touches money".
+  if (isPendingApproval) {
+    return (
+      <div className="border-brand bg-card overflow-hidden rounded-lg border shadow-[0_0_0_4px_var(--brand-soft)]">
+        <div className="border-brand/30 bg-brand/[0.07] flex items-center gap-2 border-b px-3.5 py-2.5">
+          <Lock className="text-brand-dim h-4 w-4 shrink-0" />
+          <span className="text-brand-dim font-mono text-[11px] font-semibold tracking-[0.14em]">
+            APPROVAL REQUIRED
+          </span>
+          <span className="text-brand-dim bg-brand/15 ml-auto rounded px-2 py-0.5 font-mono text-[11px]">
+            {name}
+          </span>
+        </div>
+
+        <div className="px-4 py-4">
+          <div className="text-muted-foreground mb-3 text-sm">
+            Cameron wants to run a tool that{" "}
+            <span className="text-brand-dim font-medium">writes</span> to your data.
+          </div>
+
+          {formatArgs(args)}
+
+          <div className="mt-4 flex items-center gap-2.5">
+            <button
+              onClick={() => {
+                setResponded(true);
+                approvalCallbacks!.onApprove(id!);
+              }}
+              className="bg-brand text-brand-foreground hover:bg-brand-bright flex cursor-pointer items-center gap-1.5 rounded-md px-5 py-2 font-mono text-xs font-semibold tracking-wide transition-colors"
+            >
+              <Check className="h-3.5 w-3.5" />
+              APPROVE
+            </button>
+            <button
+              onClick={() => {
+                setResponded(true);
+                approvalCallbacks!.onDeny(id!);
+              }}
+              className="border-border text-muted-foreground hover:bg-accent hover:text-foreground flex cursor-pointer items-center gap-1.5 rounded-md border px-4 py-2 font-mono text-xs font-medium tracking-wide transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+              DENY
+            </button>
+            <span className="text-muted-foreground ml-auto font-mono text-[10px]">
+              nothing is written until you approve
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const isMutating = isMutatingTool(name);
+
   return (
-    <div className="rounded-r border-l-4 border-gray-200 bg-gray-200/30 p-3">
+    <div className="border-border bg-muted/40 rounded-r border-l-2 p-3">
       <button
-        className="-m-1 flex w-full cursor-pointer items-center gap-2 rounded p-1 text-left hover:bg-gray-200/50"
+        className="hover:bg-accent -m-1 flex w-full cursor-pointer items-center gap-2 rounded p-1 text-left"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         {isExpanded ? (
-          <ChevronDown className="h-4 w-4 flex-shrink-0 text-gray-600" />
+          <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
         ) : (
-          <ChevronRight className="h-4 w-4 flex-shrink-0 text-gray-600" />
+          <ChevronRight className="text-muted-foreground h-4 w-4 shrink-0" />
         )}
-        <Settings2Icon className="h-4 w-4 flex-shrink-0 text-gray-600" />
-        <span className="font-medium text-gray-800">{name}</span>
+        <Settings2Icon className="text-muted-foreground h-4 w-4 shrink-0" />
+        <span className="text-foreground font-mono text-sm font-medium">{name}</span>
+        {isMutating && (
+          <span className="text-muted-foreground ml-auto font-mono text-[10px] tracking-wider">
+            approved
+          </span>
+        )}
       </button>
 
       {isExpanded && (
         <div className="mt-2 ml-6">
-          <div className="mb-1 text-sm font-medium text-gray-700">Arguments:</div>
+          <div className="text-muted-foreground mb-1 font-mono text-[10px] tracking-[0.12em]">
+            ARGUMENTS
+          </div>
           {formatArgs(args)}
-        </div>
-      )}
-
-      {showApprovalButtons && id && approvalCallbacks && !responded && (
-        <div className="mt-3 flex justify-end gap-2">
-          <button
-            onClick={() => {
-              setResponded(true);
-              approvalCallbacks.onDeny(id);
-            }}
-            className="flex items-center gap-1 rounded border border-red-200 px-3 py-1 text-sm font-medium text-red-700 transition-colors hover:bg-red-100"
-          >
-            <X className="h-3 w-3" />
-            Deny
-          </button>
-          <button
-            onClick={() => {
-              setResponded(true);
-              approvalCallbacks.onApprove(id);
-            }}
-            className="flex items-center gap-1 rounded border border-green-200 px-3 py-1 text-sm font-medium text-green-700 transition-colors hover:bg-green-100"
-          >
-            <Check className="h-3 w-3" />
-            Allow
-          </button>
         </div>
       )}
     </div>
