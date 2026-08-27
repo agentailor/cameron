@@ -22,3 +22,10 @@ drizzle/meta
 # Vendored skills — upstream owns their formatting.
 .agents/skills
 skills-lock.json
+
+# Eval report viewer — mostly one HTML/CSS template string. Prettier formats it as TypeScript,
+# which rewraps the markup and CSS into something harder to read than the source.
+eval/viewer.mts
+
+# Generated eval reports (gitignored, but keep them out of `format` runs too).
+eval/results

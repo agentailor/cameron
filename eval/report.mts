@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import type { EvalCase, GradeResult, RunCapture } from "./types.mts";
+import { renderHtml } from "./viewer.mts";
 
 /**
  * Persist a run to JSON: a timestamped file (history) plus `latest.json` (a stable path). Both
@@ -114,6 +115,8 @@ export function writeReport(report: ReportFile): string | null {
     );
     const latest = `${REPORT_DIR}/latest.json`;
     writeFileSync(latest, json);
+    // Same run as a standalone page — data inlined, so it opens straight from disk.
+    writeFileSync(`${REPORT_DIR}/latest.html`, renderHtml(report));
     return latest;
   } catch (err) {
     console.error(

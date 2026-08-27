@@ -164,8 +164,10 @@ nothing, so repeats are opt-in per case, and each `runs:` says in a comment why 
 
 ## Reports
 
-Every run writes JSON to `eval/results/` (gitignored):
+Every run writes to `eval/results/` (gitignored):
 
+- **`latest.html`** — the run as a standalone page. Open it straight from disk; the data is inlined,
+  so there is no server, no file picker, and no external requests. Failures sort to the top.
 - **`latest.json`** — a stable path, so anything can read the last run without globbing.
 - **`report-<timestamp>.json`** — the same content, kept as history.
 
@@ -234,8 +236,3 @@ recorded reason is a tracked finding; a deleted one is lost.
 - **The root `tsconfig.json` does not cover this tree** — its `include` is `**/*.ts`, which doesn't
   match `.mts`. Hence `eval/tsconfig.json` and `pnpm typecheck:eval`.
 - **No run-over-run diff.** Each run writes a report (below), but nothing compares two of them yet.
-- **No HTML viewer.** Reports are read as JSON (`jq`, or an editor). A self-contained
-  `report.html` — data inlined, so it opens over `file://` with no picker and no server — is
-  worth ~150 lines when there's a reason to look at a run visually (e.g. screenshots for a
-  write-up). Deliberately deferred until after CSV import lands: multi-turn cases add per-turn
-  structure to the report, and a viewer built now would be rewritten to handle it.
