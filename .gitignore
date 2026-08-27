@@ -44,6 +44,7 @@ yarn-error.log*
 # folder stays usable for tracked source (a viewer) later.
 eval/results/report-*.json
 eval/results/latest.json
+eval/results/latest.html
 
 # vercel
 .vercel

@@ -285,7 +285,9 @@ pnpm typecheck:eval                         # free — the root tsc misses this 
   fixture is re-seeded before each run.
 - **Every run writes `eval/results/latest.json`** (plus a timestamped copy; both gitignored) with
   per-run grader verdicts, trajectories, interrupts, and final answers. Read that file rather than
-  asking for pasted console output — the console text scrolls away and can't be diffed.
+  asking for pasted console output — the console text scrolls away and can't be diffed. The same run
+  is rendered to `latest.html` (`eval/viewer.mts`) as a standalone page with the data inlined, for
+  reading or screenshotting.
 - **`eval/tsconfig.json` exists** because the root tsconfig's `include` covers only `.ts`, not
   `.mts` — the whole eval tree was invisible to `tsc --noEmit`. Use `pnpm typecheck:eval`.
 - **Multi-turn**: a case's `prompt` may be an array; turns replay on one `thread_id` and the
