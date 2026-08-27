@@ -43,7 +43,8 @@ export const cases: EvalCase[] = [
       // spelling — so this survives having no judge.
       statesAnyOf(FIXTURE.categoriesBySpend.map((c) => c.category)),
     ],
-    // Observed flipping between guessing and recovering.
+    // Was a coin flip until run_sql started flagging empty/NULL results; kept repeating so a
+    // regression there shows up as a flip rather than a single red run.
     runs: RUN_POLICY.majority,
     tags: ["prompt-contract", "empty-results"],
   },
