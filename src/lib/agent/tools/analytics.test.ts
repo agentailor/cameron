@@ -60,6 +60,81 @@ describe("run_sql", () => {
     expect(result.note).toBeUndefined();
   });
 
+  // An aggregate over zero rows returns NULL, which looks identical whether the filtered value
+  // exists or not. Without a note the agent guesses, and "you have no X spending yet" wrongly
+  // implies X exists.
+  it("flags an all-NULL aggregate row as 'no rows matched', not a zero balance", async () => {
+    vi.mocked(analyticsRepo.runReadOnlyQuery).mockResolvedValue({
+      columns: ["total"],
+      rows: [{ total: null }],
+      rowCount: 1,
+      truncated: false,
+    });
+
+    const result = await callTool(runSql, {
+      query:
+        "SELECT SUM(t.amount_minor) AS total FROM transaction t " +
+        "JOIN category c ON c.id = t.category_id WHERE c.name = 'Entertainment'",
+    });
+
+    expect(result.note).toBeDefined();
+    expect(result.note).toContain("NO rows matched");
+    // The actionable half: how to find out whether the name was real.
+    expect(result.note).toContain("list_categories");
+  });
+
+  it("flags an empty result set the same way", async () => {
+    vi.mocked(analyticsRepo.runReadOnlyQuery).mockResolvedValue({
+      columns: ["note"],
+      rows: [],
+      rowCount: 0,
+      truncated: false,
+    });
+
+    const result = await callTool(runSql, {
+      query: "SELECT note FROM transaction WHERE merchant = 'Nowhere'",
+    });
+
+    expect(result.note).toBeDefined();
+    expect(result.note).toContain("No rows matched");
+    expect(result.note).toContain("list_categories");
+  });
+
+  it("does not flag a row that has a real value alongside a NULL", async () => {
+    vi.mocked(analyticsRepo.runReadOnlyQuery).mockResolvedValue({
+      columns: ["category", "total"],
+      rows: [{ category: null, total: "4200" }],
+      rowCount: 1,
+      truncated: false,
+    });
+
+    const result = await callTool(runSql, {
+      query: "SELECT c.name AS category, SUM(t.amount_minor) AS total FROM transaction t",
+    });
+
+    // Uncategorized spend is a real answer — NULL here is data, not an empty result.
+    expect(result.note).toBeUndefined();
+  });
+
+  it("does not flag multiple rows even when one is all-NULL", async () => {
+    vi.mocked(analyticsRepo.runReadOnlyQuery).mockResolvedValue({
+      columns: ["category", "total"],
+      rows: [
+        { category: "Dining", total: "4200" },
+        { category: null, total: null },
+      ],
+      rowCount: 2,
+      truncated: false,
+    });
+
+    const result = await callTool(runSql, {
+      query:
+        "SELECT c.name AS category, SUM(t.amount_minor) AS total FROM transaction t GROUP BY 1",
+    });
+
+    expect(result.note).toBeUndefined();
+  });
+
   it("tells the agent how to get a complete answer when results are capped", async () => {
     vi.mocked(analyticsRepo.runReadOnlyQuery).mockResolvedValue({
       columns: ["id"],

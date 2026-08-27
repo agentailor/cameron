@@ -1,6 +1,6 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { runReadOnlyQuery } from "@/lib/repositories/analyticsRepository";
+import { runReadOnlyQuery, type QueryResult } from "@/lib/repositories/analyticsRepository";
 import { validateSelect, enforceLimit, MAX_SQL_ROWS } from "@/lib/finance/sqlGuard";
 
 /**
@@ -117,6 +117,32 @@ export const describeFinanceSchema = tool(
   },
 );
 
+/**
+ * An aggregate over zero rows returns NULL, and that payload is identical whether the filtered name
+ * exists or not — so the agent has to guess unless the result says which it is.
+ */
+function emptyResultNote(result: QueryResult): string | undefined {
+  if (result.rowCount === 0) {
+    return (
+      "No rows matched. This does NOT confirm the filtered values exist — a typo or an unknown " +
+      "category/account/merchant name also returns nothing. Check the spelling against the data " +
+      "(e.g. `list_categories`) before telling the user they have no such records."
+    );
+  }
+  const onlyRow = result.rowCount === 1 ? result.rows[0] : undefined;
+  const values = onlyRow ? Object.values(onlyRow) : [];
+  // `every` on an empty object is vacuously true — require at least one column.
+  if (values.length > 0 && values.every((v) => v === null)) {
+    return (
+      "Every value is NULL, which is what an aggregate returns when NO rows matched — it is not a " +
+      "zero balance. This does NOT confirm the filtered values exist; an unknown category/account " +
+      "name gives the same NULL. Check the spelling against the data (e.g. `list_categories`) " +
+      "before reporting an empty result to the user."
+    );
+  }
+  return undefined;
+}
+
 export const runSql = tool(
   async (input) => {
     const verdict = validateSelect(input.query);
@@ -126,18 +152,13 @@ export const runSql = tool(
     const bounded = enforceLimit(input.query, MAX_SQL_ROWS);
     try {
       const result = await runReadOnlyQuery(bounded, MAX_SQL_ROWS);
-      // "truncated" alone isn't enough — say how to get a complete answer.
-      return JSON.stringify({
-        ...result,
-        ...(result.truncated
-          ? {
-              note:
-                `Results were capped at ${MAX_SQL_ROWS} rows, so this is a PARTIAL result — do ` +
-                "not treat it as complete. Aggregate in SQL instead (GROUP BY / SUM / COUNT), " +
-                "add a narrower WHERE, or use ORDER BY with an explicit LIMIT for a top-N.",
-            }
-          : {}),
-      });
+      // Mutually exclusive: a truncated result has rows by definition.
+      const note = result.truncated
+        ? `Results were capped at ${MAX_SQL_ROWS} rows, so this is a PARTIAL result — do ` +
+          "not treat it as complete. Aggregate in SQL instead (GROUP BY / SUM / COUNT), " +
+          "add a narrower WHERE, or use ORDER BY with an explicit LIMIT for a top-N."
+        : emptyResultNote(result);
+      return JSON.stringify({ ...result, ...(note ? { note } : {}) });
     } catch (err) {
       // Surface the DB error text (e.g. unknown column) so the agent can fix its query.
       const message = err instanceof Error ? err.message : String(err);

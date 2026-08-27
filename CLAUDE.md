@@ -57,6 +57,10 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     comments+strings stripped), and the _real_ guard is `src/lib/repositories/analyticsRepository.ts`
     — the one sanctioned raw-SQL site — which runs every query inside a `BEGIN TRANSACTION READ ONLY`
     - `statement_timeout`, always rolls back, and hard-caps returned rows. Both tools auto-approve.
+      `run_sql` attaches a `note` when a result is **empty or an all-NULL aggregate row**: an
+      aggregate over zero rows returns NULL, which is byte-identical whether the filtered name exists
+      or not, so the agent would otherwise guess ("you have no X spending _yet_" implies X exists).
+      Same defect class as the truncation bug — a payload the agent predictably misreads.
   - `src/lib/agent/tools/categories.ts` — `list_categories` (read-only) and `create_category`
     (mutating/gated).
   - `src/lib/agent/tools/csvImport.ts` — `inspect_csv` (read-only) + `import_transactions_csv`
