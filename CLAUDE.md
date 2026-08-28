@@ -69,9 +69,12 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
   through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
   `import_transactions_csv`, `create_category`); read tools (incl. `run_sql`) and MCP tools
   auto-approve. `approveAllTools` omits the middleware entirely. Decisions: `allow`→approve,
-  `deny`→reject (with an explanatory follow-up). `MUTATING_TOOL_NAMES` is defined in
-  `src/lib/agent/capabilities.ts` (not `index.ts`) so the capabilities page can read it without
-  pulling in the agent graph; `index.ts` imports it from there.
+  `deny`→reject (with an explanatory follow-up). `MUTATING_TOOL_NAMES` lives in
+  `src/lib/agent/mutatingTools.ts` — a **zero-import leaf**; `index.ts` and `capabilities.ts` both
+  re-use it from there. It is its own module because **client components need it** (the approval
+  gate styles itself from it) and `capabilities.ts` reaches `pg` through the tool modules, so
+  importing that from the browser pulls Postgres into the bundle. `tsc` does not catch this — the
+  production build does.
 - **Capabilities page** (`/capabilities`, `src/app/capabilities/page.tsx`): a plain server component
   listing the built-in tools with their real names/descriptions and an approval badge, so the only
   way to learn what Cameron can do isn't reading the source. Data comes from
@@ -95,6 +98,20 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
 - **Context Providers**: `ThreadContext` (active thread), `UISettingsContext` (UI state + model settings persisted to `localStorage` under `agent_model_settings`)
 - **Custom Hooks**: `useChatThread`, `useMCPTools`, `useThreads` for data domains
 - **Message Components**: Separate components for AI/Human/Tool/Error message types
+- **Tool rendering** (`src/components/toolRenderers/`): `config.ts` maps each **built-in** tool to a
+  view for its **arguments** and its **result** (`sql`, `table`, `receipt`, field grids); anything
+  not listed — every MCP tool, anything added later — falls back to `json`. A closed catalog with an
+  open fallback: the payload SELECTS a client-owned renderer, it never describes one. Keyed on tool
+  name rather than sniffed from the payload, because sniffing predicates are a second contract that
+  drifts. `config.test.ts` pins every key to a really-registered tool, so a rename can't silently
+  drop a tool back to JSON. A tool call's args render in `ToolCallDisplay`, its result in
+  `ToolMessage` — two different renders of one operation.
+- **Design tokens** (`src/app/globals.css`): paper ground / ink text / one amber `--brand`, mapped
+  ONTO shadcn's semantic names so `ui/*` inherits them. Amber marks the approval boundary and
+  nothing else. `--muted-foreground` must stay ≥4.5:1 on paper (`--faint` is the decorative-only
+  escape hatch). Agent markdown is restyled under `.cameron-md .wmde-markdown …` — MDEditor ships
+  its own stylesheet at equal specificity, so overrides must chain BOTH classes or they silently
+  lose.
 - **Agent Services**: `src/services/agentService.ts` handles streaming, `src/services/chatService.ts` manages UI state
 
 ### Database Layer (Drizzle + repository seam)

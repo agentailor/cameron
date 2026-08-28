@@ -15,8 +15,10 @@ This document provides a comprehensive overview of the LangGraph.js AI Agent Tem
 9. [Streaming Architecture](#streaming-architecture)
 10. [Error Handling](#error-handling)
 11. [Performance Considerations](#performance-considerations)
-12. [Observability](./OBSERVABILITY.md)
-13. [API Reference (OpenAPI)](./API.md)
+12. [Project Structure](#project-structure)
+13. [Available Scripts](#available-scripts)
+14. [Observability](./OBSERVABILITY.md)
+15. [API Reference (OpenAPI)](./API.md)
 
 ## 🌐 System Overview
 
@@ -879,6 +881,96 @@ export async function checkMCPServers() {
   }));
 }
 ```
+
+---
+
+## 📁 Project Structure
+
+```
+src/
+├── app/                      # Next.js App Router
+│   ├── api/                  # Route handlers (stream, upload, mcp-servers, openapi)
+│   ├── capabilities/         # /capabilities — the built-in tool list
+│   ├── thread/[threadId]/    # A conversation
+│   ├── globals.css           # Design tokens (paper/ink/amber) + agent-markdown styles
+│   ├── layout.tsx            # Fonts + metadata (server)
+│   └── providers.tsx         # React Query / context providers (client)
+├── components/
+│   ├── toolRenderers/        # Per-tool views for call args and results (see below)
+│   └── ui/                   # shadcn primitives
+├── hooks/                    # useChatThread, useThreads, useMCPTools
+├── lib/
+│   ├── agent/                # Agent factory, MCP loader, checkpointer, tools/
+│   ├── api/openapi/          # Zod → OpenAPI registry
+│   ├── database/             # Drizzle schema.ts + db.ts client
+│   ├── finance/              # SQL guard, CSV parsing
+│   ├── repositories/         # The ONLY place DB access happens
+│   └── storage/              # S3/MinIO upload + validation
+├── services/                 # agentService (streaming, HITL resume), chatService
+└── types/                    # Shared TypeScript types
+
+eval/                         # Paid, non-deterministic runs against the real agent
+drizzle/                      # Generated migrations (committed)
+```
+
+### Key files
+
+| Concern                    | File                                          |
+| -------------------------- | --------------------------------------------- |
+| Agent factory & middleware | `src/lib/agent/index.ts`                      |
+| Persona and hard rules     | `src/lib/agent/prompt.ts`                     |
+| Built-in tools             | `src/lib/agent/tools/`                        |
+| Gated tool names           | `src/lib/agent/mutatingTools.ts`              |
+| Capabilities page data     | `src/lib/agent/capabilities.ts`               |
+| Streaming + HITL resume    | `src/services/agentService.ts`                |
+| Raw-SQL boundary           | `src/lib/repositories/analyticsRepository.ts` |
+| Design tokens              | `src/app/globals.css`                         |
+
+### Tool rendering
+
+`src/components/toolRenderers/config.ts` maps each built-in tool to a view for its **arguments**
+and its **result** — highlighted SQL, a result table, a field grid, a receipt. Tools with no entry,
+including every MCP tool, fall back to JSON. The catalog is client-owned: a tool payload selects a
+renderer, it never describes one. `config.test.ts` pins every key to a registered tool so a rename
+can't silently drop a tool back to JSON.
+
+Two boundaries worth knowing:
+
+- `capabilities.ts` imports the tool modules, which reach the repositories and `pg`. **Never import
+  it from a client component** — it pulls Postgres into the browser bundle. Client code that needs
+  the gated tool names imports `mutatingTools.ts`, a leaf with no imports.
+- `capabilities.ts` must not import `agent/index.ts`; the dependency runs the other way.
+
+---
+
+## 🛠️ Available Scripts
+
+```bash
+# Development
+pnpm dev                 # Dev server with Turbopack (http://localhost:3100)
+pnpm build               # Production build (needs Postgres up)
+pnpm start               # Start production server
+pnpm format              # Prettier
+pnpm format:check        # Check formatting
+
+# Tests — free, offline: no model, no network, no DB
+pnpm test                # Vitest, run once
+pnpm test:watch          # Watch mode
+
+# Database (Drizzle)
+pnpm db:generate         # Generate a migration after editing schema.ts
+pnpm db:migrate          # Apply pending migrations
+pnpm db:push             # Push schema directly (dev convenience)
+pnpm db:studio           # Drizzle Studio (database UI)
+
+# Evals — slow, paid, non-deterministic (see eval/README.md)
+docker compose -f compose.eval.yaml up -d
+pnpm eval
+pnpm typecheck:eval
+```
+
+> `pnpm lint` is currently broken: `next lint` was removed in Next 16. `tsc --noEmit` and the
+> build are the safety net.
 
 ---
 
