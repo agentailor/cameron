@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ChevronDown, ChevronRight, Settings2Icon, Check, X, Lock } from "lucide-react";
 import type { ToolCall, FunctionCall, ToolApprovalCallbacks } from "@/types/message";
 import { isMutatingTool } from "@/lib/agent/mutatingTools";
+import { ToolArgs } from "./toolRenderers";
 
 interface ToolCallDisplayProps {
   toolCalls?: ToolCall[];
@@ -10,13 +11,9 @@ interface ToolCallDisplayProps {
   showApprovalButtons?: boolean;
 }
 
-const formatArgs = (args: Record<string, unknown> | string) => {
-  const argsToFormat = typeof args === "string" ? JSON.parse(args) : args;
-  return (
-    <pre className="bg-inset text-inset-foreground overflow-x-auto rounded p-2 font-mono text-sm">
-      {JSON.stringify(argsToFormat, null, 2)}
-    </pre>
-  );
+const renderArgs = (name: string, args: Record<string, unknown> | string) => {
+  const parsed = typeof args === "string" ? (JSON.parse(args) as Record<string, unknown>) : args;
+  return <ToolArgs toolName={name} args={parsed} />;
 };
 
 const ToolCallItem: React.FC<{
@@ -51,7 +48,7 @@ const ToolCallItem: React.FC<{
             <span className="text-brand-dim font-medium">writes</span> to your data.
           </div>
 
-          {formatArgs(args)}
+          {renderArgs(name, args)}
 
           <div className="mt-4 flex items-center gap-2.5">
             <button
@@ -110,7 +107,7 @@ const ToolCallItem: React.FC<{
           <div className="text-muted-foreground mb-1 font-mono text-[10px] tracking-[0.12em]">
             ARGUMENTS
           </div>
-          {formatArgs(args)}
+          {renderArgs(name, args)}
         </div>
       )}
     </div>

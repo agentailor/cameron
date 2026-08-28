@@ -41,7 +41,7 @@ export const AIMessage = ({
           <div className={cn("text-foreground py-1")}>
             <div
               data-color-mode="light"
-              className="[&_hr]:border-border [&_hr]:!my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:border-t [&_li]:my-1 [&_ol]:ml-6 [&_ol]:list-decimal [&_ul]:ml-6 [&_ul]:list-disc"
+              className="cameron-md [&_li]:my-1 [&_ol]:ml-6 [&_ol]:list-decimal [&_ul]:ml-6 [&_ul]:list-disc"
             >
               <MDEditor.Markdown
                 source={messageContent}

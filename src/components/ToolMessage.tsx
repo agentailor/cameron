@@ -2,107 +2,41 @@ import React, { useState } from "react";
 import type { MessageResponse } from "@/types/message";
 import { ChevronDownIcon, ChevronRightIcon, CopyIcon, CheckIcon } from "lucide-react";
 import { getToolName } from "@/services/messageUtils";
+import { ToolResult } from "./toolRenderers";
 
 interface ToolMessageProps {
   message: MessageResponse;
 }
 
-type ContentType = "json" | "markdown" | "text";
-
-const detectContentType = (content: string): ContentType => {
-  try {
-    JSON.parse(content);
-    return "json";
-  } catch {
-    if (
-      content.includes("# ") ||
-      content.includes("## ") ||
-      content.includes("```") ||
-      content.includes("*")
-    ) {
-      return "markdown";
-    }
-    return "text";
-  }
-};
-
-const getContentPreview = (content: string, maxLength: number = 100): string => {
-  if (content.length <= maxLength) return content;
-  return content.slice(0, maxLength) + "...";
-};
-
 const getContentStats = (content: string): string => {
   const lines = content.split("\n").length;
   const chars = content.length;
-  if (lines > 1) {
-    return `${lines} lines, ${chars} chars`;
-  }
-  return `${chars} chars`;
+  return lines > 1 ? `${lines} lines, ${chars} chars` : `${chars} chars`;
 };
 
-const formatContent = (content: string, contentType: ContentType, isPreview: boolean = false) => {
-  if (isPreview) {
-    return (
-      <div className="text-muted-foreground text-sm italic">{getContentPreview(content, 150)}</div>
-    );
-  }
-
-  // For very short content, don't use ScrollArea
-  const needsScroll = content.length > 500 || content.split("\n").length > 15;
-
-  const contentElement = (() => {
-    switch (contentType) {
-      case "json":
-        try {
-          const json = JSON.parse(content);
-          return (
-            <pre className="bg-muted rounded p-3 font-mono text-sm whitespace-pre-wrap">
-              {JSON.stringify(json, null, 2)}
-            </pre>
-          );
-        } catch {
-          return (
-            <pre className="bg-muted rounded p-3 font-mono text-sm whitespace-pre-wrap">
-              {content}
-            </pre>
-          );
-        }
-      case "markdown":
-        return (
-          <div className="bg-muted rounded p-3 text-sm">
-            <pre className="font-sans whitespace-pre-wrap">{content}</pre>
-          </div>
-        );
-      case "text":
-      default:
-        return <div className="bg-muted rounded p-3 text-sm whitespace-pre-wrap">{content}</div>;
+/** One-line gist for the collapsed state, from the shapes the finance tools return. */
+const summarize = (content: string): string | null => {
+  try {
+    const p = JSON.parse(content) as Record<string, unknown>;
+    if (typeof p.error === "string") return p.error;
+    if (typeof p.rowCount === "number") return `${p.rowCount} rows`;
+    if (typeof p.matched === "number" && typeof p.returned === "number") {
+      return p.returned === p.matched
+        ? `${p.matched} transactions`
+        : `${p.returned} of ${p.matched} transactions`;
     }
-  })();
-
-  if (needsScroll) {
-    return (
-      <div
-        className="border-border max-h-96 overflow-y-auto rounded border"
-        style={{
-          scrollbarWidth: "thin",
-          scrollbarColor: "var(--border) var(--muted)",
-        }}
-      >
-        {contentElement}
-      </div>
-    );
+    if (p.ok === true) return "written";
+    return null;
+  } catch {
+    return null;
   }
-
-  return contentElement;
 };
 
-// Helper function to convert content to string
 const getContentAsString = (
   content: string | import("@/types/message").ContentItem[] | undefined,
 ): string => {
   if (!content) return "";
   if (typeof content === "string") return content;
-  // For ContentItem arrays, extract text content or stringify
   return JSON.stringify(content, null, 2);
 };
 
@@ -110,10 +44,8 @@ export const ToolMessage = ({ message }: ToolMessageProps) => {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const toolName = getToolName(message);
-  const displayText = toolName ? `${toolName} response` : "Tool call";
   const content = getContentAsString(message.data?.content);
-  const contentType = detectContentType(content);
-  const contentStats = getContentStats(content);
+  const summary = summarize(content);
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -127,55 +59,44 @@ export const ToolMessage = ({ message }: ToolMessageProps) => {
   };
 
   return (
-    <div className="border-border bg-muted/40 hover:bg-muted rounded border transition-colors">
+    <div className="border-border bg-muted/30 rounded-lg border">
       <button
-        className="focus:ring-brand flex w-full cursor-pointer items-center justify-between p-4 text-left focus:ring-2 focus:outline-none focus:ring-inset"
+        className="focus:ring-brand flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left focus:ring-2 focus:outline-none focus:ring-inset"
         onClick={() => setOpen((o) => !o)}
       >
-        <div className="flex items-center space-x-2">
-          <span className="text-foreground font-medium">{displayText}</span>
-          <span className="text-muted-foreground text-xs">({contentStats})</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={handleCopy}
-            className="text-muted-foreground hover:bg-muted hover:text-foreground rounded p-1 focus:outline-none"
-            title="Copy content"
-          >
-            {copied ? (
-              <CheckIcon className="h-3 w-3 text-green-600" />
-            ) : (
-              <CopyIcon className="h-3 w-3" />
-            )}
-          </button>
+        <div className="flex min-w-0 items-center gap-2">
           {open ? (
-            <ChevronDownIcon className="text-muted-foreground h-4 w-4 transition-transform" />
+            <ChevronDownIcon className="text-muted-foreground h-4 w-4 shrink-0" />
           ) : (
-            <ChevronRightIcon className="text-muted-foreground h-4 w-4 transition-transform" />
+            <ChevronRightIcon className="text-muted-foreground h-4 w-4 shrink-0" />
           )}
+          <span className="text-foreground truncate font-mono text-sm font-medium">
+            {toolName ?? "tool"}
+          </span>
+          <span className="text-muted-foreground truncate font-mono text-xs">
+            {summary ?? getContentStats(content)}
+          </span>
         </div>
+        <span
+          onClick={handleCopy}
+          role="button"
+          tabIndex={-1}
+          className="text-muted-foreground hover:text-foreground shrink-0 rounded p-1"
+          title="Copy raw output"
+        >
+          {copied ? (
+            <CheckIcon className="text-brand-dim h-3.5 w-3.5" />
+          ) : (
+            <CopyIcon className="h-3.5 w-3.5" />
+          )}
+        </span>
       </button>
 
-      {!open && content && (
-        <div className="px-4 pb-3">{formatContent(content, contentType, true)}</div>
+      {open && (
+        <div className="border-border border-t px-4 py-3.5">
+          <ToolResult toolName={toolName} content={content} />
+        </div>
       )}
-
-      <div
-        className={`overflow-hidden transition-all duration-300 ease-in-out ${
-          open ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0"
-        }`}
-      >
-        {open && (
-          <div className="border-border border-t p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-                {contentType.toUpperCase()} Output
-              </span>
-            </div>
-            {formatContent(content, contentType)}
-          </div>
-        )}
-      </div>
     </div>
   );
 };

@@ -19,6 +19,7 @@
   --color-brand-soft: var(--brand-soft);
   --color-brand-foreground: var(--brand-foreground);
   --color-faint: var(--faint);
+  --color-surface-warm: var(--surface-warm);
   --color-term-red: var(--term-red);
   --color-term-yellow: var(--term-yellow);
   --color-term-green: var(--term-green);
@@ -101,6 +102,7 @@
   --muted: oklch(0.97 0 0);
   --muted-foreground: #6b6862; /* 5.06:1 on paper — AA */
   --faint: #a8a79f; /* decorative only (2.2:1) — never body or label text */
+  --surface-warm: #f1ede4; /* warm tint for zebra rows / subtle fills — --muted is cold on paper */
   --accent: oklch(0.93 0 0); /* hover surface, NOT the brand accent */
   --accent-foreground: var(--ink);
   --destructive: oklch(0.577 0.245 27.325);
@@ -146,6 +148,7 @@
   --ring: var(--brand);
 
   --faint: oklch(0.45 0 0);
+  --surface-warm: oklch(1 0 0 / 4%);
 
   /* On ink, amber text no longer needs dimming — brighten instead */
   --brand-dim: var(--brand-bright);
@@ -188,4 +191,103 @@
       transition-duration: 0.001ms !important;
     }
   }
+}
+
+/* Agent prose. @uiw/react-md-editor ships its own light theme, which otherwise renders
+   tables and code in a palette unrelated to the rest of the app. */
+.cameron-md {
+  color: var(--foreground);
+  font-size: 1rem;
+}
+/* MDEditor puts `.wmde-markdown` on a CHILD div, so chaining both classes
+   (`.cameron-md .wmde-markdown table td` = 0-2-3) outranks every rule it ships
+   -- `.wmde-markdown table th, td` (0-1-2) and `table tr:nth-child(2n)` (0-2-2) --
+   regardless of stylesheet import order. A bare `.cameron-md th` silently loses. */
+.cameron-md .wmde-markdown table {
+  border-collapse: collapse;
+  margin: 1rem 0;
+  width: 100%;
+  max-width: 100%;
+  font-size: 0.9375rem;
+  background-color: transparent;
+  display: table;
+}
+.cameron-md .wmde-markdown table tr,
+.cameron-md .wmde-markdown table tr:nth-child(2n) {
+  background-color: transparent;
+  border-top: 0;
+}
+/* Warm tint, not --muted: that token is zero-chroma and reads cold against paper. */
+.cameron-md .wmde-markdown table tbody tr:nth-child(2n) {
+  background-color: var(--surface-warm);
+}
+.cameron-md .wmde-markdown table th,
+.cameron-md .wmde-markdown table td {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0.7rem 1.1rem;
+  text-align: left;
+}
+.cameron-md .wmde-markdown table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.cameron-md .wmde-markdown table th {
+  background-color: transparent;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding-bottom: 0.5rem;
+}
+.cameron-md .wmde-markdown table th:not(:first-child),
+.cameron-md .wmde-markdown table td:not(:first-child) {
+  font-variant-numeric: tabular-nums;
+}
+.cameron-md .wmde-markdown table th:last-child,
+.cameron-md .wmde-markdown table td:last-child {
+  text-align: right;
+}
+.cameron-md .wmde-markdown code {
+  background-color: var(--muted);
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
+.cameron-md .wmde-markdown pre {
+  background-color: var(--inset);
+  color: var(--inset-foreground);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+.cameron-md .wmde-markdown pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+}
+.cameron-md .wmde-markdown blockquote {
+  border-left: 2px solid var(--brand);
+  background: color-mix(in srgb, var(--brand) 5%, transparent);
+  color: var(--foreground);
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.9rem;
+}
+.cameron-md .wmde-markdown a {
+  color: var(--brand-dim);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cameron-md .wmde-markdown hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 0.75rem 0;
+}
+.cameron-md .wmde-markdown h1,
+.cameron-md .wmde-markdown h2,
+.cameron-md .wmde-markdown h3 {
+  border-bottom: none;
+  padding-bottom: 0;
 }
