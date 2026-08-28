@@ -33,21 +33,17 @@ export const AIMessage = ({
 
   return (
     <div className="flex gap-3">
-      <div className="bg-primary/10 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full">
-        <Bot className="text-primary h-5 w-5" />
+      <div className="bg-brand/15 flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+        <Bot className="text-brand-dim h-5 w-5" />
       </div>
-      <div className="max-w-[80%] space-y-3">
+      {/* Prose stays in a readable column; tool cards run full width so a call lines up with
+          the result card that follows it as a sibling message. */}
+      <div className="min-w-0 flex-1 space-y-3">
         {messageContent && (
-          <div
-            className={cn(
-              "rounded-2xl px-4 py-2",
-              "bg-gray-200/30 text-gray-800",
-              "backdrop-blur-sm supports-[backdrop-filter]:bg-gray-200/30",
-            )}
-          >
+          <div className={cn("text-foreground max-w-[80%] py-1")}>
             <div
               data-color-mode="light"
-              className="[&_hr]:!my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:border-t [&_hr]:border-gray-300 [&_li]:my-1 [&_ol]:ml-6 [&_ol]:list-decimal [&_ul]:ml-6 [&_ul]:list-disc"
+              className="cameron-md [&_li]:my-1 [&_ol]:ml-6 [&_ol]:list-decimal [&_ul]:ml-6 [&_ul]:list-disc"
             >
               <MDEditor.Markdown
                 source={messageContent}

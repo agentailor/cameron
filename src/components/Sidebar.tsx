@@ -1,14 +1,17 @@
 import React, { useEffect } from "react";
-import { PanelLeftClose, X } from "lucide-react";
+import { PanelLeftOpen, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 
 interface SidebarProps {
   isOpen: boolean;
   toggle: () => void;
   children?: React.ReactNode;
+  /** Pinned below the scrolling thread list — navigation, status. */
+  footer?: React.ReactNode;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggle, children }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggle, children, footer }) => {
   // Close sidebar on escape key press
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -28,22 +31,42 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggle, children }) => {
           width: isOpen ? 256 : 0,
         }}
         transition={{ duration: 0.3, ease: "easeInOut" }}
-        className={`fixed top-0 left-0 z-30 h-screen overflow-hidden border-r border-gray-100 bg-white md:sticky ${
+        className={`border-sidebar-border bg-sidebar fixed top-0 left-0 z-30 h-screen overflow-hidden border-r md:sticky ${
           isOpen ? "flex" : "hidden md:flex"
         }`}
       >
-        <div className="flex h-full w-64 flex-shrink-0 flex-col overflow-hidden p-5">
-          <div className="mb-6 flex items-center justify-between">
+        <div className="flex h-full w-64 shrink-0 flex-col overflow-hidden px-3 py-4">
+          <div className="mb-4 flex items-center justify-between px-1.5">
+            <Link href="/" className="flex items-center gap-2">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="var(--brand)"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M12 3v18M5 8l7-5 7 5" />
+              </svg>
+              <span className="text-foreground font-mono text-xs font-semibold tracking-[0.12em]">
+                CAMERON
+              </span>
+            </Link>
             <button
               onClick={toggle}
-              className="cursor-pointer rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 md:hidden"
+              className="text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer rounded-full p-1.5 transition-colors md:hidden"
               aria-label="Close sidebar"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
           </div>
 
-          <div className="flex-grow overflow-y-auto">{children}</div>
+          <div className="grow overflow-y-auto">{children}</div>
+
+          {footer && <div className="border-sidebar-border mt-2 border-t pt-2">{footer}</div>}
         </div>
       </motion.div>
 
@@ -53,11 +76,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggle, children }) => {
         className={`fixed top-4 left-4 z-40 cursor-pointer rounded-md p-2 transition-all duration-300 md:hidden ${
           isOpen
             ? "pointer-events-none opacity-0"
-            : "border border-gray-200 bg-white opacity-100 shadow-sm hover:bg-gray-50"
+            : "border-border bg-card hover:bg-accent border opacity-100 shadow-sm"
         }`}
         aria-label="Toggle navigation"
       >
-        <PanelLeftClose size={20} />
+        <PanelLeftOpen size={18} />
       </button>
 
       {/* Overlay Background - Only show on mobile */}

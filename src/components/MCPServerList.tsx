@@ -164,8 +164,8 @@ export function MCPServerList({ isOpen, onClose }: MCPServerListProps) {
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
         <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-lg bg-white shadow-xl">
-          <div className="flex items-center justify-between border-b border-gray-200 p-4">
-            <h2 className="text-lg font-semibold text-gray-900">MCP Servers</h2>
+          <div className="border-border flex items-center justify-between border-b p-4">
+            <h2 className="text-foreground text-lg font-semibold">MCP Servers</h2>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowForm(true)}
@@ -177,7 +177,7 @@ export function MCPServerList({ isOpen, onClose }: MCPServerListProps) {
               <button
                 onClick={fetchServers}
                 disabled={loading}
-                className="flex cursor-pointer items-center gap-1 px-2 py-1.5 text-sm text-gray-600 transition-colors hover:text-gray-800"
+                className="text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1 px-2 py-1.5 text-sm transition-colors"
                 title="Refresh"
               >
                 {loading ? (
@@ -188,7 +188,7 @@ export function MCPServerList({ isOpen, onClose }: MCPServerListProps) {
               </button>
               <button
                 onClick={onClose}
-                className="cursor-pointer text-gray-400 transition-colors hover:text-gray-600"
+                className="text-muted-foreground hover:text-muted-foreground cursor-pointer transition-colors"
               >
                 <X size={20} />
               </button>
@@ -198,11 +198,11 @@ export function MCPServerList({ isOpen, onClose }: MCPServerListProps) {
           <div className="max-h-[calc(90vh-120px)] overflow-y-auto p-4">
             {loading && servers.length === 0 ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 size={24} className="animate-spin text-gray-400" />
+                <Loader2 size={24} className="text-muted-foreground animate-spin" />
               </div>
             ) : servers.length === 0 ? (
-              <div className="py-8 text-center text-gray-500">
-                <Server size={48} className="mx-auto mb-4 text-gray-300" />
+              <div className="text-muted-foreground py-8 text-center">
+                <Server size={48} className="text-muted-foreground mx-auto mb-4" />
                 <p className="text-lg font-medium">No MCP servers configured</p>
                 <p className="text-sm">Add your first MCP server to get started</p>
               </div>
@@ -211,7 +211,7 @@ export function MCPServerList({ isOpen, onClose }: MCPServerListProps) {
                 {servers.map((server) => (
                   <div
                     key={server.id}
-                    className="flex items-center justify-between rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50"
+                    className="border-border hover:bg-muted/40 flex items-center justify-between rounded-lg border p-4 transition-colors"
                   >
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2">
@@ -222,13 +222,13 @@ export function MCPServerList({ isOpen, onClose }: MCPServerListProps) {
                         )}
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="font-medium text-gray-900">{server.name}</h3>
+                            <h3 className="text-foreground font-medium">{server.name}</h3>
                             {server.type === "http" && (
                               <OAuthStatusBadge status={server.oauthStatus} />
                             )}
                           </div>
-                          <div className="text-sm text-gray-500">
-                            <span className="mr-2 inline-block rounded bg-gray-100 px-2 py-0.5 text-xs">
+                          <div className="text-muted-foreground text-sm">
+                            <span className="bg-muted mr-2 inline-block rounded px-2 py-0.5 text-xs">
                               {server.type}
                             </span>
                             {server.type === "stdio" ? (
@@ -250,7 +250,7 @@ export function MCPServerList({ isOpen, onClose }: MCPServerListProps) {
                           <button
                             onClick={() => checkAndConnectOAuth(server.id)}
                             disabled={connectingId === server.id}
-                            className="flex cursor-pointer items-center gap-1.5 rounded-md bg-blue-500 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="bg-brand hover:bg-brand flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                             title="Connect with OAuth"
                           >
                             {connectingId === server.id ? (
@@ -269,7 +269,7 @@ export function MCPServerList({ isOpen, onClose }: MCPServerListProps) {
                           onChange={(e) => toggleServer(server.id, e.target.checked)}
                           className="peer sr-only"
                         />
-                        <div className="peer peer-checked:bg-primary peer-focus:ring-ring/40 h-5 w-9 rounded-full bg-gray-200 peer-focus:ring-4 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-4 after:w-4 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white"></div>
+                        <div className="peer peer-checked:bg-primary peer-focus:ring-ring/40 bg-muted after:border-border h-5 w-9 rounded-full peer-focus:ring-4 peer-focus:outline-none after:absolute after:top-[2px] after:left-[2px] after:h-4 after:w-4 after:rounded-full after:border after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white"></div>
                       </label>
 
                       <button
@@ -277,7 +277,7 @@ export function MCPServerList({ isOpen, onClose }: MCPServerListProps) {
                           setEditingServer(server);
                           setShowForm(true);
                         }}
-                        className="cursor-pointer p-1.5 text-gray-400 transition-colors hover:text-gray-600"
+                        className="text-muted-foreground hover:text-muted-foreground cursor-pointer p-1.5 transition-colors"
                         title="Edit"
                       >
                         <Edit size={16} />

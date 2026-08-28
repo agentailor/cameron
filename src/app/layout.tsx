@@ -1,36 +1,31 @@
-"use client";
-import { Suspense } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { ThreadProvider } from "@/contexts/ThreadContext";
-import { UISettingsProvider } from "@/contexts/UISettingsContext";
-import { OAuthToast } from "@/components/OAuthToast";
+import { Providers } from "./providers";
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 60 * 1000, // 1 minute
-    },
-  },
+// The theme's --font-geist-* vars were declared but never wired to an actual font.
+const geistSans = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist-sans",
+  display: "swap",
 });
+
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-geist-mono",
+  display: "swap",
+});
+
+export const metadata: Metadata = {
+  title: "Cameron AI",
+  description: "A personal finance agent you own and run yourself.",
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <head>
-        <title>Cameron AI</title>
-      </head>
-      <body>
-        <QueryClientProvider client={queryClient}>
-          <UISettingsProvider>
-            <ThreadProvider>
-              <Suspense fallback={null}>
-                <OAuthToast />
-              </Suspense>
-              {children}
-            </ThreadProvider>
-          </UISettingsProvider>
-        </QueryClientProvider>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body className="font-sans">
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
