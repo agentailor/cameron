@@ -10,7 +10,12 @@ import { Receipt } from "./Receipt";
  * The agent never picks the presentation — the payload selects a renderer the client owns.
  */
 
-/** Capped like the tables above — a schema dump is thousands of characters. */
+/** Every array key a read tool puts its rows under. */
+const ROW_KEYS = ["rows", "transactions", "categories", "sampleRows", "items"];
+const hasRows = (p: Record<string, unknown>) =>
+  ROW_KEYS.some((k) => Array.isArray(p[k])) || typeof p.rowCount === "number";
+
+/** Capped height — a schema dump is thousands of characters. */
 const Json = ({ value }: { value: unknown }) => (
   <div className="bg-inset max-h-96 overflow-auto rounded-md">
     <pre className="text-inset-foreground m-0 px-3 py-2.5 font-mono text-xs leading-relaxed whitespace-pre">
@@ -58,13 +63,17 @@ export const ToolResult = ({ toolName, content }: { toolName?: string; content: 
     const p = parsed as Record<string, unknown>;
     // An error payload never looks like the tool's success shape — show it plainly.
     if (typeof p.error === "string") {
+      // csvImport puts the human-readable text in `message` and a code in `error`.
+      const text = typeof p.message === "string" ? p.message : p.error;
       return (
         <div className="border-destructive/40 bg-destructive/6 text-foreground/80 rounded-lg border px-3.5 py-3 text-[13px] leading-relaxed">
-          {p.error}
+          {text}
         </div>
       );
     }
-    if (kind === "table") return <ResultTable payload={p} />;
+    // "No rows returned" must mean the tool returned none — not that this renderer failed to
+    // find them. An unrecognised shape is JSON, not an empty table.
+    if (kind === "table" && hasRows(p)) return <ResultTable payload={p} />;
     if (kind === "receipt") return <Receipt payload={p} />;
   }
 

@@ -5,7 +5,8 @@ import { AlertTriangle } from "lucide-react";
  * Tabular tool results. Handles the three payload shapes the read tools return:
  *   run_sql            { columns, rows, rowCount, truncated, note? }
  *   query_transactions { returned, matched, truncated, transactions, note?, hint? }
- *   list_categories / inspect_csv  — arrays under assorted keys
+ *   inspect_csv        { headers, sampleRows, totalRows }
+ *   list_categories    — a bare array, or one under `categories`
  *
  * `note`/`hint` are rendered as a callout rather than folded into the data: they are what stop a
  * capped page being read as a complete total, and an all-NULL aggregate being read as a zero.
@@ -19,6 +20,9 @@ interface Payload {
   rowCount?: number;
   transactions?: Row[];
   categories?: Row[];
+  sampleRows?: Row[];
+  headers?: string[];
+  totalRows?: number;
   returned?: number;
   matched?: number;
   truncated?: boolean;
@@ -27,10 +31,14 @@ interface Payload {
   error?: string;
 }
 
+/** Every array key a read tool puts its rows under. An unknown shape falls through to JSON. */
+const ROW_KEYS = ["rows", "transactions", "categories", "sampleRows", "items"] as const;
+
 function pickRows(p: Payload): Row[] {
-  if (Array.isArray(p.rows)) return p.rows;
-  if (Array.isArray(p.transactions)) return p.transactions;
-  if (Array.isArray(p.categories)) return p.categories;
+  for (const k of ROW_KEYS) {
+    const v = (p as Record<string, unknown>)[k];
+    if (Array.isArray(v)) return v as Row[];
+  }
   return [];
 }
 
@@ -51,16 +59,13 @@ function display(v: unknown): string {
 
 export const ResultTable = ({ payload }: { payload: Payload }) => {
   const rows = pickRows(payload);
+  const declared = payload.columns ?? payload.headers;
   const columns =
-    payload.columns && payload.columns.length > 0
-      ? payload.columns
-      : rows.length > 0
-        ? Object.keys(rows[0])
-        : [];
+    declared && declared.length > 0 ? declared : rows.length > 0 ? Object.keys(rows[0]) : [];
 
   const note = payload.note ?? payload.hint;
   const shown = rows.length;
-  const total = payload.matched ?? payload.rowCount ?? shown;
+  const total = payload.matched ?? payload.rowCount ?? payload.totalRows ?? shown;
 
   return (
     <div className="space-y-2">
@@ -68,7 +73,11 @@ export const ResultTable = ({ payload }: { payload: Payload }) => {
         <div className="border-inset-border overflow-hidden rounded-lg border">
           <div className="bg-inset-chrome border-inset-border flex items-center gap-3 border-b px-3 py-2">
             <span className="text-inset-muted font-mono text-[10.5px]">
-              {shown === total ? `${shown} rows` : `${shown} of ${total} rows`}
+              {shown === total
+                ? `${shown} rows`
+                : payload.sampleRows
+                  ? `${shown} sample rows of ${total}`
+                  : `${shown} of ${total} rows`}
             </span>
             {payload.truncated && (
               <span className="text-brand-bright bg-brand/15 rounded px-1.5 py-0.5 font-mono text-[10px] tracking-wider">
