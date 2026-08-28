@@ -3,9 +3,6 @@
 > **A personal finance agent you own and run yourself.** Built in public alongside the
 > [Agentailor](https://blog.agentailor.com) blog — one tagged release per article.
 
-<!-- SCREENSHOT: the thread with an approval gate open — the amber "APPROVAL REQUIRED" card.
-     This is the money shot; it shows the one rule that defines Cameron. -->
-
 ![Cameron — approval gate](docs/images/hero-approval.png)
 
 _Cameron asks before it writes. Every time, for every capability._
@@ -46,13 +43,11 @@ rule 3 by the fact that nothing ships to a hosted backend — the database is yo
 <table>
   <tr>
     <td align="center" width="50%">
-      <!-- SCREENSHOT: an approval gate mid-thread, expanded, showing the amount/category grid -->
       <img src="docs/images/approval-gate.png" alt="Approval gate" width="440" />
       <br /><strong>The approval gate</strong>
       <br />Nothing is written until you approve it.
     </td>
     <td align="center" width="50%">
-      <!-- SCREENSHOT: a run_sql tool call expanded — highlighted SQL + the result table -->
       <img src="docs/images/run-sql.png" alt="SQL tool call" width="440" />
       <br /><strong>Ask anything, in SQL</strong>
       <br />Read-only queries, shown as written and as run.
@@ -60,13 +55,11 @@ rule 3 by the fact that nothing ships to a hosted backend — the database is yo
   </tr>
   <tr>
     <td align="center" width="50%">
-      <!-- SCREENSHOT: /capabilities page -->
       <img src="docs/images/capabilities.png" alt="Capabilities page" width="440" />
       <br /><strong>Every capability, listed</strong>
       <br />What Cameron can do, and what needs your approval.
     </td>
     <td align="center" width="50%">
-      <!-- SCREENSHOT: CSV import flow — inspect_csv then the gated import -->
       <img src="docs/images/csv-import.png" alt="CSV import" width="440" />
       <br /><strong>Import your bank export</strong>
       <br />Cameron proposes the mapping; you confirm it.
