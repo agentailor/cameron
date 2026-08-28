@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ChevronDown, ChevronRight, Settings2Icon, Check, X, Lock } from "lucide-react";
+import { ChevronDown, ChevronRight, Check, X, Lock } from "lucide-react";
 import type { ToolCall, FunctionCall, ToolApprovalCallbacks } from "@/types/message";
 import { isMutatingTool } from "@/lib/agent/mutatingTools";
 import { ToolArgs } from "./toolRenderers";
@@ -83,32 +83,31 @@ const ToolCallItem: React.FC<{
   const isMutating = isMutatingTool(name);
 
   return (
-    <div className="border-border bg-muted/40 rounded-r border-l-2 p-3">
+    /* Same shell as ToolMessage: a call and its result are one operation and should read
+       as one family, even though they arrive as two messages. */
+    <div className="border-border bg-muted/30 rounded-lg border">
       <button
-        className="hover:bg-accent -m-1 flex w-full cursor-pointer items-center gap-2 rounded p-1 text-left"
+        className="focus:ring-brand flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left focus:ring-2 focus:outline-none focus:ring-inset"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        {isExpanded ? (
-          <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
-        ) : (
-          <ChevronRight className="text-muted-foreground h-4 w-4 shrink-0" />
-        )}
-        <Settings2Icon className="text-muted-foreground h-4 w-4 shrink-0" />
-        <span className="text-foreground font-mono text-sm font-medium">{name}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          {isExpanded ? (
+            <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
+          ) : (
+            <ChevronRight className="text-muted-foreground h-4 w-4 shrink-0" />
+          )}
+          <span className="text-foreground truncate font-mono text-sm font-medium">{name}</span>
+          <span className="text-muted-foreground truncate font-mono text-xs">call</span>
+        </div>
         {isMutating && (
-          <span className="text-muted-foreground ml-auto font-mono text-[10px] tracking-wider">
+          <span className="text-muted-foreground shrink-0 font-mono text-[10px] tracking-wider">
             approved
           </span>
         )}
       </button>
 
       {isExpanded && (
-        <div className="mt-2 ml-6">
-          <div className="text-muted-foreground mb-1 font-mono text-[10px] tracking-[0.12em]">
-            ARGUMENTS
-          </div>
-          {renderArgs(name, args)}
-        </div>
+        <div className="border-border border-t px-4 py-3.5">{renderArgs(name, args)}</div>
       )}
     </div>
   );

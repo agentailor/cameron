@@ -73,8 +73,9 @@ export const ToolMessage = ({ message }: ToolMessageProps) => {
           <span className="text-foreground truncate font-mono text-sm font-medium">
             {toolName ?? "tool"}
           </span>
+          <span className="text-muted-foreground shrink-0 font-mono text-xs">result</span>
           <span className="text-muted-foreground truncate font-mono text-xs">
-            {summary ?? getContentStats(content)}
+            · {summary ?? getContentStats(content)}
           </span>
         </div>
         <span

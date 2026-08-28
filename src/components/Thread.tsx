@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 import { useEffect, useRef, useState } from "react";
 import { MessageOptions } from "@/types/message";
+import { useUISettings } from "@/contexts/UISettingsContext";
 
 interface ThreadProps {
   threadId: string;
@@ -15,6 +16,7 @@ interface ThreadProps {
 export const Thread = ({ threadId, onFirstMessageSent }: ThreadProps) => {
   const { messages, isLoadingHistory, isSending, sendMessage, approveToolExecution } =
     useChatThread({ threadId });
+  const { provider, model, approveAllTools } = useUISettings();
   const firstMessageInitiatedRef = useRef(false);
   const [awaitingFirstResponse, setAwaitingFirstResponse] = useState(false);
 
@@ -40,7 +42,7 @@ export const Thread = ({ threadId, onFirstMessageSent }: ThreadProps) => {
 
   if (isLoadingHistory) {
     return (
-      <div className="bg-background/95 supports-[backdrop-filter]:bg-background/60 absolute inset-0 flex items-center justify-center backdrop-blur">
+      <div className="bg-background/95 supports-backdrop-filter:bg-background/60 absolute inset-0 flex items-center justify-center backdrop-blur">
         <Loader2 className="text-primary h-8 w-8 animate-spin" />
         <p className="text-muted-foreground mt-2">Loading conversation history...</p>
       </div>
@@ -58,7 +60,7 @@ export const Thread = ({ threadId, onFirstMessageSent }: ThreadProps) => {
               </div>
             </ScrollArea>
           </div>
-          <div className="flex-shrink-0">
+          <div className="shrink-0">
             <div className="w-full p-4 pb-6">
               <div className="mx-auto max-w-3xl">
                 <MessageInput onSendMessage={handleSendMessage} isLoading={isSending} />
@@ -69,13 +71,37 @@ export const Thread = ({ threadId, onFirstMessageSent }: ThreadProps) => {
       ) : (
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-3xl px-4">
-            <div className="mb-5 text-center">
-              <h1 className="text-foreground text-2xl font-bold">Chat with your Agent</h1>
-              <p className="text-muted-foreground mt-2">
-                Start a new conversation by sending a message
+            <div className="mb-6">
+              <p className="text-brand-dim mb-2 font-mono text-[11px] tracking-[0.2em] uppercase">
+                Cameron
+              </p>
+              <h1 className="text-foreground text-3xl font-bold tracking-tight">
+                Ask anything about your money.
+              </h1>
+              <p className="text-muted-foreground mt-2.5 leading-relaxed">
+                Log expenses, import a bank export, or dig into where it all went. Nothing is
+                written without your approval, and your data never leaves this machine.
               </p>
             </div>
             <MessageInput onSendMessage={handleSendMessage} isLoading={isSending} />
+            <div className="mt-4 flex flex-wrap gap-2">
+              {[
+                "What did I spend on dining last month?",
+                "Log a €12 coffee at Blue Bottle",
+                "Top 5 merchants this year",
+              ].map((example) => (
+                <button
+                  key={example}
+                  type="button"
+                  onClick={() =>
+                    handleSendMessage(example, { provider, model, tools: [], approveAllTools })
+                  }
+                  className="border-border text-muted-foreground hover:border-brand hover:text-foreground cursor-pointer rounded-full border px-3 py-1.5 text-[13px] transition-colors"
+                >
+                  {example}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

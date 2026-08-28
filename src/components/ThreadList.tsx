@@ -2,24 +2,10 @@
 
 import { useRef, useState } from "react";
 import { useThreads } from "@/hooks/useThreads";
-import {
-  SquarePen,
-  Search,
-  Loader2,
-  Check,
-  X,
-  Pencil,
-  RefreshCcw,
-  Settings,
-  Trash2,
-} from "lucide-react";
+import { SquarePen, Search, Loader2, Check, X, Pencil, RefreshCcw, Trash2 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 
-interface ThreadListProps {
-  onOpenMCPConfig: () => void;
-}
-
-export function ThreadList({ onOpenMCPConfig }: ThreadListProps) {
+export function ThreadList() {
   const { threads, createThread, deleteThread, refetchThreads } = useThreads();
   const [isCreating, setIsCreating] = useState(false);
   const [filter, setFilter] = useState("");
@@ -147,7 +133,7 @@ export function ThreadList({ onOpenMCPConfig }: ThreadListProps) {
           return (
             <div
               key={thread.id}
-              className={`group relative cursor-pointer rounded-md border border-transparent px-3 py-2 text-left ${active ? "bg-accent text-accent-foreground dark:bg-accent/60" : "hover:bg-muted/60 dark:hover:bg-muted/30 text-foreground/80"}`}
+              className={`group relative cursor-pointer rounded-r-md border-l-2 px-3 py-2 text-left ${active ? "border-brand bg-brand/8 text-foreground" : "hover:bg-accent text-foreground/80 border-transparent"}`}
               onClick={() => {
                 if (!isRenaming) router.push(`/thread/${thread.id}`);
               }}
@@ -230,17 +216,6 @@ export function ThreadList({ onOpenMCPConfig }: ThreadListProps) {
             No threads found.
           </div>
         )}
-      </div>
-
-      {/* MCP Configuration Button */}
-      <div className="border-border border-t p-3">
-        <button
-          onClick={onOpenMCPConfig}
-          className="bg-muted/40 text-muted-foreground hover:bg-muted flex w-full cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-medium transition-colors"
-        >
-          <Settings className="h-4 w-4" />
-          Configure MCP Servers
-        </button>
       </div>
     </nav>
   );

@@ -36,9 +36,11 @@ export const AIMessage = ({
       <div className="bg-brand/15 flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
         <Bot className="text-brand-dim h-5 w-5" />
       </div>
-      <div className="max-w-[80%] space-y-3">
+      {/* Prose stays in a readable column; tool cards run full width so a call lines up with
+          the result card that follows it as a sibling message. */}
+      <div className="min-w-0 flex-1 space-y-3">
         {messageContent && (
-          <div className={cn("text-foreground py-1")}>
+          <div className={cn("text-foreground max-w-[80%] py-1")}>
             <div
               data-color-mode="light"
               className="cameron-md [&_li]:my-1 [&_ol]:ml-6 [&_ol]:list-decimal [&_ul]:ml-6 [&_ul]:list-disc"

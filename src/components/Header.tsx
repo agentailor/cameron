@@ -1,39 +1,26 @@
 import React from "react";
-import { PanelLeftClose } from "lucide-react";
-import Link from "next/link";
+import { PanelLeft, PanelLeftOpen } from "lucide-react";
 
 interface HeaderProps {
   toggleSidebar: () => void;
+  isSidebarOpen?: boolean;
 }
-export const Header = ({ toggleSidebar }: HeaderProps) => {
+
+/**
+ * Thin bar over the thread. The wordmark lives in the sidebar, so this only carries the
+ * sidebar toggle — the thread's own title is rendered by the page below it.
+ */
+export const Header = ({ toggleSidebar, isSidebarOpen = true }: HeaderProps) => {
   return (
-    <header className="sticky top-0 z-10 flex items-center px-4 py-3">
-      <div className="flex w-full items-center justify-between">
-        <div className="flex items-center">
-          <button
-            onClick={toggleSidebar}
-            className="text-muted-foreground hover:bg-muted hover:text-foreground mr-4 cursor-pointer rounded-md p-2 transition-colors"
-            aria-label="Toggle navigation"
-          >
-            <PanelLeftClose size={25} />
-          </button>
-
-          <div className="flex items-center">
-            <Link href="/" className="flex items-center">
-              <span className="text-foreground hidden text-xl font-semibold sm:block">
-                Cameron AI
-              </span>
-            </Link>
-          </div>
-        </div>
-
-        <Link
-          href="/capabilities"
-          className="text-muted-foreground hover:bg-muted hover:text-foreground rounded-md px-3 py-2 text-sm transition-colors"
-        >
-          Capabilities
-        </Link>
-      </div>
+    <header className="sticky top-0 z-10 flex items-center px-3 py-2.5">
+      <button
+        onClick={toggleSidebar}
+        className="text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer rounded-md p-2 transition-colors"
+        aria-label={isSidebarOpen ? "Hide sidebar" : "Show sidebar"}
+        aria-expanded={isSidebarOpen}
+      >
+        {isSidebarOpen ? <PanelLeft size={18} /> : <PanelLeftOpen size={18} />}
+      </button>
     </header>
   );
 };

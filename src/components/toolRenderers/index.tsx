@@ -10,10 +10,13 @@ import { Receipt } from "./Receipt";
  * The agent never picks the presentation — the payload selects a renderer the client owns.
  */
 
+/** Capped like the tables above — a schema dump is thousands of characters. */
 const Json = ({ value }: { value: unknown }) => (
-  <pre className="bg-inset text-inset-foreground overflow-x-auto rounded-md px-3 py-2.5 font-mono text-xs leading-relaxed whitespace-pre-wrap">
-    {typeof value === "string" ? value : JSON.stringify(value, null, 2)}
-  </pre>
+  <div className="bg-inset max-h-96 overflow-auto rounded-md">
+    <pre className="text-inset-foreground m-0 px-3 py-2.5 font-mono text-xs leading-relaxed whitespace-pre">
+      {typeof value === "string" ? value : JSON.stringify(value, null, 2)}
+    </pre>
+  </div>
 );
 
 type Args = Record<string, unknown>;
