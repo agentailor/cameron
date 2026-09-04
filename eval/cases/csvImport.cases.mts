@@ -8,6 +8,7 @@ import {
   toolCalledWith,
   toolNotCalled,
 } from "../graders.mts";
+import { countImportedRows } from "../db.mts";
 import { FIXTURE } from "../seed.mts";
 import type { EvalCase } from "../types.mts";
 
@@ -97,5 +98,45 @@ export const cases: EvalCase[] = [
     ],
     runs: RUN_POLICY.strict,
     tags: ["csv", "import", "mutation"],
+  },
+  {
+    id: "csv-import-asks-for-the-missing-account",
+    description:
+      "The opening turn names no account, so the agent has to ask for one — a question no " +
+      "scripted array can answer. Same graders as the case above; the only difference is that " +
+      "the user can reply.",
+    prompt: `${ATTACHMENT}\n\nImport these.`,
+    user: {
+      // Vague on purpose: naming the account here would leak it. See "The fact sheet" in
+      // eval/README.md.
+      goal: "get the transactions in the file you attached into the ledger",
+      facts: [
+        { topic: "which account these belong to", value: "checking" },
+        // A reversed format imports cleanly onto the wrong dates — the silent answer.
+        {
+          topic: "the date format used in the file",
+          value: csv.dateFormat,
+          contradicts: ["MM/dd/yyyy"],
+        },
+        { topic: "whether to keep the categories from the file", value: "yes, keep them" },
+      ],
+      until: async () => (await countImportedRows()) > 0,
+    },
+    approval: "allow",
+    graders: [
+      toolCalled("inspect_csv", "import_transactions_csv"),
+      toolCalledWith(
+        "import_transactions_csv",
+        (a) => (a.dateFormat as string | undefined) === csv.dateFormat,
+        csv.dateFormat,
+      ),
+      pausedForApproval("import_transactions_csv"),
+      importedRowCount(csv.rowCount),
+      importedInMonth(csv.correctFirstMonth, csv.wrongFirstMonth),
+    ],
+    // Simulated cases default to `majority`, but a wrong date format is silent — the same
+    // reason its scripted twin is strict.
+    runs: RUN_POLICY.strict,
+    tags: ["csv", "import", "mutation", "simulated"],
   },
 ];

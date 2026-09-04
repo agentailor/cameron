@@ -55,13 +55,13 @@ loop.
 
 So a case earns its place by guarding a **defect class**, not by exercising a feature:
 
-| File                         | Guards                                                                                             |
-| ---------------------------- | -------------------------------------------------------------------------------------------------- |
-| `cases/analysis.cases.mts`   | Tool selection — `run_sql` for aggregates, `query_transactions` for listings, **both directions**. |
-| `cases/truncation.cases.mts` | A capped page is never reported as a complete total.                                               |
-| `cases/approval.cases.mts`   | Cameron's first hard rule: no mutation without human approval; a denial writes nothing.            |
-| `cases/discipline.cases.mts` | Prompt contracts — no double-prompting on mutations; recovering from an unknown category.          |
-| `cases/csvImport.cases.mts`  | CSV import — an ambiguous date format, and a mapped column that must be copied verbatim.           |
+| File                         | Guards                                                                                                                                 |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `cases/analysis.cases.mts`   | Tool selection — `run_sql` for aggregates, `query_transactions` for listings, **both directions**.                                     |
+| `cases/truncation.cases.mts` | A capped page is never reported as a complete total.                                                                                   |
+| `cases/approval.cases.mts`   | Cameron's first hard rule: no mutation without human approval; a denial writes nothing.                                                |
+| `cases/discipline.cases.mts` | Prompt contracts — no double-prompting on mutations; recovering from an unknown category.                                              |
+| `cases/csvImport.cases.mts`  | CSV import — an ambiguous date format, a mapped column that must be copied verbatim, and an opening turn that forces the agent to ask. |
 
 ## The fixture
 
