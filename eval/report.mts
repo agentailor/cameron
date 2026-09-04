@@ -77,8 +77,14 @@ export interface ReportFile {
     passed: number;
     graded: number;
     skipped: number;
-    /** Cases that tested nothing. Watch this across runs — it is how coverage decays quietly. */
+    /** Cases where EVERY run was inconclusive, so the case tested nothing at all. */
     inconclusive: number;
+    /**
+     * Individual runs that produced no evidence, including those inside cases that still
+     * passed. This is the number that moves first: a fact sheet missing something the agent
+     * keeps asking for stalls one run in three while `inconclusive` stays 0.
+     */
+    inconclusiveRuns: number;
   };
   cases: ReportCase[];
 }
@@ -134,6 +140,10 @@ export function buildReport(
 
   const skipped = cases.filter((c) => c.skipped).length;
   const inconclusive = cases.filter((c) => c.inconclusive).length;
+  const inconclusiveRuns = cases.reduce(
+    (n, c) => n + c.runs.filter((r) => r.inconclusive).length,
+    0,
+  );
   // `graded` excludes both, so the headline passed/graded fraction only counts cases that
   // actually produced evidence.
   const graded = cases.length - skipped - inconclusive;
@@ -149,6 +159,7 @@ export function buildReport(
       graded,
       skipped,
       inconclusive,
+      inconclusiveRuns,
     },
     cases,
   };

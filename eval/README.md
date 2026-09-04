@@ -186,7 +186,9 @@ jq '.cases[] | select(.id == "denied-expense-writes-nothing")' eval/results/late
 ```
 
 `meta.mode` records whether repeats ran or `EVAL_MODE=fast` collapsed them, so a report always
-says how much evidence is behind it. `meta.inconclusive` counts cases that tested nothing, and
+says how much evidence is behind it. `meta.inconclusive` counts cases where EVERY run was
+inconclusive, `meta.inconclusiveRuns` counts individual stalled runs (including those inside cases
+that still passed — the number that moves first), and
 `meta.simulator` records which model played the user when any case simulated one.
 
 A simulated run also records what was actually said — the only place a generated user turn appears,
@@ -323,7 +325,8 @@ the same sentinel, and that is a **finding**, not a gap.
 **Everything else is a plain failure.** The agent gave up, took a wrong action, imported under a
 guessed format — all fail. This tier's whole risk is becoming a place to hide failures: a case that
 keeps stalling gets marked inconclusive, exits 0, and quietly stops testing anything. Keep the
-causes to the five above, and watch `meta.inconclusive` across runs.
+causes to the five above, and watch `meta.inconclusiveRuns` across runs — a case passing 2/3 with
+one stalled run leaves `meta.inconclusive` at 0, so that is the number that hides a growing gap.
 
 Mechanically: an inconclusive run **shrinks the pass@k denominator** rather than counting as a
 failure, so a `strict` case with one inconclusive run is graded 2/2, not 2/3. A case whose every run
@@ -397,7 +400,7 @@ recorded reason is a tracked finding; a deleted one is lost.
   match `.mts`. Hence `eval/tsconfig.json` and `pnpm typecheck:eval`.
 - **No run-over-run diff.** Each run writes a report (below), but nothing compares two of them yet.
 - **Inconclusive runs are not retried.** A case can lose coverage silently if its simulator keeps
-  stalling — watch `meta.inconclusive` across runs.
+  stalling — watch `meta.inconclusiveRuns` across runs.
 - **The simulated user cannot see tool calls.** Realistic, but it means it can never catch the agent
   _claiming_ it did something it didn't.
 - **`openevals` traces through `langsmith`.** It no-ops without credentials, but the dependency is

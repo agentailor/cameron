@@ -228,12 +228,19 @@ async function main() {
 
   const skipped = outcomes.filter((o) => o.skipped).length;
   const inconclusiveCount = unresolved.length;
+  // Counted separately from the cases above: a case can pass 2/3 with one stalled run, and
+  // that run is invisible in the case-level number.
+  const stalledRuns = outcomes.reduce(
+    (n, o) => n + o.perRun.filter((r) => r.capture.inconclusive).length,
+    0,
+  );
   const graded = outcomes.length - skipped - inconclusiveCount;
   const passedCount = graded - failed.length;
   console.log(
     bold(`\n${passedCount}/${graded} cases passed`) +
       (skipped ? dim(` (${skipped} skipped)`) : "") +
-      (inconclusiveCount ? yellow(` (${inconclusiveCount} inconclusive)`) : ""),
+      (inconclusiveCount ? yellow(` (${inconclusiveCount} inconclusive)`) : "") +
+      (stalledRuns > inconclusiveCount ? yellow(` (${stalledRuns} inconclusive run(s))`) : ""),
   );
 
   // The console output scrolls away; the report is what survives the run.
