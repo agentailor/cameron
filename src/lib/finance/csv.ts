@@ -2,6 +2,7 @@ import Papa from "papaparse";
 import { parse as parseDateFns, isValid } from "date-fns";
 import { Account, TransactionType } from "@/types/finance";
 import type { ImportRow } from "@/lib/repositories/transactionRepository";
+import { DEFAULT_CURRENCY } from "@/lib/config/catalog";
 
 /**
  * CSV import internals. Kept separate from the agent tools so the parsing/normalization logic
@@ -67,8 +68,6 @@ export interface CsvPreview {
   sampleRows: Record<string, string>[];
   totalRows: number;
 }
-
-const DEFAULT_CURRENCY = "USD";
 
 /** The mapping keys whose VALUES are file column headers (as opposed to config like `account`). */
 const MAPPING_COLUMN_KEYS: (keyof ColumnMapping)[] = [

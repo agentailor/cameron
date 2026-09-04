@@ -1,6 +1,7 @@
 import { financeTools } from "./tools/finance";
 import { analyticsTools } from "./tools/analytics";
 import { categoryTools } from "./tools/categories";
+import { configTools } from "./tools/config";
 import { MUTATING_TOOL_NAMES as MUTATING_TOOL_NAMES_LOCAL } from "./mutatingTools";
 
 /**
@@ -41,6 +42,7 @@ const GROUPS: { label: string; tools: { name: string; description: string }[] }[
   { label: "Categories", tools: categoryTools },
   { label: "CSV import", tools: CSV_IMPORT_CAPABILITIES },
   { label: "Analysis", tools: analyticsTools },
+  { label: "Settings", tools: configTools },
 ];
 
 const mutating = new Set<string>(MUTATING_TOOL_NAMES_LOCAL);

@@ -1,9 +1,12 @@
 import { MUTATING_TOOL_NAMES } from "../src/lib/agent/capabilities.ts";
 import {
+  configValue,
   countImportedRows,
   countRows,
   importedCategoryNames,
+  importedCurrencies,
   importedMonths,
+  loggedCurrencies,
   type CountableTable,
 } from "./db.mts";
 import type { Grader, RunCapture } from "./types.mts";
@@ -399,6 +402,125 @@ export function statesNoWrongTotal(expected: number): Grader {
         id,
         wrong.length === 0,
         wrong.length ? `stated wrong total(s): ${[...new Set(wrong)].join(", ")}` : undefined,
+      );
+    },
+  };
+}
+
+/**
+ * Every imported row carries `expected` as its currency.
+ *
+ * `wrong` is named separately so the failure says WHY: landing on the fallback means the agent
+ * never established the currency, which is a different defect from mistyping one.
+ */
+export function importedCurrency(expected: string, wrong?: string): Grader {
+  const id = `importedCurrency(${expected})`;
+  return {
+    id,
+    grade: async () => {
+      const found = await importedCurrencies();
+      if (found.length === 0) return result(id, false, "nothing was imported");
+      const offenders = found.filter((f) => f.currency !== expected);
+      if (offenders.length === 0) return result(id, true);
+      const defaulted = wrong && offenders.some((f) => f.currency === wrong);
+      return result(
+        id,
+        false,
+        `imported rows carry ${offenders.map((f) => `${f.currency} (${f.count})`).join(", ")}` +
+          (defaulted ? ` — ${wrong} is the fallback, so the currency was never established` : ""),
+      );
+    },
+  };
+}
+
+/**
+ * The owner setting `key` was persisted as `expected`.
+ *
+ * Grades the POINT of storing it: a currency the agent only used in one call has to be asked for
+ * again next time. Only a row in `config` makes the answer reusable.
+ */
+export function configIs(key: string, expected: string): Grader {
+  const id = `configIs(${key}=${expected})`;
+  return {
+    id,
+    grade: async () => {
+      const actual = await configValue(key);
+      if (actual === null) {
+        return result(id, false, `no "${key}" row — the answer was used but never saved`);
+      }
+      return result(
+        id,
+        actual === expected,
+        actual === expected ? undefined : `stored "${actual}"`,
+      );
+    },
+  };
+}
+
+/**
+ * `before` was called at least once BEFORE the first call to `after`.
+ *
+ * `toolCalled` is a set membership check, so it cannot tell "asked, saved the answer, then logged"
+ * from "logged under a guess, then saved the setting afterwards". Both end with the same rows in
+ * the same tables; only the order says whether the setting was ESTABLISHED or backfilled.
+ */
+export function toolCalledBefore(before: string, after: string): Grader {
+  const id = `toolCalledBefore(${before},${after})`;
+  return {
+    id,
+    grade: (c: RunCapture) => {
+      const names = c.trajectory.map((t) => t.name);
+      const firstBefore = names.indexOf(before);
+      const firstAfter = names.indexOf(after);
+      if (firstBefore === -1) return result(id, false, `${before} was never called`);
+      if (firstAfter === -1) return result(id, false, `${after} was never called`);
+      return result(
+        id,
+        firstBefore < firstAfter,
+        firstBefore < firstAfter
+          ? undefined
+          : `${after} ran first — ${before} came after, so the value was backfilled, not established`,
+      );
+    },
+  };
+}
+
+/** Manually logged rows all carry `expected`. The `log_expense` counterpart of importedCurrency. */
+export function loggedCurrency(expected: string, wrong?: string): Grader {
+  const id = `loggedCurrency(${expected})`;
+  return {
+    id,
+    grade: async () => {
+      const found = await loggedCurrencies();
+      if (found.length === 0) return result(id, false, "no manually logged row exists");
+      const offenders = found.filter((f) => f.currency !== expected);
+      if (offenders.length === 0) return result(id, true);
+      const defaulted = wrong && offenders.some((f) => f.currency === wrong);
+      return result(
+        id,
+        false,
+        `logged rows carry ${offenders.map((f) => `${f.currency} (${f.count})`).join(", ")}` +
+          (defaulted ? ` — ${wrong} is the fallback, so the currency was never established` : ""),
+      );
+    },
+  };
+}
+
+/** A tool was NEVER called with arguments matching `predicate`. */
+export function toolNeverCalledWith(
+  name: string,
+  predicate: (args: Record<string, unknown>) => boolean,
+  label: string,
+): Grader {
+  const id = `toolNeverCalledWith(${name},${label})`;
+  return {
+    id,
+    grade: (c: RunCapture) => {
+      const offenders = c.trajectory.filter((t) => t.name === name && predicate(t.args));
+      return result(
+        id,
+        offenders.length === 0,
+        offenders.length ? `${name} was called ${offenders.length}x with ${label}` : undefined,
       );
     },
   };

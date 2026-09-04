@@ -10,6 +10,7 @@ import {
 } from "@/lib/finance/csv";
 import * as transactionRepo from "@/lib/repositories/transactionRepository";
 import { Account, TransactionType } from "@/types/finance";
+import { DEFAULT_CURRENCY } from "@/lib/config/catalog";
 
 /**
  * CSV import as a TWO-TOOL handshake. The transaction rows NEVER pass through the agent/LLM:
@@ -156,6 +157,10 @@ export const importTransactionsCsvTool = tool(
     const MAX_BAD_ROWS = 10;
     return JSON.stringify({
       imported,
+      // Report the currency actually written. A fallback nobody chose must be visible in the
+      // result, not just implied by its absence from the arguments.
+      currency: input.currency ?? DEFAULT_CURRENCY,
+      currencyWasDefaulted: input.currency === undefined,
       skippedDuplicates: duplicates,
       skippedUnparsable: unparsable,
       skippedBadDate: badDateRows.length,
@@ -178,13 +183,25 @@ export const importTransactionsCsvTool = tool(
       "records in bulk and will require the user's approval — propose the mapping to the user first. " +
       "Map every meaningful column, INCLUDING category, using the EXACT header strings from " +
       "inspect_csv; a mapping that names a column not in the file is rejected (nothing imported) so " +
-      "you can fix it. When a date column is mapped you MUST pass `dateFormat`. Re-importing the " +
-      "same file does not create duplicates. The summary lists any rows whose date failed to parse.",
+      "you can fix it. When a date column is mapped you MUST pass `dateFormat`. BEFORE importing, " +
+      "you must also know the currency: call `get_config` first, and if it reports `isSet: false`, " +
+      "ask the user which currency the file is in and save it with `set_config`. Every row lands " +
+      "under one code, and nothing in the file states it — a wrong one is silent across the whole " +
+      "import. Re-importing the same file does not create duplicates. The summary lists any rows " +
+      "whose date failed to parse.",
     schema: z.object({
       fileKey: z.string().min(1).describe("The storage key of the uploaded CSV file"),
       mapping: mappingSchema.describe("How the file's columns map onto transaction fields"),
       account: accountEnum.describe("Which account these transactions belong to"),
-      currency: z.string().optional().describe("ISO currency code for the imported rows"),
+      currency: z
+        .string()
+        .optional()
+        .describe(
+          "ISO currency code applied to EVERY imported row. Establish it before importing: call " +
+            "`get_config` for the owner's currency, and if it is not set ask the user rather " +
+            "than inferring one from the file's language or its merchants. Omitting this imports " +
+            "hundreds of rows under a default nobody chose.",
+        ),
       dateFormat: z
         .string()
         .optional()

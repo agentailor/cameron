@@ -117,6 +117,12 @@ export const FIXTURE = {
     wrongFirstMonth: 5,
     /** Categories in the file. "Loisirs" is new — the import must create it. */
     newCategory: "Loisirs",
+    /**
+     * The currency the owner states in the currency case. Nothing in the FILE says euros — the
+     * French headers and Paris merchants are a hint, not a fact — so the agent must get this
+     * from the user or from stored config, never from the locale.
+     */
+    currency: "EUR",
   },
 } as const;
 

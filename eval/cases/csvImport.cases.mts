@@ -1,6 +1,9 @@
 import { RUN_POLICY } from "../config.mts";
+import { DEFAULT_CURRENCY } from "../../src/lib/config/catalog.ts";
 import {
+  configIs,
   importedCategories,
+  importedCurrency,
   importedInMonth,
   importedRowCount,
   pausedForApproval,
@@ -41,6 +44,12 @@ const importHappened = async () => (await countImportedRows()) > 0;
 /** What the owner knows. Anything absent here is something the agent has to ask for. */
 const IMPORT_FACTS = [
   { topic: "which account these belong to", value: "checking" },
+  // The agent establishes the currency before a bulk write, so it asks. `contradicts` names the
+  // fallback: a simulator that confirms USD has invented the premise these rows are imported under.
+  { topic: "which currency you use", value: csv.currency, contradicts: ["USD"] },
+  // The agent asks permission before writing a setting — good behaviour the sheet must be able
+  // to answer, or a case that WANTS `set_config` gated punishes the agent for asking.
+  { topic: "whether to save the currency as your default", value: "yes, save it" },
   // A reversed format imports cleanly onto the wrong dates — the silent answer.
   {
     topic: "the date format used in the file",
@@ -54,8 +63,9 @@ export const cases: EvalCase[] = [
   {
     id: "csv-import-confirms-ambiguous-date-format",
     description:
-      "The agent must inspect and propose before importing, and must not guess an ambiguous date " +
-      "format. Graded on where the rows landed: 5 July (correct) vs 7 May (read backwards).",
+      "The agent must inspect and propose before importing, and must guess neither the date " +
+      "format nor the currency. Graded on where the rows landed (5 July, not 7 May) and what " +
+      "money they landed in.",
     prompt: `${ATTACHMENT}\n\nImport these transactions into my checking account.`,
     user: { goal: SHARED_GOAL, facts: IMPORT_FACTS, until: importHappened },
     approval: "allow",
@@ -73,10 +83,16 @@ export const cases: EvalCase[] = [
       // The consequence. This is the case.
       importedRowCount(csv.rowCount),
       importedInMonth(csv.correctFirstMonth, csv.wrongFirstMonth),
+      // Currency is the same defect at the same moment: a value nothing in the FILE states, which
+      // either reaches every row or reaches none. Graded here rather than in its own case because
+      // a second case would buy a third run of an identical trajectory (issue #11).
+      importedCurrency(csv.currency, DEFAULT_CURRENCY),
+      configIs("currency", csv.currency),
+      pausedForApproval("set_config"),
     ],
     // A wrong date format imports cleanly and silently — one bad run is a real defect.
     runs: RUN_POLICY.strict,
-    tags: ["csv", "import", "mutation"],
+    tags: ["csv", "import", "mutation", "currency"],
   },
   {
     id: "csv-import-does-not-import-before-confirming",
@@ -145,6 +161,10 @@ export const cases: EvalCase[] = [
    */
   {
     id: "csv-import-confirms-ambiguous-date-format-scripted",
+    // Superseded by its simulated twin above. Kept only until the pair has been compared
+    // once more; it fails by construction now that the agent asks a question mid-import,
+    // which is the very limitation the simulated user exists to remove.
+    skip: true,
     description:
       "Scripted twin, pending deletion. Turn 2 answers a question the agent may not have asked — " +
       "which is the failure mode the simulated version exists to remove.",
@@ -169,6 +189,10 @@ export const cases: EvalCase[] = [
   },
   {
     id: "csv-import-maps-accented-category-header-scripted",
+    // Superseded by its simulated twin above. Kept only until the pair has been compared
+    // once more; it fails by construction now that the agent asks a question mid-import,
+    // which is the very limitation the simulated user exists to remove.
+    skip: true,
     description: "Scripted twin, pending deletion. See the case above.",
     prompt: [
       `${ATTACHMENT}\n\nImport these into checking, and keep the categories from the file.`,

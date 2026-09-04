@@ -1,12 +1,13 @@
 import {
   DATABASE,
   FAST_MODE,
+  FORCED_RUNS,
   MODEL,
   RUN_POLICY,
   SIMULATED_DEFAULT,
   SIMULATOR_MODEL,
 } from "./config.mts";
-import { prepareDatabase, resetToFixture } from "./db.mts";
+import { prepareDatabase, resetToFixture, seedConfig } from "./db.mts";
 import { seed } from "./seed.mts";
 import { runCase } from "./runner.mts";
 import { cases } from "./cases/index.mts";
@@ -120,19 +121,25 @@ async function main() {
         continue;
       }
 
-      // One run unless the case opts into repeats. `EVAL_MODE=fast` forces one everywhere, which
-      // also collapses the repeating cases while iterating. A simulated case defaults higher.
+      // One run unless the case opts into repeats. `EVAL_MODE=fast` forces one everywhere while
+      // iterating; `EVAL_RUNS=n` forces n everywhere (all must pass) to interrogate stability.
+      // A simulated case defaults higher — simulator variance stacks on agent variance.
+      const forced = FORCED_RUNS ? { n: FORCED_RUNS, passK: FORCED_RUNS } : undefined;
       const policy = FAST_MODE
         ? RUN_POLICY.fast
-        : (testCase.runs ?? (testCase.user ? SIMULATED_DEFAULT : RUN_POLICY.single));
+        : (forced ?? testCase.runs ?? (testCase.user ? SIMULATED_DEFAULT : RUN_POLICY.single));
       const { n, passK } = policy;
       process.stdout.write(`  ${testCase.id} `);
 
       const perRun: CaseOutcome["perRun"] = [];
       for (let i = 0; i < n; i++) {
         // An approval case mutates, so each run must start from the same ledger — otherwise run 2
-        // inherits run 1's writes and every row-count assertion drifts.
-        if (testCase.approval) await resetToFixture();
+        // inherits run 1's writes and every row-count assertion drifts. A `config` case resets too:
+        // its seeded settings must not survive into the next case, whose premise may be an
+        // unestablished one.
+        if (testCase.approval || testCase.config) await resetToFixture();
+        // After the reset, or the seeded settings would be wiped by it.
+        if (testCase.config) await seedConfig(testCase.config);
 
         // A fresh agent per run: no checkpointer state leaks between runs. `approveAllTools`
         // omits the HITL middleware entirely, so a case testing the gate must NOT set it.

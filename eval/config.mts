@@ -71,6 +71,15 @@ export const DEFAULT_MAX_TURNS = 6;
 /** `EVAL_MODE=fast` collapses every case to one run. */
 export const FAST_MODE = process.env.EVAL_MODE === "fast";
 
+/**
+ * `EVAL_RUNS=5 pnpm eval <id>` forces n runs on every selected case, requiring ALL to pass.
+ *
+ * For deliberately measuring stability — a behavior that passed once is not known to be reliable,
+ * and a case's own policy is set for routine runs, not for interrogating a fresh change. Ignored
+ * in fast mode, which means the opposite thing.
+ */
+export const FORCED_RUNS = process.env.EVAL_RUNS ? Number(process.env.EVAL_RUNS) : undefined;
+
 export const LIMITS = {
   /** Bounds the agent loop: a case that keeps calling tools fails instead of burning budget. */
   recursionLimit: 25,

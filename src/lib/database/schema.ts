@@ -126,3 +126,16 @@ export const transactions = pgTable(
     ),
   ],
 );
+
+/**
+ * Owner-level settings the agent reads and writes through `get_config` / `set_config`.
+ *
+ * Deliberately NOT a general key/value store: the set of valid keys and their validation live
+ * in `src/lib/config/catalog.ts`, so a row here is always one the application knows about.
+ * `description` is not a column for the same reason — it varies per key, not per install.
+ */
+export const configs = pgTable("config", {
+  key: text("key").primaryKey().notNull(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at", { precision: 3, mode: "string" }).notNull(),
+});
