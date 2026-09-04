@@ -1,4 +1,11 @@
-import { DATABASE, FAST_MODE, MODEL, RUN_POLICY } from "./config.mts";
+import {
+  DATABASE,
+  FAST_MODE,
+  MODEL,
+  RUN_POLICY,
+  SIMULATED_DEFAULT,
+  SIMULATOR_MODEL,
+} from "./config.mts";
 import { prepareDatabase, resetToFixture } from "./db.mts";
 import { seed } from "./seed.mts";
 import { runCase } from "./runner.mts";
@@ -17,6 +24,7 @@ const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
+const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
 
 interface CaseOutcome {
   testCase: EvalCase;
@@ -25,6 +33,12 @@ interface CaseOutcome {
   passed: boolean;
   /** True when the case declared `skip` — reported, never executed, never counted as a failure. */
   skipped?: boolean;
+  /**
+   * Every run produced no gradeable evidence, so the case tested nothing. Reported separately from
+   * a failure and does NOT fail the build — but printed loudly, because silent inconclusives are
+   * how coverage decays unnoticed.
+   */
+  inconclusive?: boolean;
   /** Per-run grader results, for printing failures. */
   perRun: { results: GradeResult[]; capture: RunCapture }[];
 }
@@ -107,8 +121,10 @@ async function main() {
       }
 
       // One run unless the case opts into repeats. `EVAL_MODE=fast` forces one everywhere, which
-      // also collapses the repeating cases while iterating.
-      const policy = FAST_MODE ? RUN_POLICY.fast : (testCase.runs ?? RUN_POLICY.single);
+      // also collapses the repeating cases while iterating. A simulated case defaults higher.
+      const policy = FAST_MODE
+        ? RUN_POLICY.fast
+        : (testCase.runs ?? (testCase.user ? SIMULATED_DEFAULT : RUN_POLICY.single));
       const { n, passK } = policy;
       process.stdout.write(`  ${testCase.id} `);
 
@@ -133,6 +149,12 @@ async function main() {
         // rather than folding it into the pass/fail count as a quiet failure.
         if (capture.error) {
           console.log(red(`\n    ✗ run ${i + 1} threw after ${secs}s: ${capture.error}`));
+        } else if (capture.inconclusive) {
+          console.log(
+            yellow(
+              `\n    ? run ${i + 1} inconclusive after ${secs}s: ${capture.inconclusive.reason}`,
+            ),
+          );
         } else if (verbose) {
           const tools = capture.trajectory.map((t) => t.name).join(" → ") || "(none)";
           const gated = capture.interrupts.map((t) => t.name).join(", ");
@@ -141,18 +163,33 @@ async function main() {
           );
         }
 
-        // Graders may be async (rowCountInStore reads the sandbox DB back).
-        const results = capture.error
-          ? [{ graderId: "invoke", passed: false, reason: capture.error }]
-          : await Promise.all(testCase.graders.map((g) => g.grade(capture)));
+        // Graders may be async (rowCountInStore reads the sandbox DB back). An inconclusive run
+        // gets NO verdicts at all.
+        const results = capture.inconclusive
+          ? []
+          : capture.error
+            ? [{ graderId: "invoke", passed: false, reason: capture.error }]
+            : await Promise.all(testCase.graders.map((g) => g.grade(capture)));
         perRun.push({ results, capture });
-        process.stdout.write(results.every((r) => r.passed) ? green("•") : red("•"));
+        process.stdout.write(
+          capture.inconclusive
+            ? yellow("?")
+            : results.every((r) => r.passed)
+              ? green("•")
+              : red("•"),
+        );
       }
 
-      const runsPassed = perRun.filter((r) => r.results.every((x) => x.passed)).length;
-      const passed = runsPassed >= passK;
-      console.log(` ${passed ? green("PASS") : red("FAIL")} ${dim(`(${runsPassed}/${n})`)}`);
-      outcomes.push({ testCase, runsAttempted: n, runsPassed, passed, perRun });
+      // An inconclusive run shrinks the DENOMINATOR rather than counting as a fail, so a `strict`
+      // case with one inconclusive run is graded 2/2, not 2/3. See "Inconclusive" in the README.
+      const conclusive = perRun.filter((r) => !r.capture.inconclusive);
+      const inconclusive = conclusive.length === 0;
+      const runsPassed = conclusive.filter((r) => r.results.every((x) => x.passed)).length;
+      const passed = !inconclusive && runsPassed >= Math.min(passK, conclusive.length);
+
+      const label = inconclusive ? yellow("INCONCLUSIVE") : passed ? green("PASS") : red("FAIL");
+      console.log(` ${label} ${dim(`(${runsPassed}/${conclusive.length || n})`)}`);
+      outcomes.push({ testCase, runsAttempted: n, runsPassed, passed, inconclusive, perRun });
     }
   } finally {
     // Seeded data stays — the next run wipes it, so a failure is left inspectable.
@@ -160,7 +197,7 @@ async function main() {
   }
 
   // Detail for failures only — a passing case needs no explanation.
-  const failed = outcomes.filter((o) => !o.passed && !o.skipped);
+  const failed = outcomes.filter((o) => !o.passed && !o.skipped && !o.inconclusive);
   for (const o of failed) {
     console.log(bold(`\n─── ${o.testCase.id} ───`));
     if (o.testCase.description) console.log(dim(o.testCase.description));
@@ -177,16 +214,44 @@ async function main() {
     });
   }
 
+  // Inconclusive cases get their own block. They do not fail the build, so if they were quiet
+  // they would be invisible — and a case that silently stops testing anything is worse than a red.
+  const unresolved = outcomes.filter((o) => o.inconclusive);
+  for (const o of unresolved) {
+    console.log(bold(`\n─── ${o.testCase.id} ${yellow("(inconclusive)")} ───`));
+    o.perRun.forEach((run, i) => {
+      const why = run.capture.inconclusive;
+      if (!why) return;
+      console.log(yellow(`  run ${i + 1}: ${why.reason}`) + dim(` — ${why.detail}`));
+    });
+  }
+
   const skipped = outcomes.filter((o) => o.skipped).length;
-  const graded = outcomes.length - skipped;
+  const inconclusiveCount = unresolved.length;
+  const graded = outcomes.length - skipped - inconclusiveCount;
   const passedCount = graded - failed.length;
   console.log(
-    bold(`\n${passedCount}/${graded} cases passed`) + (skipped ? dim(` (${skipped} skipped)`) : ""),
+    bold(`\n${passedCount}/${graded} cases passed`) +
+      (skipped ? dim(` (${skipped} skipped)`) : "") +
+      (inconclusiveCount ? yellow(` (${inconclusiveCount} inconclusive)`) : ""),
   );
 
   // The console output scrolls away; the report is what survives the run.
   const path = writeReport(
-    buildReport(outcomes, { provider: MODEL.provider, model: MODEL.name, fast: FAST_MODE }),
+    buildReport(outcomes, {
+      provider: MODEL.provider,
+      model: MODEL.name,
+      fast: FAST_MODE,
+      // Recorded only when it actually shaped the run. A report whose inputs came from an
+      // unrecorded model is not reproducible.
+      simulator: selected.some((c) => c.user)
+        ? {
+            provider: SIMULATOR_MODEL.provider,
+            model: SIMULATOR_MODEL.name,
+            temperature: SIMULATOR_MODEL.temperature,
+          }
+        : undefined,
+    }),
   );
   if (path) console.log(dim(`  report: ${path}`));
   console.log();

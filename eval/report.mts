@@ -1,5 +1,12 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import type { EvalCase, GradeResult, RunCapture } from "./types.mts";
+import type {
+  ConversationTurn,
+  EvalCase,
+  GradeResult,
+  Inconclusive,
+  RunCapture,
+} from "./types.mts";
+import { DEFAULT_MAX_TURNS } from "./config.mts";
 import { renderHtml } from "./viewer.mts";
 
 /**
@@ -25,7 +32,14 @@ export interface ReportCase {
   tags?: string[];
   /** `approval` implies the HITL middleware ran live for this case. */
   approval?: "allow" | "deny";
+  /**
+   * Present when the case ran with a simulated user. Fact VALUES are deliberately omitted — a
+   * report is a shared artifact, and the count plus the goal is enough to explain the run.
+   */
+  user?: { goal: string; factCount: number; maxTurns: number };
   skipped: boolean;
+  /** Every run produced no gradeable evidence. Not a failure — see eval/README.md. */
+  inconclusive?: boolean;
   passed: boolean;
   runsAttempted: number;
   runsPassed: number;
@@ -38,6 +52,13 @@ export interface ReportCase {
     interrupts: string[];
     finalText: string;
     error?: string;
+    /** Why this run produced nothing gradeable. Graders were skipped, so `results` is empty. */
+    inconclusive?: Inconclusive;
+    /**
+     * What was actually said. Only a simulated run has this — and it is the ONLY place a
+     * generated user turn is recorded, since `prompt` holds just the scripted opening.
+     */
+    conversation?: ConversationTurn[];
   }[];
 }
 
@@ -48,9 +69,16 @@ export interface ReportFile {
     model: string;
     /** `fast` collapses every case to one run, including the ones that opt into repeats. */
     mode: "fast" | "repeats";
+    /**
+     * The model that played the USER, when any case simulated one. Recorded because changing it
+     * invalidates comparison with older reports the same way a fixture change would.
+     */
+    simulator?: { provider: string; model: string; temperature: number };
     passed: number;
     graded: number;
     skipped: number;
+    /** Cases that tested nothing. Watch this across runs — it is how coverage decays quietly. */
+    inconclusive: number;
   };
   cases: ReportCase[];
 }
@@ -62,9 +90,15 @@ export function buildReport(
     runsPassed: number;
     passed: boolean;
     skipped?: boolean;
+    inconclusive?: boolean;
     perRun: { results: GradeResult[]; capture: RunCapture }[];
   }[],
-  meta: { provider: string; model: string; fast: boolean },
+  meta: {
+    provider: string;
+    model: string;
+    fast: boolean;
+    simulator?: { provider: string; model: string; temperature: number };
+  },
 ): ReportFile {
   const cases: ReportCase[] = outcomes.map((o) => ({
     id: o.testCase.id,
@@ -72,7 +106,17 @@ export function buildReport(
     prompt: o.testCase.prompt,
     tags: o.testCase.tags,
     approval: o.testCase.approval,
+    ...(o.testCase.user
+      ? {
+          user: {
+            goal: o.testCase.user.goal,
+            factCount: o.testCase.user.facts.length,
+            maxTurns: o.testCase.user.maxTurns ?? DEFAULT_MAX_TURNS,
+          },
+        }
+      : {}),
     skipped: Boolean(o.skipped),
+    ...(o.inconclusive ? { inconclusive: true } : {}),
     passed: o.passed,
     runsAttempted: o.runsAttempted,
     runsPassed: o.runsPassed,
@@ -83,11 +127,16 @@ export function buildReport(
       interrupts: r.capture.interrupts.map((t) => t.name),
       finalText: r.capture.finalText,
       ...(r.capture.error ? { error: r.capture.error } : {}),
+      ...(r.capture.inconclusive ? { inconclusive: r.capture.inconclusive } : {}),
+      ...(r.capture.conversation ? { conversation: r.capture.conversation } : {}),
     })),
   }));
 
   const skipped = cases.filter((c) => c.skipped).length;
-  const graded = cases.length - skipped;
+  const inconclusive = cases.filter((c) => c.inconclusive).length;
+  // `graded` excludes both, so the headline passed/graded fraction only counts cases that
+  // actually produced evidence.
+  const graded = cases.length - skipped - inconclusive;
 
   return {
     meta: {
@@ -95,9 +144,11 @@ export function buildReport(
       provider: meta.provider,
       model: meta.model,
       mode: meta.fast ? "fast" : "repeats",
-      passed: cases.filter((c) => c.passed && !c.skipped).length,
+      ...(meta.simulator ? { simulator: meta.simulator } : {}),
+      passed: cases.filter((c) => c.passed && !c.skipped && !c.inconclusive).length,
       graded,
       skipped,
+      inconclusive,
     },
     cases,
   };

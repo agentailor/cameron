@@ -4,7 +4,15 @@ import { Command } from "@langchain/langgraph";
 import type { Decision, HITLRequest, HITLResponse } from "langchain";
 import { randomUUID } from "node:crypto";
 import { LIMITS } from "./config.mts";
-import type { EvalCase, RunCapture, ToolCall, ToolResult } from "./types.mts";
+import { runSimulatedConversation } from "./simulatedUser.mts";
+import type {
+  ConversationTurn,
+  EvalCase,
+  Inconclusive,
+  RunCapture,
+  ToolCall,
+  ToolResult,
+} from "./types.mts";
 
 /**
  * Runs a case against the real agent and captures what it did.
@@ -70,64 +78,111 @@ async function pendingActions(agent: Agent, threadId: string): Promise<ToolCall[
 
 export async function runCase(agent: Agent, testCase: EvalCase): Promise<RunCapture> {
   const threadId = `${testCase.id}-${randomUUID()}`;
-  const config = {
-    configurable: { thread_id: threadId },
-    recursionLimit: LIMITS.recursionLimit,
-    signal: AbortSignal.timeout(LIMITS.timeoutMs),
-  };
 
   const trajectory: ToolCall[] = [];
   const toolResults: ToolResult[] = [];
   const interrupts: ToolCall[] = [];
   const turns = Array.isArray(testCase.prompt) ? testCase.prompt : [testCase.prompt];
 
-  try {
-    let finalText = "";
-    // Every turn reuses one thread_id, so the Postgres checkpointer carries the conversation
-    // forward — no message history is replayed by hand.
-    let seen = 0;
+  // Each invoke returns the WHOLE thread; `seen` is the cursor past what's already collected.
+  let seen = 0;
+  let finalText = "";
+  let pausedAtEnd = false;
 
-    for (const turn of turns) {
-      let result = await agent.invoke({ messages: [new HumanMessage(turn)] }, config);
-      // The checkpointer accumulates, so each invoke returns the WHOLE thread. Collecting it
-      // wholesale would count earlier tool calls again on every turn.
-      let fresh = result.messages.slice(seen);
-      collect(fresh, trajectory, toolResults);
-      seen = result.messages.length;
-      finalText = lastAssistantText(fresh) || finalText;
+  // Separate from the per-turn budget: a conversation of unknown length would otherwise abort
+  // mid-flight and surface as a throw, i.e. as an agent crash.
+  const deadline = AbortSignal.timeout(LIMITS.conversationTimeoutMs);
 
-      // With `approval` set the middleware is live, so a mutating call pauses instead of running.
-      // Answer it the way the UI would and let the graph finish before the next turn starts.
-      if (testCase.approval) {
-        const actions = await pendingActions(agent, threadId);
-        interrupts.push(...actions);
+  /** One user message in, the agent's reply out, approval interrupts settled. Shared by both paths. */
+  async function send(text: string): Promise<string> {
+    const config = {
+      configurable: { thread_id: threadId },
+      recursionLimit: LIMITS.recursionLimit,
+      signal: AbortSignal.any([deadline, AbortSignal.timeout(LIMITS.timeoutMs)]),
+    };
 
-        if (actions.length > 0) {
-          const decision: Decision =
-            testCase.approval === "allow"
-              ? { type: "approve" }
-              : { type: "reject", message: "The user denied this action." };
-          // One decision per action request, positionally aligned — the middleware batches a
-          // turn's approval-requiring calls into a single interrupt.
-          const resume: HITLResponse = { decisions: actions.map(() => decision) };
+    let result = await agent.invoke({ messages: [new HumanMessage(text)] }, config);
+    let fresh = result.messages.slice(seen);
+    collect(fresh, trajectory, toolResults);
+    seen = result.messages.length;
+    finalText = lastAssistantText(fresh) || finalText;
+    let turnText = lastAssistantText(fresh);
 
-          result = await agent.invoke(new Command({ resume }), config);
-          fresh = result.messages.slice(seen);
-          collect(fresh, trajectory, toolResults);
-          seen = result.messages.length;
-          finalText = lastAssistantText(fresh) || finalText;
-        }
+    // With `approval` set the middleware is live, so a mutating call pauses instead of running.
+    if (testCase.approval) {
+      let batch = await pendingActions(agent, threadId);
+      interrupts.push(...batch);
+
+      // A turn can pause more than once — keep resuming until nothing is pending.
+      // See "Approval cases" in eval/README.md for why answering only the first breaks a case.
+      for (let guard = 0; batch.length > 0 && guard < LIMITS.recursionLimit; guard++) {
+        const decision: Decision =
+          testCase.approval === "allow"
+            ? { type: "approve" }
+            : { type: "reject", message: "The user denied this action." };
+        // One decision per action request, positionally aligned.
+        const resume: HITLResponse = { decisions: batch.map(() => decision) };
+
+        result = await agent.invoke(new Command({ resume }), config);
+        fresh = result.messages.slice(seen);
+        collect(fresh, trajectory, toolResults);
+        seen = result.messages.length;
+        finalText = lastAssistantText(fresh) || finalText;
+        turnText = lastAssistantText(fresh) || turnText;
+
+        batch = await pendingActions(agent, threadId);
+        interrupts.push(...batch);
       }
+
+      // Still pending: the agent is waiting, not finished — a distinction `trajectory` can't make.
+      pausedAtEnd = batch.length > 0;
     }
 
-    return { finalText, trajectory, toolResults, interrupts };
-  } catch (err) {
+    return turnText;
+  }
+
+  try {
+    let conversation: ConversationTurn[] | undefined;
+    let inconclusive: Inconclusive | undefined;
+
+    if (testCase.user) {
+      const simulated = await runSimulatedConversation({
+        user: testCase.user,
+        opening: turns,
+        hooks: { send },
+        threadId,
+      });
+      conversation = simulated.conversation;
+      inconclusive = simulated.inconclusive;
+    } else {
+      for (const turn of turns) await send(turn);
+    }
+
     return {
-      finalText: "",
+      finalText,
       trajectory,
       toolResults,
       interrupts,
-      error: err instanceof Error ? err.message : String(err),
+      pausedAtEnd,
+      ...(conversation ? { conversation } : {}),
+      ...(inconclusive ? { inconclusive } : {}),
     };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // Running out of the conversation budget is the harness giving up, not the agent crashing.
+    if (testCase.user && deadline.aborted) {
+      return {
+        finalText,
+        trajectory,
+        toolResults,
+        interrupts,
+        pausedAtEnd,
+        inconclusive: {
+          reason: "conversation-timeout",
+          detail: `the conversation exceeded ${LIMITS.conversationTimeoutMs / 1000}s`,
+        },
+      };
+    }
+    return { finalText, trajectory, toolResults, interrupts, pausedAtEnd, error: message };
   }
 }

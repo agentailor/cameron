@@ -91,7 +91,9 @@ All deterministic, all in `graders.mts`. `grade()` may be async (one grader read
 
 **Answer text** — `statesAmount(n)`, `statesNoWrongTotal(n)`, `statesCount(n)`
 
-**Approval** — `pausedForApproval(...)`, `noMutationWithoutApproval()`
+**Approval** — `pausedForApproval(...)`, `noMutationWithoutApproval()`. `pausedForApproval`
+distinguishes three outcomes rather than reporting a disjunction: the tool ran ungated, the run
+ended with the agent still waiting at the gate, or it was never requested.
 
 **Ground truth** — `rowCountInStore(table, n)` (async; reads the sandbox DB),
 `toolResultMatches(name, predicate, opts)` (reads what the agent actually _saw_)
@@ -117,7 +119,8 @@ is usually a number.
 
 ## Run policy (pass@k)
 
-Declared in `config.mts`. A case that doesn't set `runs` runs **once**.
+Declared in `config.mts`. A case that doesn't set `runs` runs **once** — unless it declares a
+`user`, which defaults to `majority` (see _Cost_ above).
 
 | Policy     | Runs      | Use for                                                            |
 | ---------- | --------- | ------------------------------------------------------------------ |
@@ -183,7 +186,15 @@ jq '.cases[] | select(.id == "denied-expense-writes-nothing")' eval/results/late
 ```
 
 `meta.mode` records whether repeats ran or `EVAL_MODE=fast` collapsed them, so a report always
-says how much evidence is behind it.
+says how much evidence is behind it. `meta.inconclusive` counts cases that tested nothing, and
+`meta.simulator` records which model played the user when any case simulated one.
+
+A simulated run also records what was actually said — the only place a generated user turn appears,
+since `prompt` holds just the scripted opening:
+
+```bash
+jq '.cases[] | select(.id=="csv-import-confirms-ambiguous-date-format") | .runs[0].conversation' eval/results/latest.json
+```
 
 ## Multi-turn cases
 
@@ -199,6 +210,145 @@ format before writing anything.
 Grade the **consequence, not the conversation.** Whether the agent asked is a claim with many
 phrasings, and there is no judge here; what it did afterwards is a fact in the database.
 
+### Scripted turns answer a question the author guessed
+
+A scripted array is a recording played on a fixed schedule. It holds only while the agent asks
+exactly what the case author anticipated — and it stops holding the moment the agent asks something
+reasonable but unforeseen ("which account?", "your currency isn't set — is this EUR?"). The script
+then answers a _different_ question, the work never happens, and the graders blame the agent.
+
+That inverts the suite: it **rewards agents that guess and punishes agents that ask**, which is the
+opposite of Cameron's first hard rule. Hence the simulated user.
+
+## Simulated users
+
+A case can add a `user` alongside its `prompt`:
+
+```ts
+prompt: `${ATTACHMENT}\n\nImport these.`,      // the fixed opening — unchanged
+user: {
+  goal: "import the transactions in the file into your checking account",
+  facts: [
+    { topic: "which account", value: "checking" },
+    { topic: "the date format", value: csv.dateFormat, contradicts: ["MM/dd/yyyy"] },
+  ],
+  until: async () => (await countImportedRows()) > 0,
+},
+```
+
+`prompt` stays the **fixed opening**; once those turns are spent, a second model answers the agent's
+questions from `facts` alone. An existing case therefore gains the ability to answer without
+changing what it asks first.
+
+**This does not introduce a judge.** The simulator produces _input_. Every grader is still a
+deterministic function over the capture — `importedInMonth` still asks which month the rows landed
+on. What changed is that the agent may now ask for the information it needs, which is the behavior
+the product is supposed to have.
+
+The simulator is pinned separately from the model under test (`SIMULATOR_MODEL` in `config.mts`) at
+temperature 0, and recorded in every report. Changing it invalidates comparison with older reports
+the same way a fixture change would: moved together, a suite-wide swing could not be attributed —
+you would not know whether the agent got worse or the user got weirder.
+
+### The fact sheet
+
+Every fact value must be **derived from `FIXTURE`**, never typed by hand. A simulator that
+volunteers a date format the fixture contradicts makes `importedInMonth` assert against a premise
+the conversation never established, and the case goes green for the wrong reason.
+
+Facts are **relay values**, not things the simulator reasons from. Don't add a fact stating the row
+count; the simulator would have to compute against it.
+
+**Keep values out of `goal`.** The goal is intent ("get these transactions imported"), not data.
+A goal reading "import these into your _checking_ account" leaks the account, and the simulator will
+reasonably confirm it when the agent proposes one — so a case meant to test whether the agent asks
+quietly stops testing it. Anything the agent must obtain belongs in `facts`, where removing it is
+what makes the case fail.
+
+Two clauses in the persona prompt (`simulatedUser.prompt.mts`) carry the design, both from
+[tau-bench](https://github.com/sierra-research/tau-bench):
+
+- **"Answer only what was asked."** A user who front-loads every fact makes the agent's asking
+  behavior unobservable — which is the exact thing these cases exist to observe.
+- **"Never invent a value."** A green case built on a fabricated premise is worse than a red one.
+  This has to cover **confirmation**, not just invention: agreeing to a value you were never given
+  fabricates it just as surely as volunteering it, and it is the likelier shape — an agent that
+  proposes a mapping invites a yes, and "yes" is the cheapest reply there is. Hence the rule about
+  keeping values out of `goal` above: the two failures are the same one seen from either end.
+
+The simulator never sees tool traffic: `openevals` drops every message that isn't a plain user
+message or a tool-call-free assistant message. That is _structural_, so there is deliberately no
+"don't look at the tools" clause in the prompt.
+
+### Termination
+
+Four stops, in priority order. Two are sentinels the simulator emits, and they are the only two that
+say _why_ the conversation ended.
+
+| Stop                                                                  | Outcome             |
+| --------------------------------------------------------------------- | ------------------- |
+| `###DONE###` — nothing left to answer                                 | normal; graders run |
+| `###CANNOT_ANSWER###` — the agent asked for something outside `facts` | `inconclusive`      |
+| `until()` — the consequence happened                                  | normal; graders run |
+| `maxTurns` (default 6)                                                | `inconclusive`      |
+
+The two sentinels are deliberately separate outcomes: one means the case **was** tested, the other
+means it **wasn't**. An exact token rather than a phrase, for the same reason graders only
+string-match atomic targets — "I don't know" has many spellings, and matching them is a second
+contract that drifts.
+
+`until` is the consequence-shaped stop and matches the suite's existing stance. Treat it as required
+on a mutating simulated case: it is what keeps cost bounded once the thing under test has happened.
+
+### Inconclusive
+
+A run that produced **no gradeable evidence**. Graders are skipped entirely — a verdict on a
+conversation that never happened is noise dressed as signal.
+
+| Reason                    | Repair                                                                  |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `simulator-cannot-answer` | add the named fact to the case                                          |
+| `simulator-invented`      | the simulator ignored the prompt; tighten the fact or its `contradicts` |
+| `simulator-silent`        | harness or model problem                                                |
+| `max-turns`               | raise `maxTurns`, or the agent is looping                               |
+| `conversation-timeout`    | budget                                                                  |
+
+`simulator-cannot-answer` carries a **repair instruction** rather than just a diagnosis: it reports
+the agent's verbatim question, so the usual fix is mechanical. Expect the common authoring loop to be
+_run → `simulator-cannot-answer` → add the named fact → rerun_.
+
+But read the question rather than assuming. An agent asking for the owner's bank password would trip
+the same sentinel, and that is a **finding**, not a gap.
+
+**Everything else is a plain failure.** The agent gave up, took a wrong action, imported under a
+guessed format — all fail. This tier's whole risk is becoming a place to hide failures: a case that
+keeps stalling gets marked inconclusive, exits 0, and quietly stops testing anything. Keep the
+causes to the five above, and watch `meta.inconclusive` across runs.
+
+Mechanically: an inconclusive run **shrinks the pass@k denominator** rather than counting as a
+failure, so a `strict` case with one inconclusive run is graded 2/2, not 2/3. A case whose every run
+was inconclusive is itself inconclusive, is excluded from `graded`, and **does not fail the build** —
+but it is printed in its own block, because a silent inconclusive is how coverage decays unnoticed.
+
+### When not to simulate
+
+A simulated user is not an upgrade for every case. Two on the books that should stay scripted:
+
+- `no-double-prompt-on-mutation` tests that the agent **doesn't** ask when it was given everything.
+  A user standing by to answer weakens it — the point is that no answer should ever be needed.
+- `csv-import-does-not-import-before-confirming` grades turn one **in isolation** and must never
+  gain a second turn.
+
+### Cost
+
+Turns x runs x two models. A simulated case defaults to `RUN_POLICY.majority` rather than the
+suite-wide single run, because a simulated conversation stacks the simulator's variance on the
+agent's and the two _interact_: a differently-phrased answer changes what the agent does next. One
+run of a simulated case therefore carries strictly less evidence than one run of a scripted one.
+
+`until` is the real cost control. The simulator itself is cheap — a small model, a short context,
+and tool traffic filtered out — and needs no extra API key, since it uses the same provider.
+
 ## Approval cases
 
 Setting `approval: "allow" | "deny"` on a case runs it with the human-in-the-loop middleware **live**
@@ -209,6 +359,14 @@ pending request from the checkpoint and resumes with a `Command`, mirroring `bui
 Paused calls land on `RunCapture.interrupts`. This matters: `trajectory` looks **identical** whether
 a call was gated or executed, because a paused call is still a call the model made — so `interrupts`
 is the only evidence the gate did its job.
+
+A turn can pause **more than once.** The middleware batches the calls of a single model step into
+one interrupt, but a mutating call whose result prompts another pauses again after the first resume,
+so the runner keeps resuming until nothing is pending. Answering only the first leaves the second
+paused forever: the tool never runs, and `pausedForApproval` reports it as never requested — an
+agent failure on the face of it, a harness one in fact. If the graph is still paused when the run
+ends, `RunCapture.pausedAtEnd` records it, which is what lets that grader say "still waiting" rather
+than "never asked".
 
 Approval cases mutate, so `run.mts` re-seeds the fixture before **each** run.
 
@@ -222,6 +380,8 @@ Approval cases mutate, so `run.mts` re-seeds the fixture before **each** run.
 5. `pnpm typecheck:eval`, then run just that case in fast mode (see _Running_) with `-v` to see the
    trajectory.
 6. Confirm it can **fail**: a case that has never been observed red is not known to test anything.
+7. If it declares a `user`, expect to iterate: a run reporting `simulator-cannot-answer` names the
+   question the fact sheet couldn't answer, and adding that fact is usually the whole fix.
 
 Use `skip: true` with a comment rather than deleting a known-red case — a skipped case with a
 recorded reason is a tracked finding; a deleted one is lost.
@@ -236,3 +396,10 @@ recorded reason is a tracked finding; a deleted one is lost.
 - **The root `tsconfig.json` does not cover this tree** — its `include` is `**/*.ts`, which doesn't
   match `.mts`. Hence `eval/tsconfig.json` and `pnpm typecheck:eval`.
 - **No run-over-run diff.** Each run writes a report (below), but nothing compares two of them yet.
+- **Inconclusive runs are not retried.** A case can lose coverage silently if its simulator keeps
+  stalling — watch `meta.inconclusive` across runs.
+- **The simulated user cannot see tool calls.** Realistic, but it means it can never catch the agent
+  _claiming_ it did something it didn't.
+- **`openevals` traces through `langsmith`.** It no-ops without credentials, but the dependency is
+  there, and it pulls `@langchain/openai` into a suite that calls neither. `simulatedUser.mts` is
+  the only file importing it, so dropping it later is a one-file change.

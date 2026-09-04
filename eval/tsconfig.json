@@ -11,6 +11,13 @@
     "allowImportingTsExtensions": true,
     "types": ["node"]
   },
-  "include": ["**/*.mts", "../src/lib/agent/capabilities.ts", "../src/types/**/*.ts"],
+  // `util.ts` is here for `createChatModel`, which the simulated user reuses. Anything new pulled
+  // in from src/ must be added, or typecheck silently stops covering it.
+  "include": [
+    "**/*.mts",
+    "../src/lib/agent/capabilities.ts",
+    "../src/lib/agent/util.ts",
+    "../src/types/**/*.ts"
+  ],
   "exclude": ["../node_modules"]
 }
