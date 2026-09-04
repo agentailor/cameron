@@ -294,9 +294,11 @@ pnpm typecheck:eval                         # free — the root tsc misses this 
   behavior actually varies. A repo that gates merges on evals would default the other way; this suite
   gates nothing.
 - **Deterministic graders only — no LLM judge.** Viable because the assertion target is usually a
-  number, which has one spelling. Two rules when authoring: never let a negative grader stand alone
-  (it passes vacuously on a run that did nothing), and only string-match **atomic** targets — assert
-  structural facts (which tool ran, what's in the DB) instead of claims.
+  number, which has one spelling. A simulated user (below) generates the user's side of a
+  conversation, but grading stays deterministic: the model produces **input**, never a verdict.
+  Two rules when authoring: never let a negative grader stand alone (it passes vacuously on a run
+  that did nothing), and only string-match **atomic** targets — assert structural facts (which tool
+  ran, what's in the DB) instead of claims.
 - **`FIXTURE` (`eval/seed.mts`) is the single source of truth** for expected figures, all derived
   from the seeding formula. Never hardcode a total in a case. Dining's 262 rows deliberately exceed
   `query_transactions`' 200-row cap — that truncation trap is the point.
@@ -315,6 +317,22 @@ pnpm typecheck:eval                         # free — the root tsc misses this 
   checkpointer carries the conversation. For any behavior that requires the agent to stop and ask —
   CSV import is the current example. Grade the **consequence** (what ended up in the DB) rather than
   the conversation: whether it asked is a claim with many spellings, and there is no judge.
+- **Simulated users** (`eval/simulatedUser.mts` — the ONLY file importing `openevals`): a case may
+  add a `user`, a goal plus a closed fact sheet **derived from `FIXTURE`**, and the simulator
+  answers the agent's questions once the scripted `prompt` turns are spent. It exists because a
+  scripted turn answers the question the case author _guessed_: when the agent asks something
+  reasonable but unforeseen, the script answers a different one, so the suite ends up rewarding
+  agents that guess over agents that ask — the inverse of the approval-gate design. The simulator
+  model is pinned **separately** from the model under test (`SIMULATOR_MODEL`) at temperature 0 and
+  recorded in every report; changing it invalidates comparison with older reports. Two sentinels
+  end a conversation: `###DONE###` (finished — graders run) and `###CANNOT_ANSWER###` (the agent
+  asked for something outside the facts → inconclusive, naming the question so the fix is
+  mechanical).
+- **`inconclusive` is a third outcome**, distinct from pass/fail: the run produced no gradeable
+  evidence, so graders are skipped, the pass@k denominator shrinks, and the build does **not**
+  fail. Reserved for harness or case-authoring problems (five enumerated causes). "The agent did
+  something wrong in a conversation" is always a plain **failure** — widening this tier is how it
+  turns into a place to hide them.
 
 ### Skills
 

@@ -1,4 +1,5 @@
 import type { ReportCase, ReportFile } from "./report.mts";
+import type { ConversationTurn } from "./types.mts";
 
 /**
  * Renders a report as a single self-contained HTML file.
@@ -20,7 +21,7 @@ function esc(value: unknown): string {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ESCAPES[ch]);
 }
 
-function pill(text: string, kind: "pass" | "fail" | "skip" | "muted"): string {
+function pill(text: string, kind: "pass" | "fail" | "warn" | "skip" | "muted"): string {
   return `<span class="pill ${kind}">${esc(text)}</span>`;
 }
 
@@ -37,6 +38,25 @@ function renderTrajectory(trajectory: string[], interrupts: string[]): string {
     .join('<span class="arrow">→</span>');
 }
 
+/**
+ * The transcript of a simulated run — the case-level `prompt` shows only the scripted opening, so
+ * without this a 2-turn prompt sits beside a 6-turn conversation unexplained. Generated turns are
+ * marked: which turns the case anticipated is the distinction worth seeing.
+ */
+function renderConversation(conversation: ConversationTurn[]): string {
+  const turns = conversation
+    .map((t) => {
+      const sim = t.role === "user" && t.source === "simulated";
+      const who = t.role === "user" ? `user${sim ? ' <em>sim</em>' : ""}` : "Cameron";
+      return (
+        `<div class="turn ${esc(t.role)}${sim ? " sim" : ""}">` +
+        `<span class="who">${who}</span><pre>${esc(t.text)}</pre></div>`
+      );
+    })
+    .join("");
+  return `<details class="convo"><summary>conversation (${conversation.length} turns)</summary>${turns}</details>`;
+}
+
 function renderRun(run: ReportCase["runs"][number], index: number, total: number): string {
   const label = total > 1 ? `run ${index + 1}` : "run";
   const graders = run.results
@@ -48,14 +68,22 @@ function renderRun(run: ReportCase["runs"][number], index: number, total: number
     )
     .join("");
 
+  const state = run.inconclusive ? "warn" : run.passed ? "pass" : "fail";
+
   return `
-    <div class="run ${run.passed ? "ok" : "bad"}">
+    <div class="run ${run.inconclusive ? "warn" : run.passed ? "ok" : "bad"}">
       <div class="run-head">
         <strong>${esc(label)}</strong>
-        ${pill(run.passed ? "pass" : "fail", run.passed ? "pass" : "fail")}
+        ${pill(run.inconclusive ? "inconclusive" : state, state)}
         <div class="traj">${renderTrajectory(run.trajectory, run.interrupts)}</div>
       </div>
       ${run.error ? `<p class="error">threw: ${esc(run.error)}</p>` : ""}
+      ${
+        run.inconclusive
+          ? `<p class="warned"><strong>${esc(run.inconclusive.reason)}</strong> — ${esc(run.inconclusive.detail)}</p>`
+          : ""
+      }
+      ${run.conversation?.length ? renderConversation(run.conversation) : ""}
       <ul class="graders">${graders}</ul>
       ${run.finalText ? `<details><summary>answer</summary><pre>${esc(run.finalText)}</pre></details>` : ""}
     </div>`;
@@ -63,23 +91,25 @@ function renderRun(run: ReportCase["runs"][number], index: number, total: number
 
 function renderCase(c: ReportCase): string {
   const turns = Array.isArray(c.prompt) ? c.prompt : [c.prompt];
-  const status = c.skipped ? "skip" : c.passed ? "pass" : "fail";
+  const status = c.skipped ? "skip" : c.inconclusive ? "warn" : c.passed ? "pass" : "fail";
+  const statusLabel = c.inconclusive ? "inconclusive" : status;
   const tags = (c.tags ?? []).map((t) => `<span class="tag">${esc(t)}</span>`).join("");
 
   return `
     <section class="case ${status}" id="${esc(c.id)}">
       <header>
-        <h2>${pill(status, status)} ${esc(c.id)}</h2>
+        <h2>${pill(statusLabel, status)} ${esc(c.id)}</h2>
         <div class="meta-row">
           ${c.runsAttempted > 1 ? `<span>${c.runsPassed}/${c.runsAttempted} runs</span>` : ""}
           ${c.approval ? `<span>approval: <code>${esc(c.approval)}</code></span>` : ""}
           ${turns.length > 1 ? `<span>${turns.length} turns</span>` : ""}
+          ${c.user ? `<span>simulated user · ${esc(c.user.factCount)} facts</span>` : ""}
           ${tags}
         </div>
       </header>
       ${c.description ? `<p class="desc">${esc(c.description)}</p>` : ""}
       <details class="prompt">
-        <summary>prompt${turns.length > 1 ? ` (${turns.length} turns)` : ""}</summary>
+        <summary>prompt${turns.length > 1 ? ` (${turns.length} turns)` : ""}${c.user ? ", then simulated" : ""}</summary>
         ${turns.map((t, i) => `<pre>${turns.length > 1 ? `<span class="muted">turn ${i + 1}</span>\n` : ""}${esc(t)}</pre>`).join("")}
       </details>
       ${c.skipped ? `<p class="muted">skipped — not executed</p>` : c.runs.map((r, i) => renderRun(r, i, c.runs.length)).join("")}
@@ -88,10 +118,12 @@ function renderCase(c: ReportCase): string {
 
 const STYLE = `
   :root { color-scheme: light dark; --bg:#fff; --fg:#1a1a1a; --muted:#6b7280; --line:#e5e7eb;
-          --ok:#15803d; --bad:#b91c1c; --okbg:#f0fdf4; --badbg:#fef2f2; --code:#f6f8fa; }
+          --ok:#15803d; --bad:#b91c1c; --warn:#b45309; --okbg:#f0fdf4; --badbg:#fef2f2;
+          --warnbg:#fffbeb; --code:#f6f8fa; }
   @media (prefers-color-scheme: dark) {
     :root { --bg:#0d1117; --fg:#e6edf3; --muted:#8b949e; --line:#30363d;
-            --ok:#3fb950; --bad:#f85149; --okbg:#0f2417; --badbg:#2b1113; --code:#161b22; }
+            --ok:#3fb950; --bad:#f85149; --warn:#d29922; --okbg:#0f2417; --badbg:#2b1113;
+            --warnbg:#2a2113; --code:#161b22; }
   }
   * { box-sizing: border-box; }
   body { margin:0; padding:2rem 1.25rem 4rem; background:var(--bg); color:var(--fg);
@@ -139,7 +171,26 @@ const STYLE = `
         white-space:pre-wrap; word-break:break-word; font-size:.88rem; line-height:1.5;
         margin:.45rem 0 0; }
   .muted { color:var(--muted); }
+  .case.warn { border-left-color: var(--warn); }
+  .pill.warn { background: var(--warnbg); color: var(--warn); }
+  .run.warn { border-left: 3px solid var(--warn); }
+  .warned { background: var(--warnbg); color: var(--warn); padding: .5rem .7rem;
+            border-radius: 6px; margin: .5rem 0; font-size: .92em; }
+  .convo { margin: .5rem 0; }
+  .convo .turn { display: flex; gap: .6rem; align-items: baseline; margin: .35rem 0; }
+  .convo .turn.assistant { padding-left: 1.5rem; }
+  .convo .turn.sim { border-left: 2px solid var(--warn); padding-left: .6rem; }
+  .convo .who { flex: 0 0 5.5rem; color: var(--muted); font-size: .8em; text-align: right; }
+  .convo .who em { color: var(--warn); font-style: normal; }
+  .convo pre { margin: 0; flex: 1; white-space: pre-wrap; }
 `;
+
+/** Failures (0) before inconclusive (1) before passes (2). */
+function rank(c: ReportCase): number {
+  if (c.skipped) return 3;
+  if (c.inconclusive) return 1;
+  return c.passed ? 2 : 0;
+}
 
 /** The report as a standalone page — no external requests, no build step. */
 export function renderHtml(report: ReportFile): string {
@@ -148,6 +199,8 @@ export function renderHtml(report: ReportFile): string {
   const when = new Date(meta.timestamp).toLocaleString();
   const fastWarning =
     meta.mode === "fast" ? ` <span class="pill muted">fast — one run per case</span>` : "";
+  // Which model played the user is part of what makes a simulated run reproducible.
+  const simulatorNote = meta.simulator ? ` · user: <code>${esc(meta.simulator.model)}</code>` : "";
 
   return `<!doctype html>
 <meta charset="utf-8">
@@ -156,13 +209,16 @@ export function renderHtml(report: ReportFile): string {
 <style>${STYLE}</style>
 <main>
   <h1>Cameron evals</h1>
-  <p class="sub"><code>${esc(meta.provider)} / ${esc(meta.model)}</code> · ${esc(when)}${fastWarning}</p>
+  <p class="sub"><code>${esc(meta.provider)} / ${esc(meta.model)}</code>${simulatorNote} · ${esc(when)}${fastWarning}</p>
   <div class="summary">
     <span class="score" style="color:${allPassed ? "var(--ok)" : "var(--bad)"}">${esc(meta.passed)}/${esc(meta.graded)}</span>
-    <span class="muted">cases passed${meta.skipped ? ` · ${esc(meta.skipped)} skipped` : ""}</span>
+    <span class="muted">cases passed${meta.skipped ? ` · ${esc(meta.skipped)} skipped` : ""}${
+      meta.inconclusive ? ` · ${esc(meta.inconclusive)} inconclusive` : ""
+    }</span>
   </div>
   ${[...cases]
-    .sort((a, b) => Number(a.passed) - Number(b.passed))
+    // Failures first, then inconclusive, then passes — read top-down in order of what needs work.
+    .sort((a, b) => rank(a) - rank(b))
     .map(renderCase)
     .join("")}
 </main>
