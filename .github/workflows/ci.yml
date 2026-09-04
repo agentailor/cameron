@@ -31,3 +31,9 @@ jobs:
       - run: pnpm test
 
       - run: npx tsc --noEmit
+
+      # The root tsconfig's `include` is "**/*.ts", which does not match the eval tree's .mts.
+      - run: pnpm typecheck:eval
+
+      # Nothing checked formatting before, so drift was only ever visible locally.
+      - run: pnpm format:check
