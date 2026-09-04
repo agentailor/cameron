@@ -23,6 +23,8 @@ import type { EvalCase } from "../types.mts";
  * So these cases grade the CONSEQUENCE, not the conversation. "Did the agent ask about the date
  * format?" is a claim with many phrasings and there is no judge here. "Which month did the rows
  * land on?" is a fact in the database.
+ *
+ * A simulated `user` changes what the agent HEARS, never what is asserted.
  */
 
 const { csv } = FIXTURE;
@@ -30,18 +32,32 @@ const { csv } = FIXTURE;
 /** The attachment reference the app injects for a non-image upload (see storage/content.ts). */
 const ATTACHMENT = `[Attached file: ${csv.fileName} (text/csv, ${csv.rowCount} rows). fileKey: ${csv.fileKey}]`;
 
+/** Intent only. Anything the agent must OBTAIN lives in the facts, never here. */
+const SHARED_GOAL = "get the transactions in the file you attached into the ledger";
+
+/** The consequence has landed, so there is nothing further to observe. */
+const importHappened = async () => (await countImportedRows()) > 0;
+
+/** What the owner knows. Anything absent here is something the agent has to ask for. */
+const IMPORT_FACTS = [
+  { topic: "which account these belong to", value: "checking" },
+  // A reversed format imports cleanly onto the wrong dates — the silent answer.
+  {
+    topic: "the date format used in the file",
+    value: csv.dateFormat,
+    contradicts: ["MM/dd/yyyy"],
+  },
+  { topic: "whether to keep the categories from the file", value: "yes, keep them" },
+];
+
 export const cases: EvalCase[] = [
   {
     id: "csv-import-confirms-ambiguous-date-format",
     description:
       "The agent must inspect and propose before importing, and must not guess an ambiguous date " +
       "format. Graded on where the rows landed: 5 July (correct) vs 7 May (read backwards).",
-    prompt: [
-      `${ATTACHMENT}\n\nImport these transactions into my checking account.`,
-      // The user answers the question the prompt requires the agent to ask. If it already imported
-      // on turn 1, the graders below catch it — this turn cannot un-import anything.
-      `Yes — those dates are ${csv.dateFormat} (so 05/07/2026 is 5 July). Go ahead.`,
-    ],
+    prompt: `${ATTACHMENT}\n\nImport these transactions into my checking account.`,
+    user: { goal: SHARED_GOAL, facts: IMPORT_FACTS, until: importHappened },
     approval: "allow",
     graders: [
       // The handshake: look before importing.
@@ -83,10 +99,8 @@ export const cases: EvalCase[] = [
     description:
       "The category column is `Catégorie`. Copying it verbatim keeps the categories; translating " +
       "it to `Category` is rejected and imports nothing. Either way the row count tells us which.",
-    prompt: [
-      `${ATTACHMENT}\n\nImport these into checking, and keep the categories from the file.`,
-      `Yes — the dates are ${csv.dateFormat}. Go ahead.`,
-    ],
+    prompt: `${ATTACHMENT}\n\nImport these, and keep the categories from the file.`,
+    user: { goal: SHARED_GOAL, facts: IMPORT_FACTS, until: importHappened },
     approval: "allow",
     graders: [
       toolCalled("inspect_csv", "import_transactions_csv"),
@@ -103,25 +117,10 @@ export const cases: EvalCase[] = [
     id: "csv-import-asks-for-the-missing-account",
     description:
       "The opening turn names no account, so the agent has to ask for one — a question no " +
-      "scripted array can answer. Same graders as the case above; the only difference is that " +
-      "the user can reply.",
+      "scripted array can answer. Same graders as the date-format case; it differs only in what " +
+      "the opening leaves out.",
     prompt: `${ATTACHMENT}\n\nImport these.`,
-    user: {
-      // Vague on purpose: naming the account here would leak it. See "The fact sheet" in
-      // eval/README.md.
-      goal: "get the transactions in the file you attached into the ledger",
-      facts: [
-        { topic: "which account these belong to", value: "checking" },
-        // A reversed format imports cleanly onto the wrong dates — the silent answer.
-        {
-          topic: "the date format used in the file",
-          value: csv.dateFormat,
-          contradicts: ["MM/dd/yyyy"],
-        },
-        { topic: "whether to keep the categories from the file", value: "yes, keep them" },
-      ],
-      until: async () => (await countImportedRows()) > 0,
-    },
+    user: { goal: SHARED_GOAL, facts: IMPORT_FACTS, until: importHappened },
     approval: "allow",
     graders: [
       toolCalled("inspect_csv", "import_transactions_csv"),
@@ -138,5 +137,50 @@ export const cases: EvalCase[] = [
     // reason its scripted twin is strict.
     runs: RUN_POLICY.strict,
     tags: ["csv", "import", "mutation", "simulated"],
+  },
+  /**
+   * Pre-migration twins, kept one cycle so both can be compared on identical graders — the only
+   * difference is whether the user can answer an unscripted question. Delete once the simulated
+   * versions have been seen green and red; `pnpm eval legacy-scripted` lists what is pending.
+   */
+  {
+    id: "csv-import-confirms-ambiguous-date-format-scripted",
+    description:
+      "Scripted twin, pending deletion. Turn 2 answers a question the agent may not have asked — " +
+      "which is the failure mode the simulated version exists to remove.",
+    prompt: [
+      `${ATTACHMENT}\n\nImport these transactions into my checking account.`,
+      `Yes — those dates are ${csv.dateFormat} (so 05/07/2026 is 5 July). Go ahead.`,
+    ],
+    approval: "allow",
+    graders: [
+      toolCalled("inspect_csv", "import_transactions_csv"),
+      toolCalledWith(
+        "import_transactions_csv",
+        (a) => (a.dateFormat as string | undefined) === csv.dateFormat,
+        csv.dateFormat,
+      ),
+      pausedForApproval("import_transactions_csv"),
+      importedRowCount(csv.rowCount),
+      importedInMonth(csv.correctFirstMonth, csv.wrongFirstMonth),
+    ],
+    runs: RUN_POLICY.strict,
+    tags: ["csv", "import", "mutation", "legacy-scripted"],
+  },
+  {
+    id: "csv-import-maps-accented-category-header-scripted",
+    description: "Scripted twin, pending deletion. See the case above.",
+    prompt: [
+      `${ATTACHMENT}\n\nImport these into checking, and keep the categories from the file.`,
+      `Yes — the dates are ${csv.dateFormat}. Go ahead.`,
+    ],
+    approval: "allow",
+    graders: [
+      toolCalled("inspect_csv", "import_transactions_csv"),
+      importedRowCount(csv.rowCount),
+      importedCategories("Dining", "Groceries", "Transport", csv.newCategory),
+    ],
+    runs: RUN_POLICY.strict,
+    tags: ["csv", "import", "mutation", "legacy-scripted"],
   },
 ];
