@@ -214,6 +214,10 @@ export function renderHtml(report: ReportFile): string {
     <span class="score" style="color:${allPassed ? "var(--ok)" : "var(--bad)"}">${esc(meta.passed)}/${esc(meta.graded)}</span>
     <span class="muted">cases passed${meta.skipped ? ` · ${esc(meta.skipped)} skipped` : ""}${
       meta.inconclusive ? ` · ${esc(meta.inconclusive)} inconclusive` : ""
+    }${
+      meta.inconclusiveRuns > meta.inconclusive
+        ? ` · ${esc(meta.inconclusiveRuns)} inconclusive run(s)`
+        : ""
     }</span>
   </div>
   ${[...cases]
