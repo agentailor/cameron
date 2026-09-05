@@ -1,13 +1,21 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useThreads } from "@/hooks/useThreads";
+import { useThreads, THREADS_PAGE_SIZE } from "@/hooks/useThreads";
 import { SquarePen, Search, Loader2, Check, X, Pencil, RefreshCcw, Trash2 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
+import { formatThreadTime } from "@/lib/format/threadTime";
 
 export function ThreadList() {
-  const { threads, createThread, deleteThread, refetchThreads } = useThreads();
-  const [isCreating, setIsCreating] = useState(false);
+  const {
+    threads,
+    deleteThread,
+    refetchThreads,
+    totalThreads,
+    hasMoreThreads,
+    isLoadingMore,
+    loadMoreThreads,
+  } = useThreads();
   const [filter, setFilter] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -18,14 +26,8 @@ export function ThreadList() {
   const router = useRouter();
   const pathname = usePathname();
 
-  const handleCreateThread = async () => {
-    setIsCreating(true);
-    try {
-      const newThread = await createThread();
-      router.push(`/thread/${newThread.id}`);
-    } finally {
-      setIsCreating(false);
-    }
+  const handleCreateThread = () => {
+    router.push("/");
   };
 
   const filtered = threads.filter((t) => {
@@ -94,14 +96,9 @@ export function ThreadList() {
         <div className="flex gap-2">
           <button
             onClick={handleCreateThread}
-            disabled={isCreating}
-            className="bg-primary text-primary-foreground inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-medium transition-colors hover:brightness-110 disabled:opacity-50"
+            className="bg-primary text-primary-foreground inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-medium transition-colors hover:brightness-110"
           >
-            {isCreating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <SquarePen className="h-4 w-4" />
-            )}
+            <SquarePen className="h-4 w-4" />
             New
           </button>
           <button
@@ -206,7 +203,9 @@ export function ThreadList() {
               <div className="text-muted-foreground/70 mt-1 flex items-center gap-2 text-[10px]">
                 <span>{thread.id.slice(0, 6)}</span>
                 <span className="bg-muted-foreground h-1 w-1 rounded-full" />
-                <span>{new Date(thread.createdAt).toLocaleDateString()}</span>
+                <span title={new Date(thread.updatedAt).toLocaleString()}>
+                  {formatThreadTime(thread.updatedAt)}
+                </span>
               </div>
             </div>
           );
@@ -215,6 +214,23 @@ export function ThreadList() {
           <div className="text-muted-foreground px-3 py-6 text-center text-xs">
             No threads found.
           </div>
+        )}
+
+        {hasMoreThreads && !filter.trim() && (
+          <button
+            onClick={loadMoreThreads}
+            disabled={isLoadingMore}
+            className="border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground mt-1 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed px-3 py-2 text-xs transition-colors disabled:opacity-50"
+          >
+            {isLoadingMore ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                loading…
+              </>
+            ) : (
+              `load ${Math.min(THREADS_PAGE_SIZE, Math.max(0, totalThreads - threads.length))} more`
+            )}
+          </button>
         )}
       </div>
     </nav>

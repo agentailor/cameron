@@ -2,11 +2,10 @@
 
 import { Thread } from "@/components/Thread";
 import { MainLayout } from "@/components/MainLayout";
-import { useParams } from "next/navigation";
+import { useActiveThreadId } from "@/hooks/useActiveThreadId";
 
 export default function ThreadPage() {
-  const params = useParams();
-  const threadId = params.threadId as string;
+  const threadId = useActiveThreadId();
 
   return (
     <MainLayout>

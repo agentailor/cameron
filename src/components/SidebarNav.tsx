@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutGrid, Plug } from "lucide-react";
+import { RETURN_TO_KEY } from "./BackToChat";
 
 /**
  * Sidebar footer: where Cameron's own pages live, plus a status line. Capabilities sits here
@@ -16,6 +17,14 @@ export const SidebarNav = ({ onOpenMCPConfig }: { onOpenMCPConfig: () => void })
     <nav className="flex flex-col gap-0.5">
       <Link
         href="/capabilities"
+        // Breadcrumb read by BackToChat.
+        onClick={() => {
+          try {
+            if (pathname !== "/capabilities") sessionStorage.setItem(RETURN_TO_KEY, pathname);
+          } catch {
+            // Blocked storage: BackToChat falls back to `/`.
+          }
+        }}
         className={`${item} ${
           pathname === "/capabilities"
             ? "bg-accent text-foreground"

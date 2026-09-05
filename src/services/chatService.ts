@@ -55,8 +55,29 @@ export function createMessageStream(
   return new EventSource(`${getUrl("stream")}?${params}`);
 }
 
-export async function fetchThreads(): Promise<Thread[]> {
-  const response = await fetch(getUrl("threads"), {
+export interface ThreadCursor {
+  updatedAt: string;
+  id: string;
+}
+
+export interface ThreadPage {
+  threads: Thread[];
+  /** Total ignoring the limit, so the UI can say how many are still hidden. */
+  total: number;
+  nextCursor: ThreadCursor | null;
+}
+
+export async function fetchThreads(
+  params: { limit?: number; cursor?: ThreadCursor | null } = {},
+): Promise<ThreadPage> {
+  const query = new URLSearchParams();
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  if (params.cursor) {
+    query.set("cursorUpdatedAt", params.cursor.updatedAt);
+    query.set("cursorId", params.cursor.id);
+  }
+  const qs = query.toString();
+  const response = await fetch(`${getUrl("threads")}${qs ? `?${qs}` : ""}`, {
     headers: config.headers,
   });
   if (!response.ok) {
@@ -65,10 +86,11 @@ export async function fetchThreads(): Promise<Thread[]> {
   return await response.json();
 }
 
-export async function createNewThread(): Promise<Thread> {
+export async function createNewThread(title?: string): Promise<Thread> {
   const response = await fetch(getUrl("threads"), {
     method: "POST",
-    headers: config.headers,
+    headers: { "Content-Type": "application/json", ...config.headers },
+    body: JSON.stringify(title ? { title } : {}),
   });
   if (!response.ok) {
     throw new Error("Failed to create thread");

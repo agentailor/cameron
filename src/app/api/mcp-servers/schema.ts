@@ -18,8 +18,8 @@ export const MCPServerResponse = z
     headers: z.record(z.string(), z.string()).nullable().optional(),
     requiresAuth: z.boolean().nullable().optional(),
     oauthStatus: z.string().nullable().optional(),
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
   })
   .openapi("MCPServer");
 

@@ -2,43 +2,50 @@
 import { MessageInput } from "./MessageInput";
 import MessageList from "./MessageList";
 import { useChatThread } from "@/hooks/useChatThread";
+import { useThreads } from "@/hooks/useThreads";
 import { Loader2 } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 import { useEffect, useRef, useState } from "react";
 import { MessageOptions } from "@/types/message";
 import { useUISettings } from "@/contexts/UISettingsContext";
+import { deriveThreadTitle } from "@/lib/format/threadTitle";
 
 interface ThreadProps {
-  threadId: string;
-  onFirstMessageSent?: (threadId: string) => void;
+  /** null on the new-chat screen: no thread exists until the first message is sent. */
+  threadId: string | null;
 }
 
-export const Thread = ({ threadId, onFirstMessageSent }: ThreadProps) => {
+export const Thread = ({ threadId }: ThreadProps) => {
+  // The thread this screen is showing. On `/` it starts null and is adopted at send time.
+  const [activeId, setActiveId] = useState<string | null>(threadId);
+  useEffect(() => setActiveId(threadId), [threadId]);
+
   const { messages, isLoadingHistory, isSending, sendMessage, approveToolExecution } =
-    useChatThread({ threadId });
+    useChatThread({ threadId: activeId });
+  const { createThread } = useThreads();
   const { provider, model, approveAllTools } = useUISettings();
-  const firstMessageInitiatedRef = useRef(false);
-  const [awaitingFirstResponse, setAwaitingFirstResponse] = useState(false);
+  // Guards against a double-send racing two thread creations before the URL has been adopted.
+  const creatingRef = useRef<Promise<string> | null>(null);
 
   const handleSendMessage = async (message: string, opts?: MessageOptions) => {
-    const wasEmpty = messages.length === 0;
-    await sendMessage(message, opts);
-    if (wasEmpty) {
-      firstMessageInitiatedRef.current = true;
-      setAwaitingFirstResponse(true);
+    if (activeId) {
+      await sendMessage(message, opts);
+      return;
     }
-  };
 
-  // Detect first AI/tool/error message arrival after initial user message to trigger redirect
-  useEffect(() => {
-    if (awaitingFirstResponse && !isSending) {
-      const hasNonHuman = messages.some((m) => m.type !== "human");
-      if (hasNonHuman) {
-        setAwaitingFirstResponse(false);
-        if (onFirstMessageSent) onFirstMessageSent(threadId);
-      }
+    // Created at send time, so an abandoned visit to `/` leaves no empty row behind.
+    if (!creatingRef.current) {
+      creatingRef.current = createThread(deriveThreadTitle(message)).then((t) => t.id);
     }
-  }, [awaitingFirstResponse, isSending, messages, onFirstMessageSent, threadId]);
+    const newId = await creatingRef.current;
+
+    // replaceState, not a router navigation: navigating would remount this subtree and tear
+    // down the EventSource mid-stream.
+    window.history.replaceState(null, "", `/thread/${newId}`);
+    setActiveId(newId);
+
+    await sendMessage(message, { ...opts, targetThreadId: newId });
+  };
 
   if (isLoadingHistory) {
     return (

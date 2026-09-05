@@ -1,6 +1,6 @@
-import Link from "next/link";
-import { ArrowLeft, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { listCapabilities } from "@/lib/agent/capabilities";
+import { BackToChat } from "@/components/BackToChat";
 
 export const metadata = { title: "Capabilities · Cameron AI" };
 
@@ -11,13 +11,7 @@ export default function CapabilitiesPage() {
   return (
     <div className="bg-muted/40 h-screen overflow-y-auto">
       <div className="mx-auto max-w-3xl px-6 py-12">
-        <Link
-          href="/"
-          className="text-muted-foreground hover:text-foreground mb-8 inline-flex items-center gap-2 text-sm transition-colors"
-        >
-          <ArrowLeft size={16} />
-          Back to chat
-        </Link>
+        <BackToChat />
 
         <h1 className="text-foreground text-2xl font-semibold">What Cameron can do</h1>
         <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
