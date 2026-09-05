@@ -42,8 +42,6 @@ export const UISettingsProvider = ({ children }: UISettingsProviderProps) => {
   const [hideToolMessages, setHideToolMessages] = useState(false);
   // Defaults must match DEFAULT_MODEL_PROVIDER/NAME in lib/agent/util.ts — these are sent as
   // query params on every request, so they override the server's default.
-  // Start at the defaults so the first client render matches the server's HTML; localStorage is
-  // adopted in the effect below. Reading it during render mismatches hydration.
   const [provider, setProviderState] = useState<string>("anthropic");
   const [model, setModelState] = useState<string>("claude-haiku-4-5");
   const [approveAllTools, setApproveAllToolsState] = useState<boolean>(false);
