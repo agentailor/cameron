@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 
 const STORAGE_KEY = "agent_model_settings";
 
@@ -39,20 +39,19 @@ interface UISettingsProviderProps {
 }
 
 export const UISettingsProvider = ({ children }: UISettingsProviderProps) => {
-  const saved = loadSettings();
-
   const [hideToolMessages, setHideToolMessages] = useState(false);
   // Defaults must match DEFAULT_MODEL_PROVIDER/NAME in lib/agent/util.ts — these are sent as
   // query params on every request, so they override the server's default.
-  const [provider, setProviderState] = useState<string>(
-    typeof saved.provider === "string" ? saved.provider : "anthropic",
-  );
-  const [model, setModelState] = useState<string>(
-    typeof saved.model === "string" ? saved.model : "claude-haiku-4-5",
-  );
-  const [approveAllTools, setApproveAllToolsState] = useState<boolean>(
-    typeof saved.approveAllTools === "boolean" ? saved.approveAllTools : false,
-  );
+  const [provider, setProviderState] = useState<string>("anthropic");
+  const [model, setModelState] = useState<string>("claude-haiku-4-5");
+  const [approveAllTools, setApproveAllToolsState] = useState<boolean>(false);
+
+  useEffect(() => {
+    const saved = loadSettings();
+    if (typeof saved.provider === "string") setProviderState(saved.provider);
+    if (typeof saved.model === "string") setModelState(saved.model);
+    if (typeof saved.approveAllTools === "boolean") setApproveAllToolsState(saved.approveAllTools);
+  }, []);
 
   const toggleToolMessages = () => setHideToolMessages((prev) => !prev);
   const setProvider = (v: string) => {

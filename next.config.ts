@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // The floating dev badge overlaps the chat composer at the bottom of the viewport.
+  devIndicators: false,
 };
 
 export default nextConfig;
