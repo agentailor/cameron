@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it, vi } from "vitest";
 import { listCapabilities, MUTATING_TOOL_NAMES } from "./capabilities";
 
@@ -38,6 +39,32 @@ describe("listCapabilities", () => {
       .map((c) => c.name)
       .sort();
     expect(listed).toEqual(csvImportTools.map((t) => t.name).sort());
+  });
+
+  /**
+   * A tool array that isn't spread into `builtin` is never bound to the agent, and nothing else
+   * catches it: the arrays are all `StructuredToolInterface[]`, so a mix-up typechecks, and this
+   * page still lists the tools either way. `index.ts` can't be imported here (it pulls in `pg`),
+   * so this reads the source instead.
+   */
+  it("registers every capability group in the agent's builtin tools", async () => {
+    const src = await readFile(new URL("./index.ts", import.meta.url), "utf8");
+    const builtin = src.slice(
+      src.indexOf("const builtin = ["),
+      src.indexOf("];", src.indexOf("const builtin = [")),
+    );
+
+    const groups = ["financeTools", "csvImportTools", "analyticsTools", "categoryTools"];
+    for (const g of groups) {
+      expect(builtin, `${g} is not spread into builtin`).toContain(`...${g}`);
+    }
+    // ./tools/config is imported under an ALIAS because of the collision above, and it is the
+    // alias that must feed `builtin` — spreading the shadowed local name is the bug this pins.
+    const aliasImport = new RegExp(String.raw`configTools as (\w+) \} from "\./tools/config"`).exec(
+      src,
+    );
+    expect(aliasImport, "./tools/config must be imported under an alias").not.toBeNull();
+    expect(builtin, "config tools are not spread into builtin").toContain(`...${aliasImport![1]}`);
   });
 
   it("names only tools that exist", () => {

@@ -63,6 +63,15 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
       Same defect class as the truncation bug — a payload the agent predictably misreads.
   - `src/lib/agent/tools/categories.ts` — `list_categories` (read-only) and `create_category`
     (mutating/gated).
+  - `src/lib/agent/tools/config.ts` — `get_config` (read-only) and `set_config` (mutating/gated):
+    owner-level settings, currently just `currency`. The key catalog is **closed and lives in
+    TypeScript** (`src/lib/config/catalog.ts`, a zero-import leaf that also owns the single
+    `DEFAULT_CURRENCY` literal) — `set_config` rejects an uncatalogued key with `unknown_key` and
+    an invalid value with `invalid_value`, writing nothing, so an agent-invented key can never
+    become a row nothing reads. `get_config` always returns a value plus **`isSet`**: an unset key
+    returning only its fallback is byte-identical to the owner having chosen that fallback, which
+    is the whole defect (issue #11 — a French CSV imported as USD). `key` on `set_config` is a
+    plain string, not an enum, so a bad key returns a correctable payload instead of a schema throw.
   - `src/lib/agent/tools/csvImport.ts` — `inspect_csv` (read-only) + `import_transactions_csv`
     (mutating/gated); the importer validates every mapping value against the file's real headers and
     **fails loud** (returns an error, imports nothing) if a mapped column doesn't exist, rather than
@@ -71,7 +80,7 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     (bounded) + `skippedBadDate`, not dated `now()`.
 - **Tool Approval**: Human-in-the-loop via `humanInTheLoopMiddleware`. Approval is gated **per-tool**
   through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
-  `import_transactions_csv`, `create_category`); read tools (incl. `run_sql`) and MCP tools
+  `import_transactions_csv`, `create_category`, `set_config`); read tools (incl. `run_sql`) and MCP tools
   auto-approve. `approveAllTools` omits the middleware entirely. Decisions: `allow`→approve,
   `deny`→reject (with an explanatory follow-up). `MUTATING_TOOL_NAMES` lives in
   `src/lib/agent/mutatingTools.ts` — a **zero-import leaf**; `index.ts` and `capabilities.ts` both
@@ -125,9 +134,9 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
   `drizzle.config.ts`.
 - **Repository seam**: application code NEVER imports Drizzle directly. All DB access goes through
   the `src/lib/repositories/` files (`threadRepository`, `mcpServerRepository`, `transactionRepository`,
-  `categoryRepository`, `analyticsRepository`), which return **plain domain objects** (`ThreadRecord`,
-  `MCPServer` in `src/types/mcp.ts`; `Transaction`, `Category` in `src/types/finance.ts`), not Drizzle
-  row types. This keeps the persistence layer swappable — replacing the ORM touches only these files.
+  `categoryRepository`, `analyticsRepository`, `configRepository`), which return **plain domain objects**
+  (`ThreadRecord`, `MCPServer` in `src/types/mcp.ts`; `Transaction`, `Category` in
+  `src/types/finance.ts`; `ConfigEntry` in `src/types/config.ts`), not Drizzle row types. This keeps the persistence layer swappable — replacing the ORM touches only these files.
   Add new DB access as repository functions, not inline queries.
 - **Sanctioned raw-SQL exception**: `analyticsRepository.runReadOnlyQuery` runs agent-authored SQL for
   the `run_sql` tool. It is the ONE place raw SQL executes; it runs inside a Drizzle `db.transaction`
@@ -148,6 +157,9 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
 - **Error translation** lives in the repositories: a duplicate name surfaces as `ConflictError`
   (→ HTTP 409); a missing row returns `null`/`false` (→ HTTP 404). Routes check return values, not
   driver error codes.
+- **`config` is settings, not a secret store**: `(key, value, updated_at)` only — no `description`
+  column, because that varies per key, not per install, and no code would read it. Deliberately
+  absent from `describe_finance_schema` so `run_sql` doesn't surface it; don't put credentials there.
 - **Tables**: `thread` (minimal metadata; actual history in LangGraph checkpoints) and `mcp_server`
   (stdio/http with conditional fields + OAuth token/state columns; JSON columns for flexible config).
   `id` columns are text (app-generated uuids); `updated_at` is app-managed (set on writes).
@@ -302,6 +314,15 @@ pnpm typecheck:eval                         # free — the root tsc misses this 
 - **`FIXTURE` (`eval/seed.mts`) is the single source of truth** for expected figures, all derived
   from the seeding formula. Never hardcode a total in a case. Dining's 262 rows deliberately exceed
   `query_transactions`' 200-row cap — that truncation trap is the point.
+- **`config` is truncated between runs** (`RESET_TABLES` in `eval/db.mts`, wider than
+  `SEEDED_TABLES`): a case that establishes the owner's currency would otherwise leave it set, and
+  the next case — whose premise is an _unestablished_ setting — would start already answered. A case
+  needing the opposite declares `config: { currency: "EUR" }`, applied after the reset. Both halves
+  earn their place: without the establish case the agent can silently default, and without the reuse
+  case a settings store the agent re-asks past looks identical to one that works.
+- **Order is graded, not just membership**: `toolCalledBefore(before, after)` exists because
+  `toolCalled` is a set check — "asked, saved, then logged" and "logged under a guess, then saved"
+  leave the same rows in the same tables, and only the order says which happened.
 - **Approval cases** set `approval: "allow" | "deny"`, which keeps the HITL middleware live (plain
   `approveAllTools` omits it entirely). Paused calls land on `RunCapture.interrupts` — the only
   evidence the gate fired, since `trajectory` looks identical either way. These cases mutate, so the

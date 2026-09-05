@@ -8,6 +8,13 @@ import { seed } from "./seed.mts";
 /** Truncated together so FK order doesn't matter. */
 const SEEDED_TABLES = ["transaction", "category"] as const;
 
+/**
+ * Everything wiped between runs. `config` is not seeded but MUST be cleared: a case that sets the
+ * owner's currency would otherwise leave it set, and the next case — whose whole point is an
+ * unestablished setting — would start already answered.
+ */
+const RESET_TABLES = [...SEEDED_TABLES, "config"] as const;
+
 /** Tables a grader is allowed to count. Keeps an arbitrary string out of an interpolated query. */
 export type CountableTable = (typeof SEEDED_TABLES)[number];
 
@@ -57,7 +64,7 @@ export async function prepareDatabase(): Promise<{ name: string }> {
   }
 
   await withClient((c) =>
-    c.query(`TRUNCATE TABLE ${SEEDED_TABLES.join(", ")} RESTART IDENTITY CASCADE`),
+    c.query(`TRUNCATE TABLE ${RESET_TABLES.join(", ")} RESTART IDENTITY CASCADE`),
   );
 
   return { name: DATABASE.name };
@@ -72,7 +79,7 @@ export async function prepareDatabase(): Promise<{ name: string }> {
 export async function resetToFixture(): Promise<void> {
   assertEvalDatabase();
   await withClient((c) =>
-    c.query(`TRUNCATE TABLE ${SEEDED_TABLES.join(", ")} RESTART IDENTITY CASCADE`),
+    c.query(`TRUNCATE TABLE ${RESET_TABLES.join(", ")} RESTART IDENTITY CASCADE`),
   );
   // The CSV fixture lives in the object store, which TRUNCATE doesn't touch.
   await seed(DATABASE.url, { withCsv: false });
@@ -128,5 +135,77 @@ export async function importedCategoryNames(): Promise<string[]> {
        WHERE t.source <> 'eval' ORDER BY 1`,
     );
     return rows.map((r) => r.name);
+  });
+}
+
+/**
+ * Distinct currency codes on the imported rows, with a count each.
+ *
+ * The currency case's evidence. A bulk import under the wrong code is silent in a way the date
+ * case is not even silent about: every row is internally consistent, the totals are right, and
+ * only the code itself is wrong — so the stored value is the only thing that can be graded.
+ */
+export async function importedCurrencies(): Promise<{ currency: string; count: number }[]> {
+  assertEvalDatabase();
+  return withClient(async (c) => {
+    const { rows } = await c.query<{ currency: string; count: string }>(
+      `SELECT currency, COUNT(*)::int AS count
+       FROM transaction WHERE source <> 'eval'
+       GROUP BY 1 ORDER BY 1`,
+    );
+    return rows.map((r) => ({ currency: r.currency, count: Number(r.count) }));
+  });
+}
+
+/** A stored owner setting, or null if the run never established it. */
+export async function configValue(key: string): Promise<string | null> {
+  assertEvalDatabase();
+  return withClient(async (c) => {
+    const { rows } = await c.query<{ value: string }>(
+      "SELECT value FROM config WHERE key = $1 LIMIT 1",
+      [key],
+    );
+    return rows[0]?.value ?? null;
+  });
+}
+
+/**
+ * Pre-set owner settings for a case that must START from an established setting.
+ *
+ * `config` is in RESET_TABLES, so every run begins with it empty — correct for cases about
+ * establishing a value, useless for cases about REUSING one. A case declaring `config` gets its
+ * rows written after the reset.
+ */
+export async function seedConfig(entries: Record<string, string>): Promise<void> {
+  assertEvalDatabase();
+  const pairs = Object.entries(entries);
+  if (pairs.length === 0) return;
+  await withClient(async (c) => {
+    for (const [key, value] of pairs) {
+      await c.query(
+        `INSERT INTO config (key, value, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        [key, value],
+      );
+    }
+  });
+}
+
+/**
+ * Currencies on MANUALLY logged rows (source 'manual'), with a count each.
+ *
+ * Separate from `importedCurrencies`: that one covers everything the fixture didn't seed, which
+ * lumps a CSV import together with a logged expense. A `log_expense` case needs to see its own
+ * row and nothing else.
+ */
+export async function loggedCurrencies(): Promise<{ currency: string; count: number }[]> {
+  assertEvalDatabase();
+  return withClient(async (c) => {
+    const { rows } = await c.query<{ currency: string; count: string }>(
+      `SELECT currency, COUNT(*)::int AS count
+       FROM transaction WHERE source = 'manual'
+       GROUP BY 1 ORDER BY 1`,
+    );
+    return rows.map((r) => ({ currency: r.currency, count: Number(r.count) }));
   });
 }

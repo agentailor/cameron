@@ -87,7 +87,9 @@ French, so a translated mapping is rejected and English type defaults do not app
 All deterministic, all in `graders.mts`. `grade()` may be async (one grader reads the DB back).
 
 **Trajectory** — `toolCalled(...)`, `toolNotCalled(...)`, `toolCallCountAtMost(name, n)`,
-`sqlMatches(regex)`
+`sqlMatches(regex)`, `toolCalledBefore(before, after)` (ORDER — `toolCalled` is a set membership
+check, so it cannot tell "established the setting, then wrote" from "wrote under a guess, then
+saved the setting"), `toolNeverCalledWith(name, predicate, label)`
 
 **Answer text** — `statesAmount(n)`, `statesNoWrongTotal(n)`, `statesCount(n)`
 
@@ -99,8 +101,12 @@ ended with the agent still waiting at the gate, or it was never requested.
 `toolResultMatches(name, predicate, opts)` (reads what the agent actually _saw_)
 
 **Imported data** (async; all read the sandbox DB) — `importedRowCount(n)`,
-`importedInMonth(month, wrongMonth)`, `importedCategories(...names)`, plus
-`toolCalledWith(name, predicate, label)` for asserting a chosen argument
+`importedInMonth(month, wrongMonth)`, `importedCategories(...names)`, `importedCurrency(expected,
+wrong?)`, plus `toolCalledWith(name, predicate, label)` for asserting a chosen argument
+
+**Owner settings** (async; read the sandbox DB) — `configIs(key, value)` (the setting PERSISTED —
+a value used once but never saved has to be asked for again), `loggedCurrency(expected, wrong?)`
+(manually logged rows only, as distinct from imported ones)
 
 ### Two rules for writing a case
 
@@ -116,6 +122,13 @@ structural fact instead — what tool was called, what is in the database.
 
 This is why a finance agent can stay judge-free where a RAG agent cannot: the thing under assertion
 is usually a number.
+
+### Forcing a run count
+
+`EVAL_RUNS=5 pnpm eval config` runs every selected case 5 times and requires **all 5** to pass,
+overriding each case's own policy. Use it to interrogate a fresh change: a behavior that passed
+once is not known to be reliable, and the per-case policies are tuned for routine runs. It is
+ignored under `EVAL_MODE=fast`, which means the opposite.
 
 ## Run policy (pass@k)
 
@@ -261,6 +274,12 @@ the conversation never established, and the case goes green for the wrong reason
 Facts are **relay values**, not things the simulator reasons from. Don't add a fact stating the row
 count; the simulator would have to compute against it.
 
+**A preference is a fact too.** An agent that asks permission before writing a setting ("should I
+save EUR as your default?") is asking about something the owner wants, not something the owner
+knows — but it is still a thing the agent must OBTAIN, so it belongs on the sheet. Leaving it off
+refuses the agent for behaving correctly, and a grader asserting the gate fired can then never
+pass.
+
 **Keep values out of `goal`.** The goal is intent ("get these transactions imported"), not data.
 A goal reading "import these into your _checking_ account" leaks the account, and the simulator will
 reasonably confirm it when the agent proposes one — so a case meant to test whether the agent asks
@@ -373,6 +392,17 @@ than "never asked".
 
 Approval cases mutate, so `run.mts` re-seeds the fixture before **each** run.
 
+## Config cases
+
+The `config` table is wiped between runs (`RESET_TABLES` in `db.mts`, deliberately wider than
+`SEEDED_TABLES`), so every case starts with the owner's settings **unestablished** — the premise of
+any case about the agent noticing a setting is unset.
+
+A case about REUSING a setting needs the opposite, and says so with `config: { currency: "EUR" }`.
+The runner applies it after the fixture reset. Both halves are needed: without the establish case
+the agent can silently default; without the reuse case a settings store the agent re-asks past
+looks identical to one that works.
+
 ## Adding a case
 
 1. Pick the file matching the defect class (or add one and export it from `cases/index.mts`).
@@ -406,3 +436,7 @@ recorded reason is a tracked finding; a deleted one is lost.
 - **`openevals` traces through `langsmith`.** It no-ops without credentials, but the dependency is
   there, and it pulls `@langchain/openai` into a suite that calls neither. `simulatedUser.mts` is
   the only file importing it, so dropping it later is a one-file change.
+- **A call is not paired with its own result.** `toolCalledWith` scans arguments and
+  `toolResultMatches` scans payloads, but independently — nothing asserts "the call with THESE args
+  returned THAT result". Fine while a tool is called once per case; a rejected `set_config`
+  followed by a good one satisfies both graders separately.

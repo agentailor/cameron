@@ -3,6 +3,7 @@ import { z } from "zod";
 import * as transactionRepo from "@/lib/repositories/transactionRepository";
 import * as categoryRepo from "@/lib/repositories/categoryRepository";
 import { Account, TransactionType } from "@/types/finance";
+import { DEFAULT_CURRENCY } from "@/lib/config/catalog";
 
 /**
  * Built-in finance tools that read/write Cameron's own transaction store. These are registered
@@ -10,8 +11,6 @@ import { Account, TransactionType } from "@/types/finance";
  * human-in-the-loop approval gate as every other tool — logging a transaction is a mutation and
  * will pause for approval.
  */
-
-const DEFAULT_CURRENCY = "USD";
 
 /** Convert a decimal amount (e.g. 12.50) to always-positive minor units (1250 cents). */
 function toMinor(amount: number): number {
@@ -74,7 +73,10 @@ export const logExpense = tool(
     description:
       "Record a single transaction (expense or income) in the user's ledger. A note is required " +
       "— never log an amount without a short human-readable label. This mutates financial records " +
-      "and will require the user's approval.",
+      "and will require the user's approval. BEFORE calling this, you must know the currency: " +
+      "call `get_config` first. If it reports `isSet: false`, nobody has chosen a currency — ask " +
+      "the user which one they use, save it with `set_config`, and only then log. Do NOT log " +
+      "first and fix the currency afterwards: the row is written the moment this is approved.",
     schema: z.object({
       amount: z
         .number()
@@ -91,7 +93,11 @@ export const logExpense = tool(
       currency: z
         .string()
         .optional()
-        .describe(`ISO currency code; defaults to ${DEFAULT_CURRENCY}`),
+        .describe(
+          "ISO currency code for this transaction. Call `get_config` to find the owner's " +
+            "currency and pass it here — when omitted this falls back to " +
+            `${DEFAULT_CURRENCY}, which is a guess, not the owner's answer.`,
+        ),
       category: z
         .string()
         .optional()

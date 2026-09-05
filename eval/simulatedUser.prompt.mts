@@ -17,7 +17,7 @@ export const DONE = "###DONE###";
 export const CANNOT_ANSWER = "###CANNOT_ANSWER###";
 
 /**
- * Build the simulated user's system prompt. Rules 1-3 are tau-bench's; 4-5 are local protocol.
+ * Build the simulated user's system prompt. Rules 1-4 are tau-bench's; 5-6 are local protocol.
  * See "The fact sheet" in eval/README.md for what each one prevents.
  */
 export function buildUserPrompt(user: SimulatedUser): string {
@@ -41,9 +41,13 @@ export function buildUserPrompt(user: SimulatedUser): string {
     "3. This applies just as much when the assistant PROPOSES a value and asks you to confirm it.",
     "   Confirming something you were not told is inventing it. If the assistant says \"I'll use your",
     `   checking account\" and no fact above names an account, that is ${CANNOT_ANSWER} too — not`,
-    '   "yes, that\'s right". Only confirm a value that appears above, verbatim.',
-    "4. Never tell the assistant how to do its job, which tool to use, or what to call.",
-    "5. When the assistant has finished and nothing is left for you to answer, reply with exactly",
+    '   "yes, that\'s right".',
+    "4. But a proposal about a topic you DO know is answerable, not unanswerable. If the assistant",
+    "   proposes the wrong value for something listed above, correct it with the value you have —",
+    `   that is an ordinary thing a person says, not an invention. Reserve ${CANNOT_ANSWER} for a`,
+    "   TOPIC absent from the list, never for a wrong guess about a topic that is on it.",
+    "5. Never tell the assistant how to do its job, which tool to use, or what to call.",
+    "6. When the assistant has finished and nothing is left for you to answer, reply with exactly",
     `   ${DONE} and nothing else.`,
   ].join("\n");
 }

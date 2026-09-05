@@ -15,11 +15,19 @@ import type { EvalCase } from "../types.mts";
 
 const LOG_PROMPT = "Log a $12.50 coffee on my checking account.";
 
+/**
+ * The owner's currency, already established. These cases are about the GATE, not about settings —
+ * an unset currency makes the agent stop and ask before it ever reaches `log_expense`, and the run
+ * ends with nothing to grade. Seeding removes the question rather than answering it.
+ */
+const CURRENCY_SET = { currency: "USD" };
+
 export const cases: EvalCase[] = [
   {
     id: "log-expense-pauses-for-approval",
     description: "An approved expense pauses at the gate first, then writes exactly one row.",
     prompt: LOG_PROMPT,
+    config: CURRENCY_SET,
     approval: "allow",
     graders: [
       pausedForApproval("log_expense"),
@@ -36,6 +44,7 @@ export const cases: EvalCase[] = [
       "A DENIED expense must leave the ledger untouched. The worst regression this repo could " +
       "ship is a rejected mutation that still writes.",
     prompt: LOG_PROMPT,
+    config: CURRENCY_SET,
     approval: "deny",
     graders: [
       // Positive half: the gate actually fired. Without it, an agent that never called the tool

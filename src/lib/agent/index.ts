@@ -14,6 +14,7 @@ import { financeTools } from "./tools/finance";
 import { csvImportTools } from "./tools/csvImport";
 import { analyticsTools } from "./tools/analytics";
 import { categoryTools } from "./tools/categories";
+import { configTools as settingsTools } from "./tools/config";
 import { createAgent, humanInTheLoopMiddleware } from "langchain";
 // Lives in ./capabilities so the page can read it without importing this file's deps.
 import { MUTATING_TOOL_NAMES } from "./capabilities";
@@ -33,13 +34,20 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   // cannot be omitted by the client. MCP tools are loaded dynamically; per-request config tools
   // are appended too. Approval is enforced per-tool by the HITL middleware below (mutations only).
   const mcpTools = await getMCPTools();
+  // Per-request tools supplied by the caller — not ./tools/config, which is `settingsTools`.
   const configTools = (cfg?.tools || []) as StructuredToolInterface[];
 
   // Tool definitions stay provider-agnostic (plain Zod). Google Gemini's function-calling API is
   // the outlier — it rejects standard JSON Schema keywords (exclusiveMinimum, format, $defs, …) that
   // Zod emits. So we sanitize built-in tool schemas ONLY when the active provider is Google; other
   // providers (Anthropic, OpenAI) accept the schemas as-is.
-  const builtin = [...financeTools, ...csvImportTools, ...analyticsTools, ...categoryTools];
+  const builtin = [
+    ...financeTools,
+    ...csvImportTools,
+    ...analyticsTools,
+    ...categoryTools,
+    ...settingsTools,
+  ];
   const builtinTools = (provider === "google"
     ? builtin.map((t) => sanitizeTool(t as unknown as DynamicStructuredTool))
     : builtin) as unknown as StructuredToolInterface[];

@@ -31,6 +31,8 @@ export const TOOL_RENDERERS: Record<string, ToolRenderers> = {
   log_expense: { args: "expense", result: "receipt" },
   create_category: { args: "fields", result: "receipt" },
   import_transactions_csv: { args: "csvPlan", result: "receipt" },
+  get_config: { args: "fields", result: "receipt" },
+  set_config: { args: "fields", result: "receipt" },
 };
 
 const FALLBACK: ToolRenderers = { args: "json", result: "json" };

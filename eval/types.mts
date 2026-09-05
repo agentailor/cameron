@@ -160,6 +160,13 @@ export interface EvalCase {
    * Omit for the blind replay every case had before.
    */
   user?: SimulatedUser;
+  /**
+   * Owner settings to establish BEFORE the run, written after the fixture reset.
+   *
+   * `config` is wiped between runs so a case about establishing a setting starts unanswered.
+   * A case about REUSING one needs the opposite, and this is how it says so.
+   */
+  config?: Record<string, string>;
   /** Reported as skipped, never executed. Keeps a known-red case (and its reason) on the books. */
   skip?: boolean;
   /** Free-form labels for filtering/grouping. Not used by the runner. */

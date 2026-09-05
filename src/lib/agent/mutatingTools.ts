@@ -10,6 +10,7 @@ export const MUTATING_TOOL_NAMES = [
   "log_expense",
   "import_transactions_csv",
   "create_category",
+  "set_config",
 ] as const;
 
 export function isMutatingTool(name: string): boolean {
