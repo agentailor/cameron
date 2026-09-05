@@ -106,9 +106,27 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
 4. Thread persistence via the repository layer → Drizzle → Postgres (threads + MCP server configs)
 5. File uploads → `/api/agent/upload` → MinIO (S3-compatible storage) → returns file URLs
 
+### Thread lifecycle
+
+- **A thread row is created by the first message, never by opening a screen.** `/` is the new-chat
+  screen and renders `<Thread threadId={null} />`; `Thread` creates the thread inside its first
+  `handleSendMessage`. "New" in the sidebar navigates to `/` rather than POSTing. Creating on mount
+  is what filled the DB with empty "New thread" rows, one per refresh.
+- **The title is derived from that first message** (`deriveThreadTitle`, word-boundary truncated)
+  and passed to `POST /api/agent/threads`. The body is optional and the title falls back to
+  `DEFAULT_THREAD_TITLE`, so a bare POST still works. There is no title-generating model call.
+- **The URL is the active thread.** `useActiveThreadId()` parses the pathname; the sidebar's
+  highlight and `useThreads().activeThreadId` both read it. Nothing mirrors it in React state.
+- **The new-chat screen adopts its URL with `window.history.replaceState`, not `router.replace`** —
+  a router navigation remounts the subtree and tears down the in-flight `EventSource` mid-stream.
+  Because `replaceState` does not re-render, `Thread` also tracks the adopted id in state and passes
+  it as `opts.targetThreadId` so the send targets the new thread's cache key.
+
 ### Key Components Structure
 
-- **Context Providers**: `ThreadContext` (active thread), `UISettingsContext` (UI state + model settings persisted to `localStorage` under `agent_model_settings`)
+- **Context Providers**: `UISettingsContext` (UI state + model settings persisted to `localStorage`
+  under `agent_model_settings`). The active thread is NOT in a context — it is derived from the URL
+  by `useActiveThreadId()`, so there is one source of truth.
 - **Custom Hooks**: `useChatThread`, `useMCPTools`, `useThreads` for data domains
 - **Message Components**: Separate components for AI/Human/Tool/Error message types
 - **Tool rendering** (`src/components/toolRenderers/`): `config.ts` maps each **built-in** tool to a
@@ -154,6 +172,18 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
   filters _ignoring_ the limit, so callers can tell a capped page from a complete one; the COUNT
   only runs when the page came back full. New bounded list functions should follow this shape —
   returning rows alone makes truncation invisible to the agent.
+- **Paged reads use a cursor, not an offset**: `threadRepository.list({ limit, cursor })` returns
+  `{ rows, total, nextCursor }` (a `ThreadPage`) and the wire cursor is `(updatedAt, id)` as ISO.
+  Offsets are wrong here because the sort key `updatedAt` moves while paging — a message in an older
+  thread reorders the list, so pages skip or repeat rows. `GET /api/agent/threads` takes
+  `limit`/`cursorUpdatedAt`/`cursorId` and returns `{ threads, total, nextCursor }`; the sidebar
+  pages it with `useInfiniteQuery` (`THREADS_PAGE_SIZE`).
+- **Timestamp columns are `mode: "string"` and return NAIVE literals that are already UTC**
+  (`"2026-09-05 10:20:18.013"`). `new Date(...)` on one reads it as LOCAL time and silently shifts
+  it by the viewer's offset. `threadRepository` converts through `columnTimestampToIso` /
+  `toColumnTimestamp` in both directions; any new code reading these columns must do the same. This
+  bug is invisible: a shifted cursor still validates and still queries, it just matches nothing and
+  ends the list early.
 - **Error translation** lives in the repositories: a duplicate name surfaces as `ConflictError`
   (→ HTTP 409); a missing row returns `null`/`false` (→ HTTP 404). Routes check return values, not
   driver error codes.

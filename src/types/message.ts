@@ -20,6 +20,8 @@ export interface MessageOptions {
   allowTool?: "allow" | "deny";
   approveAllTools?: boolean; // if true, skip tool approval prompts
   attachments?: FileAttachment[];
+  /** Client-only: send into this thread instead of the hook's current one. Never serialized. */
+  targetThreadId?: string;
 }
 
 export interface MessageRequest {

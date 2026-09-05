@@ -36,11 +36,14 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
     queryFn: () => (threadId ? fetchMessageHistory(threadId) : Promise.resolve([])),
   });
 
-  // Ensure we fetch once the threadId becomes available (guards initial undefined cases)
+  // Fetch once the threadId becomes available. Skipped mid-stream: the new-chat screen adopts
+  // its thread id during a send, where a refetch would clobber the optimistic messages.
   useEffect(() => {
-    if (threadId) {
+    if (threadId && !isSending) {
       void refetchMessagesQuery();
     }
+    // `isSending` is deliberately not a dependency: fire on thread changes, not on send state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId, refetchMessagesQuery]);
 
   // Shared function to handle SSE streaming for both sendMessage and approveToolExecution
@@ -163,8 +166,9 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
 
   const sendMessage = useCallback(
     async (text: string, opts?: MessageOptions) => {
+      const target = opts?.targetThreadId ?? threadId;
       // Guard: require a thread to target
-      if (!threadId) return;
+      if (!target) return;
 
       // Optimistic UI: append the user's message immediately
       const tempId = `temp-${Date.now()}`;
@@ -176,13 +180,13 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
           attachments: opts?.attachments,
         },
       };
-      queryClient.setQueryData(["messages", threadId], (old: MessageResponse[] = []) => [
+      queryClient.setQueryData(["messages", target], (old: MessageResponse[] = []) => [
         ...old,
         userMessage,
       ]);
 
       // Handle the streaming response
-      await handleStreamResponse({ threadId, text, opts });
+      await handleStreamResponse({ threadId: target, text, opts });
     },
     [threadId, queryClient, handleStreamResponse],
   );
