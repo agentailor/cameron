@@ -48,4 +48,23 @@ describe("formatThreadTime", () => {
   it("returns an empty string for an unparseable value rather than 'Invalid Date'", () => {
     expect(formatThreadTime("not a date", NOW)).toBe("");
   });
+
+  // Dated far from any plausible today: a system-clock predicate falls through and fails here.
+  describe("honors the passed-in `now` rather than the system clock", () => {
+    const PAST = new Date("2001-04-17T14:00:00.000Z");
+
+    it("treats a thread from the same day as `now` as today", () => {
+      const fiveMinutesEarlier = new Date(PAST.getTime() - 5 * 60_000);
+      expect(formatThreadTime(fiveMinutesEarlier, PAST)).toBe("5 minutes ago");
+    });
+
+    it("treats the day before `now` as yesterday", () => {
+      const dayBefore = new Date(PAST.getTime() - 24 * 60 * 60 * 1000);
+      expect(formatThreadTime(dayBefore, PAST)).toMatch(/^yesterday /);
+    });
+
+    it("omits the year for a thread in the same year as `now`", () => {
+      expect(formatThreadTime(new Date("2001-01-09T09:00:00.000Z"), PAST)).not.toMatch(/2001/);
+    });
+  });
 });
