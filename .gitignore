@@ -65,3 +65,6 @@ scratches
 # Skills
 .agents/*
 skills-lock.json
+
+# Database dumps (real financial data — never commit)
+backups/

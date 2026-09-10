@@ -1,36 +1,47 @@
-# Two ways to run Cameron, from one file:
+# Two stacks, one file — and they share NO data.
 #
-#   docker compose up -d                 dependencies only — Postgres + MinIO, app on the host.
-#                                        The contributor path; unchanged, and still the default.
-#   docker compose --profile full up     the whole app, including migrations. Nothing needed on
-#                                        the host but Docker.
+#   docker compose up -d                 DEV dependencies: Postgres `mydb_dev` (5544) + MinIO
+#                                        (9100/9101), app on the host. Disposable by design.
+#   docker compose --profile full up     PRODUCTION: the whole app on its OWN Postgres (5546) and
+#                                        its OWN MinIO (9102/9103). This is the database holding
+#                                        real financial records.
 #
-# Services carrying `profiles:` do not start without the profile, so the default command is
-# untouched by anything below.
+# The split is physical, not by convention: `db-prod` and `minio-prod` use their own named volumes,
+# so `docker compose down -v` (which deletes volumes) on the default profile CANNOT reach
+# production data. Removing production data takes naming that stack explicitly.
+#
+#   docker compose down                             stop dev, keep data
+#   docker compose down -v                          stop dev, DESTROY dev data (safe: dev only)
+#   docker compose --profile full down              stop production, keep data  ← use this one
+#   docker compose --profile full down -v           DESTROYS REAL FINANCIAL DATA. Back up first;
+#                                                   see "Backing up" in CLAUDE.md.
+#
+# Services carrying `profiles:` do not start without the profile.
 
 name: cameron-ai
 
 services:
+  # ── Default profile: DEV dependencies. Disposable. ─────────────────────────────────────────────
+
   db:
     image: postgres:17-alpine
     container_name: cameron-ai-db
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-mydb}
+      # `mydb_dev`, not `mydb`: the dev database is the one that gets wiped, reseeded and
+      # experimented on. Production lives in `db-prod` below.
+      POSTGRES_DB: ${POSTGRES_DB:-mydb_dev}
     ports:
       - "${POSTGRES_PORT:-5544}:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
-    # Added for `migrate`, which must not start against a database still booting. Harmless to the
-    # dependencies-only path.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-mydb}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-mydb_dev}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # MinIO S3-compatible object storage for file uploads
   minio:
     image: quay.io/minio/minio:latest
     container_name: cameron-ai-minio
@@ -49,7 +60,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Automatically create default buckets on startup
   createbuckets:
     image: quay.io/minio/mc:latest
     depends_on:
@@ -64,7 +74,66 @@ services:
       exit 0;
       "
 
-  # ── `--profile full` only: the app itself ──────────────────────────────────────────────────────
+  # ── `--profile full` only: PRODUCTION. Real financial data. ────────────────────────────────────
+
+  # Separate service and separate volume from `db` above — that separation is the whole point, so
+  # a teardown of the dev stack cannot reach these rows. Its port differs too, so a host-side tool
+  # pointed at 5544 reaches dev, never production.
+  db-prod:
+    profiles: [full]
+    image: postgres:17-alpine
+    container_name: cameron-ai-db-prod
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_PROD_DB:-mydb}
+    ports:
+      - "${POSTGRES_PROD_PORT:-5546}:5432"
+    volumes:
+      - prod_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_PROD_DB:-mydb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Uploads are bank exports and receipts — financial data by the same standard as the rows they
+  # produce, so the object store is split for the same reason the database is.
+  minio-prod:
+    profiles: [full]
+    image: quay.io/minio/minio:latest
+    container_name: cameron-ai-minio-prod
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+    ports:
+      - "${S3_PROD_API_PORT:-9102}:9000"
+      - "${S3_PROD_CONSOLE_PORT:-9103}:9001"
+    volumes:
+      - prod_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  createbuckets-prod:
+    profiles: [full]
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio-prod:
+        condition: service_healthy
+    restart: on-failure
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set localminio http://minio-prod:9000 ${S3_ACCESS_KEY_ID:-minioadmin} ${S3_SECRET_ACCESS_KEY:-minioadmin};
+      /usr/bin/mc mb localminio/${S3_BUCKET_NAME:-uploads} --ignore-existing;
+      /usr/bin/mc anonymous set download localminio/${S3_BUCKET_NAME:-uploads};
+      exit 0;
+      "
 
   # Applies pending migrations, then exits. Its own service (and its own build stage) because
   # drizzle-kit is a devDependency that the runtime image deliberately does not carry.
@@ -75,10 +144,10 @@ services:
       target: migrate
     container_name: cameron-ai-migrate
     depends_on:
-      db:
+      db-prod:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-mydb}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db-prod:5432/${POSTGRES_PROD_DB:-mydb}
     restart: on-failure
 
   web:
@@ -91,18 +160,18 @@ services:
       # Boots against a migrated schema or not at all.
       migrate:
         condition: service_completed_successfully
-      minio:
+      minio-prod:
         condition: service_healthy
     ports:
       - "${PORT:-3100}:3100"
     environment:
-      # `db` and `minio`, not localhost — inside the network, localhost is the container itself.
-      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-mydb}
+      # Service names, not localhost — inside the network, localhost is the container itself.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db-prod:5432/${POSTGRES_PROD_DB:-mydb}
 
       # The two halves of the split: S3_ENDPOINT is how the SERVER reaches MinIO, S3_PUBLIC_URL is
       # what gets handed to the BROWSER in an upload's returned link. Same store, different routes.
-      S3_ENDPOINT: http://minio:9000
-      S3_PUBLIC_URL: http://localhost:${S3_API_PORT:-9100}
+      S3_ENDPOINT: http://minio-prod:9000
+      S3_PUBLIC_URL: http://localhost:${S3_PROD_API_PORT:-9102}
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-minioadmin}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-minioadmin}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-uploads}
@@ -121,5 +190,9 @@ services:
     restart: unless-stopped
 
 volumes:
+  # Dev — disposable.
   db_data:
   minio_data:
+  # Production — real financial records. Only a `--profile full down -v` removes these.
+  prod_db_data:
+  prod_minio_data:
