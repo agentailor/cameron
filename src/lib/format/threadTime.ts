@@ -1,4 +1,4 @@
-import { formatDistanceStrict, isThisYear, isToday, isYesterday } from "date-fns";
+import { formatDistanceStrict, isSameDay, isSameYear, subDays } from "date-fns";
 
 /**
  * Timestamp for a thread in the sidebar list: "just now" / "5 minutes ago" / "7:34 AM" /
@@ -8,7 +8,8 @@ export function formatThreadTime(value: string | Date, now: Date = new Date()): 
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "";
 
-  if (isToday(date)) {
+  // Reference-date forms: `isToday`/`isYesterday`/`isThisYear` would read the system clock.
+  if (isSameDay(date, now)) {
     const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
     if (seconds < 60) return "just now";
     // Relative only within the hour: past that its minute granularity collapses threads started
@@ -17,12 +18,12 @@ export function formatThreadTime(value: string | Date, now: Date = new Date()): 
     if (seconds < 3600) return formatDistanceStrict(date, now, { addSuffix: true });
     return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   }
-  if (isYesterday(date)) {
+  if (isSameDay(date, subDays(now, 1))) {
     return `yesterday ${date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
   }
   return date.toLocaleDateString(
     [],
-    isThisYear(date)
+    isSameYear(date, now)
       ? { month: "short", day: "numeric" }
       : { year: "numeric", month: "short", day: "numeric" },
   );
