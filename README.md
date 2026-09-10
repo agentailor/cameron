@@ -86,6 +86,11 @@ docker compose --profile full up  # http://localhost:3100
 That builds the app, waits for Postgres, applies migrations, and starts everything. Nothing but
 Docker is needed on your machine.
 
+This is the stack that holds your real financial records — its Postgres (`:5546`) and MinIO
+(`:9102`) are separate containers on separate volumes from the dev stack below, so working on
+Cameron can't disturb your data. Stop it with `docker compose --profile full down`; adding `-v`
+to that command **deletes your financial data**.
+
 ### Work on it (app on the host)
 
 **Prerequisites:** the above, plus Node 20+ and pnpm.
@@ -93,10 +98,13 @@ Docker is needed on your machine.
 ```bash
 pnpm install
 cp .env.example .env       # add your model API key
-docker compose up -d       # dependencies only — Postgres :5544, MinIO :9100/:9101
+docker compose up -d       # dev dependencies — Postgres :5544, MinIO :9100/:9101
 pnpm db:migrate
 pnpm dev                   # http://localhost:3100
 ```
+
+This stack is disposable: it serves `mydb_dev` on its own volumes, and `docker compose down -v`
+resets it without touching anything above.
 
 Then ask it something — _"what did I spend on dining last month?"_ — or drop in a CSV export and
 let it propose a column mapping.

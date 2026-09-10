@@ -5,11 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Essential Development Commands
 
 ```bash
-# Whole app in Docker (owner path) — builds, migrates, serves on 3100
+# PRODUCTION — the whole app on its own Postgres (5546) + MinIO (9102/9103).
+# This stack holds REAL FINANCIAL DATA. See "Two stacks" below before tearing it down.
 docker compose --profile full up
 
-# Setup for host development (contributor path)
-docker compose up -d          # Start Postgres (5544) and MinIO (9100/9101)
+# DEV dependencies (contributor path) — Postgres `mydb_dev` (5544), MinIO (9100/9101). Disposable.
+docker compose up -d
 pnpm install
 pnpm db:migrate               # Apply pending Drizzle migrations
 
@@ -35,6 +36,49 @@ pnpm db:studio                # Database UI
 # MinIO Console: http://localhost:9101 (minioadmin/minioadmin)
 # S3 API: http://localhost:9100
 ```
+
+## Two stacks: dev is disposable, `--profile full` is production
+
+`compose.yaml` defines **two stacks that share no data**. The separation is physical — separate
+services, separate named volumes — not a naming convention.
+
+|          | Default (`up -d`)            | `--profile full`                  |
+| -------- | ---------------------------- | --------------------------------- |
+| Postgres | `db` → `mydb_dev`, port 5544 | `db-prod` → `mydb`, port **5546** |
+| MinIO    | `minio`, 9100/9101           | `minio-prod`, **9102/9103**       |
+| Volumes  | `db_data`, `minio_data`      | `prod_db_data`, `prod_minio_data` |
+| Contents | seed/scratch data            | **real financial records**        |
+
+**`docker compose down -v` deletes named volumes.** Because the volume sets are disjoint, a `-v`
+teardown of the dev stack cannot reach production. Removing production data requires naming that
+stack explicitly:
+
+```bash
+docker compose down                        # stop dev, keep data
+docker compose down -v                     # DESTROY dev data (safe — dev only)
+docker compose --profile full down         # stop production, KEEP data  ← the safe one
+docker compose --profile full down -v      # DESTROYS REAL FINANCIAL DATA — back up first
+```
+
+Treat the production stack as irreplaceable: never run `-v` against `--profile full`, and never
+assume rows you did not create are disposable. Back up before anything destructive — a volume
+deletion is immediate and has no undo. Related: `.env.ai-test` / `mydb_test` isolate live-testing
+from either stack.
+
+### Backing up the production database
+
+Before any migration, teardown, or destructive experiment:
+
+```bash
+docker exec cameron-ai-db-prod pg_dump -U user -d mydb --clean --if-exists \
+  > backups/cameron-$(date +%Y%m%d-%H%M%S).sql          # `backups/` is gitignored
+
+# Restore into a running prod container:
+cat backups/cameron-<stamp>.sql | docker exec -i cameron-ai-db-prod psql -U user -d mydb
+```
+
+The uploaded files live in the `prod_minio_data` volume, separately from the database — a `pg_dump`
+does not include them. Copy them out with the MinIO console (9103) or `mc mirror` if they matter.
 
 ## Architecture Overview
 
