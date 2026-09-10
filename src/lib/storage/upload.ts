@@ -3,6 +3,20 @@ import { Upload } from "@aws-sdk/lib-storage";
 import { s3Client, BUCKET_NAME } from "./s3-client";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+/**
+ * Base URL the BROWSER uses to fetch an uploaded file — not the one the server uploads through.
+ *
+ * They are the same value only while server and browser share a host. Containerized, the server
+ * reaches MinIO at `http://minio:9000` (the compose network) while the browser must still be handed
+ * `http://localhost:9100`, so `S3_ENDPOINT` alone cannot serve both: the upload succeeds and the
+ * returned link is unreachable, which looks exactly like a working upload.
+ *
+ * Unset outside Docker, where the fallback keeps the host workflow byte-identical.
+ */
+function publicEndpoint(): string {
+  return process.env.S3_PUBLIC_URL || process.env.S3_ENDPOINT || "";
+}
+
 function sanitizeFilenameForHeader(filename: string): string | undefined {
   // Prevent HTTP header injection (CRLF) and other control characters.
   // Also strip path separators to avoid confusing download dialogs.
@@ -68,8 +82,7 @@ export async function uploadFile(
   await s3Client.send(command);
 
   // Return public URL (MinIO bucket is set to public download in compose.yaml)
-  const endpoint = process.env.S3_ENDPOINT || "";
-  return `${endpoint}/${BUCKET_NAME}/${key}`;
+  return `${publicEndpoint()}/${BUCKET_NAME}/${key}`;
 }
 
 /**
@@ -107,8 +120,7 @@ export async function uploadLargeFile(
 
   await upload.done();
 
-  const endpoint = process.env.S3_ENDPOINT || "";
-  return `${endpoint}/${BUCKET_NAME}/${key}`;
+  return `${publicEndpoint()}/${BUCKET_NAME}/${key}`;
 }
 
 /**

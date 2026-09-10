@@ -71,16 +71,29 @@ rule 3 by the fact that nothing ships to a hosted backend — the database is yo
 
 ## Quick start
 
-**Prerequisites:** Node 20+, pnpm, Docker (for Postgres and MinIO), and an API key for one of
-Anthropic / OpenAI / Google.
+### Run it (Docker only)
+
+**Prerequisites:** Docker, and an API key for one of Anthropic / OpenAI / Google.
 
 ```bash
 git clone https://github.com/agentailor/cameron
 cd cameron
-pnpm install
 
+cp .env.example .env              # add your model API key
+docker compose --profile full up  # http://localhost:3100
+```
+
+That builds the app, waits for Postgres, applies migrations, and starts everything. Nothing but
+Docker is needed on your machine.
+
+### Work on it (app on the host)
+
+**Prerequisites:** the above, plus Node 20+ and pnpm.
+
+```bash
+pnpm install
 cp .env.example .env       # add your model API key
-docker compose up -d       # Postgres :5544, MinIO :9100/:9101
+docker compose up -d       # dependencies only — Postgres :5544, MinIO :9100/:9101
 pnpm db:migrate
 pnpm dev                   # http://localhost:3100
 ```

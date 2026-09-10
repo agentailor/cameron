@@ -946,6 +946,10 @@ Two boundaries worth knowing:
 ## 🛠️ Available Scripts
 
 ```bash
+# Docker — the whole app, nothing needed on the host but Docker
+docker compose --profile full up    # builds, migrates, serves on http://localhost:3100
+docker compose up -d                # dependencies only (Postgres + MinIO), app on the host
+
 # Development
 pnpm dev                 # Dev server with Turbopack (http://localhost:3100)
 pnpm build               # Production build (needs Postgres up)
