@@ -1,0 +1,38 @@
+# The build context is uploaded to the daemon before anything runs, so anything listed here is
+# both a speed win and a correctness one: a local `.next/` or `node_modules/` copied into the
+# image would shadow what the build itself produces.
+
+node_modules
+.next
+out
+build
+coverage
+
+.git
+.github
+
+# Env files hold API keys and are supplied at RUN time (compose `environment:`), never baked in.
+.env
+.env.*
+!.env.example
+!.env.eval.example
+
+# Eval artifacts — reports are regenerated per run and can be large.
+eval/results
+
+# Local-only scratch, notes and tooling.
+.claude
+.agents
+skills-lock.json
+.planning
+.tmp-test
+scratches
+.vercel
+
+# Docs and images don't affect the build, but they do inflate the context.
+docs/images
+*.md
+!README.md
+
+*.tsbuildinfo
+.DS_Store

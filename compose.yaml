@@ -1,3 +1,13 @@
+# Two ways to run Cameron, from one file:
+#
+#   docker compose up -d                 dependencies only — Postgres + MinIO, app on the host.
+#                                        The contributor path; unchanged, and still the default.
+#   docker compose --profile full up     the whole app, including migrations. Nothing needed on
+#                                        the host but Docker.
+#
+# Services carrying `profiles:` do not start without the profile, so the default command is
+# untouched by anything below.
+
 name: cameron-ai
 
 services:
@@ -12,6 +22,13 @@ services:
       - "${POSTGRES_PORT:-5544}:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+    # Added for `migrate`, which must not start against a database still booting. Harmless to the
+    # dependencies-only path.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-mydb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   # MinIO S3-compatible object storage for file uploads
   minio:
@@ -46,6 +63,62 @@ services:
       /usr/bin/mc anonymous set download localminio/${S3_BUCKET_NAME:-uploads};
       exit 0;
       "
+
+  # ── `--profile full` only: the app itself ──────────────────────────────────────────────────────
+
+  # Applies pending migrations, then exits. Its own service (and its own build stage) because
+  # drizzle-kit is a devDependency that the runtime image deliberately does not carry.
+  migrate:
+    profiles: [full]
+    build:
+      context: .
+      target: migrate
+    container_name: cameron-ai-migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-mydb}
+    restart: on-failure
+
+  web:
+    profiles: [full]
+    build:
+      context: .
+      target: runner
+    container_name: cameron-ai-web
+    depends_on:
+      # Boots against a migrated schema or not at all.
+      migrate:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+    ports:
+      - "${PORT:-3100}:3100"
+    environment:
+      # `db` and `minio`, not localhost — inside the network, localhost is the container itself.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-mydb}
+
+      # The two halves of the split: S3_ENDPOINT is how the SERVER reaches MinIO, S3_PUBLIC_URL is
+      # what gets handed to the BROWSER in an upload's returned link. Same store, different routes.
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_URL: http://localhost:${S3_API_PORT:-9100}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-minioadmin}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-uploads}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_FORCE_PATH_STYLE: "true"
+
+      # Your keys, read from the environment or .env — never baked into the image.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+
+      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-false}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://cloud.langfuse.com}
+    restart: unless-stopped
 
 volumes:
   db_data:

@@ -5,7 +5,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Essential Development Commands
 
 ```bash
-# Setup (requires Postgres and MinIO running)
+# Whole app in Docker (owner path) — builds, migrates, serves on 3100
+docker compose --profile full up
+
+# Setup for host development (contributor path)
 docker compose up -d          # Start Postgres (5544) and MinIO (9100/9101)
 pnpm install
 pnpm db:migrate               # Apply pending Drizzle migrations
