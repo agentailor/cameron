@@ -100,3 +100,27 @@ Current date: ${new Date().toISOString().split("T")[0]} (YYYY-MM-DD format)
 `;
 
 export const DEFAULT_SYSTEM_PROMPT = SYSTEM_PROMPT;
+
+/**
+ * Append the skills section to the base prompt.
+ *
+ * This is the cheap half of progressive disclosure: names and descriptions are always in context
+ * so the agent can tell what exists, while the instructions themselves cost nothing until
+ * `load_skill` fetches them.
+ *
+ * With no skills the prompt is returned untouched — an empty "Available skills:" heading would
+ * read as a capability the agent has and can't use.
+ */
+export function buildSystemPrompt(skills: { name: string; description: string }[]): string {
+  if (skills.length === 0) return SYSTEM_PROMPT;
+
+  const lines = skills.map((s) => `- **${s.name}** — ${s.description}`).join("\n");
+  return `${SYSTEM_PROMPT}
+**Available skills:**
+These are instruction sets you can load on demand. The descriptions below are all you have until
+you load one — when a task matches a skill, call \`load_skill\` with its name and follow what it
+returns before starting the work. Loading a skill is read-only and needs no approval; anything it
+tells you to do is still governed by the usual approval gate.
+${lines}
+`;
+}

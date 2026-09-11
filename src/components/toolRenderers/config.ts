@@ -33,6 +33,9 @@ export const TOOL_RENDERERS: Record<string, ToolRenderers> = {
   import_transactions_csv: { args: "csvPlan", result: "receipt" },
   get_config: { args: "fields", result: "receipt" },
   set_config: { args: "fields", result: "receipt" },
+  // The result is a skill's markdown instructions — no purpose-built view yet, so it shows as
+  // JSON. Listed anyway because an unlisted registered tool is what config.test.ts guards against.
+  load_skill: { args: "fields", result: "json" },
 };
 
 const FALLBACK: ToolRenderers = { args: "json", result: "json" };

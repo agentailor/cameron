@@ -62,8 +62,12 @@ docker compose --profile full down -v      # DESTROYS REAL FINANCIAL DATA — ba
 
 Treat the production stack as irreplaceable: never run `-v` against `--profile full`, and never
 assume rows you did not create are disposable. Back up before anything destructive — a volume
-deletion is immediate and has no undo. Related: `.env.ai-test` / `mydb_test` isolate live-testing
-from either stack.
+deletion is immediate and has no undo.
+
+**Live-test against the dev stack** (`pnpm dev` → `mydb_dev`), never against `--profile full`. Note
+`pnpm dev` hardcodes `-p 3100`, which the production `web` container normally occupies — run
+`npx next dev --turbopack -p 3101` rather than stopping production. (`mydb_test`, `.env.ai-test` and
+`pnpm demo` are dead pre-Docker leftovers; don't revive them.)
 
 ### Backing up the production database
 
@@ -125,6 +129,11 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     silently dropping the field. Dates are parsed with an agent-supplied `dateFormat` (date-fns
     pattern, confirmed with the user) — never guessed; unparseable rows are reported in `badDateRows`
     (bounded) + `skippedBadDate`, not dated `now()`.
+  - `src/lib/agent/tools/skills.ts` — `load_skill` (read-only): returns one skill's full instructions
+    by name. Auto-approves — reading a skill approves nothing it tells you to do. `name` is a plain
+    string, not an enum, because the skill names are already in the prompt verbatim: a wrong name is
+    a mistyped copy, and `availableSkills` in the `unknown_skill` payload corrects it in one turn
+    (an enum would also break the legitimate zero-skills case, since `z.enum([])` is invalid).
 - **Tool Approval**: Human-in-the-loop via `humanInTheLoopMiddleware`. Approval is gated **per-tool**
   through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
   `import_transactions_csv`, `create_category`, `set_config`); read tools (incl. `run_sql`) and MCP tools
@@ -140,10 +149,27 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
   way to learn what Cameron can do isn't reading the source. Data comes from
   `listCapabilities()` in `src/lib/agent/capabilities.ts`, which is derived from the same tool arrays
   `index.ts` registers — a new tool appears with no UI edit. That module is deliberately a **leaf**:
-  it must not import `agent/index.ts`. The CSV entries are the one hand-transcribed exception
-  (`tools/csvImport.ts` imports the S3 client, which throws at module load when S3 env vars are
-  unset); `capabilities.test.ts` pins them to the real tools so they can't drift. Deliberately
-  minimal — the design is expected to change.
+  it must not import `agent/index.ts`. Two groups are hand-transcribed rather than imported, both
+  because the real module reaches something that blows up at module load: `tools/csvImport.ts`
+  imports the S3 client (throws without S3 env vars), and `tools/skills.ts` reaches the registry
+  (reads the filesystem). `capabilities.test.ts` pins both to the real tools so they can't drift.
+  Deliberately minimal — the design is expected to change.
+
+### Skills (`skills/` + `src/lib/skills/`)
+
+Instructions loaded on demand, in the standard `SKILL.md` format — full detail in
+[docs/SKILLS.md](docs/SKILLS.md).
+
+- Names + descriptions go into the system prompt at startup (`buildSystemPrompt()` in
+  `agent/prompt.ts`); the agent calls **`load_skill`** to pull one skill's body into context. No
+  bash, no sandbox, no agent-facing filesystem.
+- **`skills/` (committed, product code) is not `.agents/skills/` (gitignored dev tooling).**
+- Read once at module load and cached (`src/lib/skills/registry.ts`) — adding a skill needs a
+  restart. Sorted by name so the prompt is identical across machines.
+- **Absence is fine, brokenness is not**: an empty or missing `skills/` loads silently; a skill that
+  exists but fails to read or validate is logged and dropped.
+- `output: "standalone"` does not trace files read from disk, so the Dockerfile `COPY` +
+  `outputFileTracingIncludes` are what stop production running with zero skills and no error.
 
 ### Data Flow
 
@@ -432,10 +458,12 @@ pnpm typecheck:eval                         # free — the root tsc misses this 
   something wrong in a conversation" is always a plain **failure** — widening this tier is how it
   turns into a place to hide them.
 
-### Skills
+### Authoring skills (`.agents/`, not `skills/`)
 
-Tool conventions here follow the [`tool-design`](https://github.com/agentailor/skills) skill.
-It's installed locally but gitignored (`.agents/`, `skills-lock.json`) — reinstall with:
+Two different things share the word "skill": `skills/` is Cameron's own, committed and shipped
+(see [docs/SKILLS.md](docs/SKILLS.md)); `.agents/skills/` is gitignored developer tooling that shapes
+how this repo's code gets written. Tool conventions here follow
+[`tool-design`](https://github.com/agentailor/skills) — reinstall with:
 
 ```bash
 npx skills add agentailor/skills --skill tool-design

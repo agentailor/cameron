@@ -41,6 +41,15 @@ describe("listCapabilities", () => {
     expect(listed).toEqual(csvImportTools.map((t) => t.name).sort());
   });
 
+  it("lists the same skill tools the agent registers", async () => {
+    const { skillTools } = await import("./tools/skills");
+    const listed = listCapabilities()
+      .filter((c) => c.group === "Skills")
+      .map((c) => c.name)
+      .sort();
+    expect(listed).toEqual(skillTools.map((t) => t.name).sort());
+  });
+
   /**
    * A tool array that isn't spread into `builtin` is never bound to the agent, and nothing else
    * catches it: the arrays are all `StructuredToolInterface[]`, so a mix-up typechecks, and this
@@ -54,7 +63,13 @@ describe("listCapabilities", () => {
       src.indexOf("];", src.indexOf("const builtin = [")),
     );
 
-    const groups = ["financeTools", "csvImportTools", "analyticsTools", "categoryTools"];
+    const groups = [
+      "financeTools",
+      "csvImportTools",
+      "analyticsTools",
+      "categoryTools",
+      "skillTools",
+    ];
     for (const g of groups) {
       expect(builtin, `${g} is not spread into builtin`).toContain(`...${g}`);
     }
