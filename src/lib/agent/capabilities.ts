@@ -26,6 +26,17 @@ const CSV_IMPORT_CAPABILITIES = [
   },
 ];
 
+// Transcribed for the same reason as the CSV tools above: ./tools/skills reaches the registry,
+// which reads the filesystem at module load. capabilities.test.ts pins these to the real tools.
+const SKILL_CAPABILITIES = [
+  {
+    name: "load_skill",
+    description:
+      "Load a skill's full instructions by name. Skills are listed with a short description in " +
+      "the agent's prompt; this fetches the rest on demand. Read-only — runs without approval.",
+  },
+];
+
 /** Tools that mutate the ledger and pause for approval. Names must match ./tools/*. */
 export { MUTATING_TOOL_NAMES } from "./mutatingTools";
 
@@ -43,6 +54,7 @@ const GROUPS: { label: string; tools: { name: string; description: string }[] }[
   { label: "CSV import", tools: CSV_IMPORT_CAPABILITIES },
   { label: "Analysis", tools: analyticsTools },
   { label: "Settings", tools: configTools },
+  { label: "Skills", tools: SKILL_CAPABILITIES },
 ];
 
 const mutating = new Set<string>(MUTATING_TOOL_NAMES_LOCAL);

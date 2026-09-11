@@ -60,8 +60,11 @@ ENV NODE_ENV=production \
 # Don't run as root.
 RUN addgroup -g 1001 -S nodejs && adduser -u 1001 -S nextjs -G nodejs
 
-# `standalone` omits both of these by design — they are served from disk, not traced as imports.
+# `standalone` omits these by design — they are served from disk, not traced as imports. The
+# skills are read from disk at startup, so without this COPY the image runs with zero skills and
+# says nothing about it.
 COPY --from=build --chown=nextjs:nodejs /app/public ./public
+COPY --from=build --chown=nextjs:nodejs /app/skills ./skills
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 

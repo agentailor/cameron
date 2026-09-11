@@ -1,4 +1,4 @@
-import { DEFAULT_SYSTEM_PROMPT as SYSTEM_PROMPT } from "./prompt";
+import { buildSystemPrompt } from "./prompt";
 import { postgresCheckpointer, setupCheckpointer } from "./memory";
 import type { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
 import {
@@ -15,6 +15,8 @@ import { csvImportTools } from "./tools/csvImport";
 import { analyticsTools } from "./tools/analytics";
 import { categoryTools } from "./tools/categories";
 import { configTools as settingsTools } from "./tools/config";
+import { skillTools } from "./tools/skills";
+import { listSkills } from "@/lib/skills/registry";
 import { createAgent, humanInTheLoopMiddleware } from "langchain";
 // Lives in ./capabilities so the page can read it without importing this file's deps.
 import { MUTATING_TOOL_NAMES } from "./capabilities";
@@ -47,6 +49,7 @@ async function buildAgent(cfg?: AgentConfigOptions) {
     ...analyticsTools,
     ...categoryTools,
     ...settingsTools,
+    ...skillTools,
   ];
   const builtinTools = (provider === "google"
     ? builtin.map((t) => sanitizeTool(t as unknown as DynamicStructuredTool))
@@ -74,7 +77,7 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   const agent = createAgent({
     model: llm,
     tools: allTools,
-    systemPrompt: cfg?.systemPrompt || SYSTEM_PROMPT,
+    systemPrompt: cfg?.systemPrompt || buildSystemPrompt(listSkills()),
     checkpointer: postgresCheckpointer,
     middleware,
     // 25 comfortably covers the CSV inspect→propose→import handshake plus a few tool retries.
