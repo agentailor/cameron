@@ -76,7 +76,7 @@ rule 3 by the fact that nothing ships to a hosted backend — the database is yo
 **Prerequisites:** Docker, and an API key for one of Anthropic / OpenAI / Google.
 
 ```bash
-git clone https://github.com/agentailor/cameron
+git clone --branch v2 https://github.com/agentailor/cameron
 cd cameron
 
 cp .env.example .env              # add your model API key
@@ -85,6 +85,12 @@ docker compose --profile full up  # http://localhost:3100
 
 That builds the app, waits for Postgres, applies migrations, and starts everything. Nothing but
 Docker is needed on your machine.
+
+> **Why `--branch v2`?** Tags are the stable points — each one matches a published article and has
+> passed CI before release. `main` is the working trunk and runs ahead of the latest tag between
+> articles, so it may carry half-finished work. Clone the [latest
+> release](https://github.com/agentailor/cameron/releases/latest) to start from something known
+> good; `git checkout main` if you want what's in flight.
 
 This is the stack that holds your real financial records — its Postgres (`:5546`) and MinIO
 (`:9102`) are separate containers on separate volumes from the dev stack below, so working on
@@ -116,8 +122,14 @@ The tests are free and offline: `pnpm test` runs with no model, no network and n
 ## Built in public, one tag per article
 
 Cameron ships as a linear series of tagged releases — `v1`, `v2`, `v3`, … — one (or two) per
-article. Reading about a topic? Check out the tag for the article that taught it. The release
-badge above always points at the current one; whatever it shows is what `main` is.
+article. Reading about a topic? Check out the tag for the article that taught it:
+`git checkout v1`. The release badge above points at the newest tag, and
+[`release.yml`](.github/workflows/release.yml) gates every `v*` tag on the test suite and a
+typecheck, so a tag is a point that built and passed.
+
+`main` is where the next version is assembled, so it sits **ahead** of the newest tag and can carry
+work that isn't finished yet. That's what a trunk is for — but it means the tag, not `main`, is the
+place to start if you want Cameron to behave the way an article describes.
 
 The series opens with **[`v1`: Cameron is born](https://github.com/agentailor/cameron/releases/tag/v1)**
 — the persona and hard rules, a transaction store you own, approval-gated finance tools, and CSV
