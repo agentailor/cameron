@@ -17,8 +17,11 @@ export const cases: EvalCase[] = [
       "The prompt forbids asking for confirmation in prose, because the SYSTEM already surfaces " +
       "an approval UI — asking on top of it double-prompts the user. Given every detail it needs, " +
       "the agent must call the tool (which IS the proposal) rather than stalling on a question.",
-    // Every field log_expense requires is present, so there is nothing legitimate to ask for.
     prompt: "Log a $12.50 coffee on my checking account, category Dining.",
+    // Every field log_expense needs is in the prompt, and the currency is pre-established, so
+    // there is nothing legitimate left to ask for. Without the currency the agent SHOULD ask
+    // (see config-log-expense-establishes-currency-first) and this case would fail inverted.
+    config: { currency: "USD" },
     approval: "allow",
     graders: [
       // The gate firing proves it called the tool instead of replying with a question.

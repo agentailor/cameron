@@ -133,11 +133,10 @@ async function main() {
 
       const perRun: CaseOutcome["perRun"] = [];
       for (let i = 0; i < n; i++) {
-        // An approval case mutates, so each run must start from the same ledger — otherwise run 2
-        // inherits run 1's writes and every row-count assertion drifts. A `config` case resets too:
-        // its seeded settings must not survive into the next case, whose premise may be an
-        // unestablished one.
-        if (testCase.approval || testCase.config) await resetToFixture();
+        // Every run starts from the fixture, including read-only ones: a mutating case upstream
+        // leaves rows behind, and the next case asserting a TOTAL silently reads fixture +
+        // leftovers. Resetting only mutating cases made case ORDER decide the result.
+        await resetToFixture();
         // After the reset, or the seeded settings would be wiped by it.
         if (testCase.config) await seedConfig(testCase.config);
 
