@@ -15,6 +15,7 @@ import { csvImportTools } from "./tools/csvImport";
 import { analyticsTools } from "./tools/analytics";
 import { categoryTools } from "./tools/categories";
 import { configTools as settingsTools } from "./tools/config";
+import { chartTools } from "./tools/charts";
 import { skillTools } from "./tools/skills";
 import { listSkills } from "@/lib/skills/registry";
 import { createAgent, humanInTheLoopMiddleware } from "langchain";
@@ -50,6 +51,7 @@ async function buildAgent(cfg?: AgentConfigOptions) {
     ...categoryTools,
     ...settingsTools,
     ...skillTools,
+    ...chartTools,
   ];
   const builtinTools = (provider === "google"
     ? builtin.map((t) => sanitizeTool(t as unknown as DynamicStructuredTool))

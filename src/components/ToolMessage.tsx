@@ -2,7 +2,15 @@ import React, { useState } from "react";
 import type { MessageResponse } from "@/types/message";
 import { ChevronDownIcon, ChevronRightIcon, CopyIcon, CheckIcon } from "lucide-react";
 import { getToolName } from "@/services/messageUtils";
-import { ToolResult } from "./toolRenderers";
+import { ToolResult, renderersFor } from "./toolRenderers";
+import { Chart } from "./charts/Chart";
+import type { ChartPayload } from "./charts/types";
+
+/** The artifact is `unknown` off the wire, so check the shape before drawing it. */
+const isChartPayload = (v: unknown): v is ChartPayload => {
+  const p = v as ChartPayload | undefined;
+  return !!p && typeof p === "object" && !!p.spec && Array.isArray(p.rows);
+};
 
 interface ToolMessageProps {
   message: MessageResponse;
@@ -46,6 +54,11 @@ export const ToolMessage = ({ message }: ToolMessageProps) => {
   const toolName = getToolName(message);
   const content = getContentAsString(message.data?.content);
   const summary = summarize(content);
+  // A chart is the answer, not a detail of it, so it renders outside the collapsed disclosure —
+  // the receipt stays inside for inspection.
+  const artifact = (message.data as { artifact?: unknown })?.artifact;
+  const chart =
+    renderersFor(toolName).result === "chart" && isChartPayload(artifact) ? artifact : null;
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -57,6 +70,22 @@ export const ToolMessage = ({ message }: ToolMessageProps) => {
       console.error("Failed to copy content:", err);
     }
   };
+
+  if (chart) {
+    return (
+      <div className="space-y-2">
+        <Chart payload={chart} />
+        <details className="border-border bg-muted/30 rounded-lg border">
+          <summary className="text-muted-foreground cursor-pointer px-4 py-2 font-mono text-xs">
+            {toolName ?? "tool"} · result
+          </summary>
+          <div className="border-border border-t px-4 py-3.5">
+            <ToolResult toolName={toolName} content={content} />
+          </div>
+        </details>
+      </div>
+    );
+  }
 
   return (
     <div className="border-border bg-muted/30 rounded-lg border">

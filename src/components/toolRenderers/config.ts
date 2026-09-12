@@ -14,7 +14,7 @@
  */
 
 export type ArgsRenderer = "sql" | "filters" | "file" | "expense" | "fields" | "csvPlan" | "json";
-export type ResultRenderer = "table" | "receipt" | "json";
+export type ResultRenderer = "table" | "receipt" | "chart" | "json";
 
 export interface ToolRenderers {
   /** null = the call has no arguments worth showing; render the name alone. */
@@ -36,6 +36,8 @@ export const TOOL_RENDERERS: Record<string, ToolRenderers> = {
   // The result is a skill's markdown instructions — no purpose-built view yet, so it shows as
   // JSON. Listed anyway because an unlisted registered tool is what config.test.ts guards against.
   load_skill: { args: "fields", result: "json" },
+  // The rows arrive as an artifact, not in the result content — see ToolMessage.
+  render_chart: { args: "sql", result: "chart" },
 };
 
 const FALLBACK: ToolRenderers = { args: "json", result: "json" };

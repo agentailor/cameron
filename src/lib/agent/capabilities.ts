@@ -2,6 +2,7 @@ import { financeTools } from "./tools/finance";
 import { analyticsTools } from "./tools/analytics";
 import { categoryTools } from "./tools/categories";
 import { configTools } from "./tools/config";
+import { chartTools } from "./tools/charts";
 import { MUTATING_TOOL_NAMES as MUTATING_TOOL_NAMES_LOCAL } from "./mutatingTools";
 
 /**
@@ -54,6 +55,7 @@ const GROUPS: { label: string; tools: { name: string; description: string }[] }[
   { label: "CSV import", tools: CSV_IMPORT_CAPABILITIES },
   { label: "Analysis", tools: analyticsTools },
   { label: "Settings", tools: configTools },
+  { label: "Charts", tools: chartTools },
   { label: "Skills", tools: SKILL_CAPABILITIES },
 ];
 
