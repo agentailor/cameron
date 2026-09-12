@@ -37,6 +37,9 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-chart-8: var(--chart-8);
+  --color-chart-7: var(--chart-7);
+  --color-chart-6: var(--chart-6);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -110,12 +113,33 @@
   --input: #e0dcd2;
   --ring: var(--brand);
 
-  /* Amber ramp — one hue, so a chart needs no second color */
-  --chart-1: #f59e0b;
-  --chart-2: #d97706;
-  --chart-3: #b45309;
-  --chart-4: #92400e;
-  --chart-5: #78350f;
+  /* Categorical series colors. Identity, not magnitude: each slot is a different HUE, assigned
+     in fixed order and never cycled. Deliberately NOT amber — amber marks the approval boundary
+     and nothing else, so amber bars would read as approval prompts.
+     Validated against the paper surface (dataviz validator): worst adjacent CVD ΔE 9.1,
+     normal-vision ΔE 19.6. Re-run the validator before changing a value or the order — the
+     ORDER is the colorblind-safety mechanism, not cosmetics. */
+  --chart-1: #2a78d6; /* blue */
+  --chart-2: #eb6834; /* orange */
+  --chart-3: #1baf7a; /* aqua */
+  --chart-4: #eda100; /* yellow */
+  --chart-5: #e87ba4; /* magenta */
+  --chart-6: #008300; /* green */
+  --chart-7: #4a3aa7; /* violet */
+  --chart-8: #e34948; /* red */
+
+  /* Sequential ramp — ONE hue, light→dark, for continuous magnitude only. Never use these as
+     categorical slots: a ramp encodes "more", not "which". */
+  --chart-seq-1: #cde2fb;
+  --chart-seq-2: #9ec5f4;
+  --chart-seq-3: #6da7ec;
+  --chart-seq-4: #3987e5;
+  --chart-seq-5: #2a78d6;
+  --chart-seq-6: #1c5cab;
+  --chart-seq-7: #104281;
+
+  /* Below 3:1 on paper (#eb6834 2.92, #1baf7a 2.56, #eda100 1.97, #e87ba4 2.45), so any chart
+     using those slots owes the reader relief: visible direct labels or the table view. */
 
   --sidebar: oklch(1 0 0 / 50%);
   --sidebar-foreground: var(--ink);
@@ -128,6 +152,26 @@
 }
 
 .dark {
+  /* The same eight hues STEPPED for the dark ground — not an automatic flip. Validated against
+     #0b0b0b: all eight clear 3:1, worst adjacent CVD ΔE 8.4, normal-vision ΔE 19.3.
+     Without these the light values leak into dark mode, where several fail contrast. */
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+  --chart-7: #9085e9;
+  --chart-8: #e66767;
+
+  --chart-seq-1: #104281;
+  --chart-seq-2: #1c5cab;
+  --chart-seq-3: #256abf;
+  --chart-seq-4: #2a78d6;
+  --chart-seq-5: #3987e5;
+  --chart-seq-6: #6da7ec;
+  --chart-seq-7: #9ec5f4;
+
   --background: var(--ink);
   --foreground: var(--paper);
   --card: oklch(0.2 0 0);
