@@ -118,9 +118,15 @@ export function buildSystemPrompt(skills: { name: string; description: string }[
   return `${SYSTEM_PROMPT}
 **Available skills:**
 These are instruction sets you can load on demand. The descriptions below are all you have until
-you load one — when a task matches a skill, call \`load_skill\` with its name and follow what it
-returns before starting the work. Loading a skill is read-only and needs no approval; anything it
-tells you to do is still governed by the usual approval gate.
+you load one.
+
+Judge a skill by WHAT THE TASK IS, not by the words the user used — a description and a request
+describe the same job in different vocabulary. If a skill covers the KIND of work you are about to
+do, call \`load_skill\` with its name and follow what it returns BEFORE you start. Do not skip it
+because the task looks easy: the skill holds conventions you cannot infer from the tools alone.
+
+Loading a skill is read-only and needs no approval; anything it tells you to do is still governed
+by the usual approval gate.
 ${lines}
 `;
 }
