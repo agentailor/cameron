@@ -5,14 +5,8 @@ import { buildModel, ticks, yScale } from "./geometry";
 import { seriesColor, type ChartPayload } from "./types";
 
 /**
- * A chart, drawn as plain SVG from a frozen payload.
- *
- * No charting library: the mark specs (capped bar width, rounded data-end, 2px surface gaps,
- * surface rings, recessive hairline axes) are specific enough that wrapping a library to obey them
- * is more code than drawing them, and a library brings its own styling system to fight the tokens.
- *
- * Colors come from --chart-N, which are CATEGORICAL (one hue per slot, fixed order). They are
- * deliberately not amber: amber marks the approval boundary in this app and nothing else.
+ * Draws a ChartPayload as SVG. Series colors come from the categorical --chart-N tokens; never
+ * use amber here, which this app reserves for the approval boundary.
  */
 
 const H = 200; // plot height
