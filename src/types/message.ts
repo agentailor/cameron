@@ -72,7 +72,8 @@ export interface ToolMessageData {
   id: string;
   content: string;
   status: string;
-  artifact?: unknown[];
+  /** Tool output for the client only — never sent to the model (e.g. a chart's resolved rows). */
+  artifact?: unknown;
   tool_call_id: string;
   name: string;
   metadata?: Record<string, unknown>;

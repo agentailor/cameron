@@ -1,11 +1,6 @@
 import type { ChartPayload, ChartRow } from "./types";
 
-/**
- * Turning a payload into coordinates. Pure and DOM-free, so the interesting decisions — scale
- * domains, series grouping, empty and single-point handling — are unit-testable without a browser.
- *
- * The component draws what these return and adds nothing of its own.
- */
+/** Turns a payload into coordinates: series grouping, scale domains, ticks. Pure and DOM-free. */
 
 export interface Series {
   key: string;

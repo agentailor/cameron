@@ -3,7 +3,7 @@ import { ensureThread } from "@/lib/thread";
 import type { MessageOptions, MessageResponse, ToolCall } from "@/types/message";
 import * as threadRepo from "@/lib/repositories/threadRepository";
 import { getHistory } from "@/lib/agent/memory";
-import { BaseMessage, HumanMessage } from "@langchain/core/messages";
+import { BaseMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
 import type { HITLRequest, HITLResponse, Decision } from "langchain";
 import { processAttachmentsForAI } from "@/lib/storage/content";
@@ -24,6 +24,8 @@ interface AgentRun {
     output: Promise<unknown>;
     status: Promise<string>;
   }>;
+  /** State snapshots. The only stream carrying tool artifacts — `toolCalls[].output` is content. */
+  values: AsyncIterable<unknown>;
   output: Promise<unknown>;
 }
 
@@ -135,10 +137,31 @@ function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, void, un
     }
   };
 
+  // Artifacts (e.g. render_chart's rows) reach the client but never the model, and they are not on
+  // the toolCalls stream — only on the ToolMessages in state. Collected by call id so
+  // pumpToolCalls can attach them.
+  const artifacts = new Map<string, unknown>();
+  const collectArtifacts = (snapshot: unknown) => {
+    for (const m of (snapshot as { messages?: unknown[] })?.messages ?? []) {
+      if (!ToolMessage.isInstance(m)) continue;
+      if (m.artifact !== undefined && m.tool_call_id) artifacts.set(m.tool_call_id, m.artifact);
+    }
+  };
+  const pumpValues = async () => {
+    for await (const snapshot of run.values) collectArtifacts(snapshot);
+  };
+
   const pumpToolCalls = async () => {
     for await (const call of run.toolCalls) {
       const [output, status] = await Promise.all([call.output, call.status]);
       const content = typeof output === "string" ? output : JSON.stringify(output ?? "");
+      // The values stream may not have delivered this call's snapshot yet, so fall back to the
+      // final state rather than racing it.
+      let artifact = artifacts.get(call.callId);
+      if (artifact === undefined) {
+        await collectArtifacts(await run.output);
+        artifact = artifacts.get(call.callId);
+      }
       push({
         type: "tool",
         data: {
@@ -147,12 +170,13 @@ function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, void, un
           status,
           tool_call_id: call.callId,
           name: call.name,
+          ...(artifact !== undefined ? { artifact } : {}),
         },
       });
     }
   };
 
-  const runPromise = Promise.all([pumpMessages(), pumpToolCalls(), run.output])
+  const runPromise = Promise.all([pumpMessages(), pumpValues(), pumpToolCalls(), run.output])
     .catch((e) => {
       failure = e;
     })

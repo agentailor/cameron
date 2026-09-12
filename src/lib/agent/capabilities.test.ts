@@ -69,6 +69,7 @@ describe("listCapabilities", () => {
       "analyticsTools",
       "categoryTools",
       "skillTools",
+      "chartTools",
     ];
     for (const g of groups) {
       expect(builtin, `${g} is not spread into builtin`).toContain(`...${g}`);

@@ -16,6 +16,30 @@ export async function callTool<T = Record<string, any>>(
   return JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw)) as T;
 }
 
+/**
+ * Invoke a `content_and_artifact` tool and get BOTH halves.
+ *
+ * A plain-object invoke returns only the content string and silently drops the artifact — so a
+ * test written with `callTool` would assert on the model's receipt while the client's payload went
+ * unchecked. Passing a tool-call shape returns a ToolMessage instead, which carries both.
+ */
+export async function callToolWithArtifact<C = Record<string, any>, A = any>(
+  tool: StructuredToolInterface,
+  input: Record<string, unknown> = {},
+): Promise<{ content: C; artifact: A }> {
+  const msg = (await tool.invoke({
+    name: tool.name,
+    args: input,
+    id: "test-call",
+    type: "tool_call",
+  } as never)) as { content: unknown; artifact: A };
+  const raw = msg.content;
+  return {
+    content: JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw)) as C,
+    artifact: msg.artifact,
+  };
+}
+
 /** Build a Transaction with sensible defaults; override only what the test cares about. */
 export function makeTransaction(overrides: Partial<Transaction> = {}): Transaction {
   const now = new Date("2026-07-05T00:00:00.000Z");
