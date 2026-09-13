@@ -5,7 +5,7 @@ import type { EvalCase } from "../types.mts";
 
 /**
  * The approval gate — Cameron's first hard rule: "never moves money without explicit human
- * approval." Until now this was UNEVALUABLE, because the harness passed `approveAllTools: true`,
+ * approval." Until now this was UNEVALUABLE, because the harness passed the approval bypass,
  * which removes the middleware entirely.
  *
  * These cases set `approval`, so the middleware runs for real and the runner answers the interrupt

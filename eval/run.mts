@@ -140,12 +140,13 @@ async function main() {
         // After the reset, or the seeded settings would be wiped by it.
         if (testCase.config) await seedConfig(testCase.config);
 
-        // A fresh agent per run: no checkpointer state leaks between runs. `approveAllTools`
-        // omits the HITL middleware entirely, so a case testing the gate must NOT set it.
+        // A fresh agent per run: no checkpointer state leaks between runs.
+        // `bypassApprovalForEval` omits the HITL middleware entirely — it is the harness-only
+        // escape hatch (no HTTP path can set it), so a case testing the gate must NOT set it.
         const agent = await getAgent({
           provider: MODEL.provider,
           model: MODEL.name,
-          approveAllTools: !testCase.approval,
+          bypassApprovalForEval: !testCase.approval,
         });
         const t0 = Date.now();
         const capture = await runCase(agent as never, testCase);

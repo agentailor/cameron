@@ -23,7 +23,7 @@ export const Thread = ({ threadId }: ThreadProps) => {
   const { messages, isLoadingHistory, isSending, sendMessage, approveToolExecution } =
     useChatThread({ threadId: activeId });
   const { createThread } = useThreads();
-  const { provider, model, approveAllTools } = useUISettings();
+  const { provider, model } = useUISettings();
   // Guards against a double-send racing two thread creations before the URL has been adopted.
   const creatingRef = useRef<Promise<string> | null>(null);
 
@@ -104,9 +104,7 @@ export const Thread = ({ threadId }: ThreadProps) => {
                 <button
                   key={example}
                   type="button"
-                  onClick={() =>
-                    handleSendMessage(example, { provider, model, tools: [], approveAllTools })
-                  }
+                  onClick={() => handleSendMessage(example, { provider, model, tools: [] })}
                   className="border-border text-muted-foreground hover:border-brand hover:text-foreground cursor-pointer rounded-full border px-3 py-1.5 text-[13px] transition-colors"
                 >
                   {example}

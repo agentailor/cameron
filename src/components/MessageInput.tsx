@@ -23,8 +23,7 @@ export const MessageInput = ({
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
-  const { provider, setProvider, model, setModel, approveAllTools, setApproveAllTools } =
-    useUISettings();
+  const { provider, setProvider, model, setModel } = useUISettings();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -121,7 +120,6 @@ export const MessageInput = ({
       model,
       provider,
       tools: [],
-      approveAllTools: approveAllTools,
       attachments: attachments.length > 0 ? attachments : undefined,
     });
     setMessage("");
@@ -252,31 +250,6 @@ export const MessageInput = ({
             >
               {remainingChars}
             </span>
-
-            {/* The approval gate is Cameron's first rule — the switch that disables it is labelled. */}
-            <label className="flex cursor-pointer items-center gap-2 select-none">
-              <input
-                type="checkbox"
-                className="peer sr-only"
-                checked={!approveAllTools}
-                onChange={(e) => setApproveAllTools(!e.target.checked)}
-                aria-label="Approval gate"
-              />
-              <span
-                className={`peer-focus-visible:ring-ring relative block h-4 w-7 rounded-full border transition-colors peer-focus-visible:ring-2 ${
-                  approveAllTools ? "bg-muted border-border" : "bg-brand/25 border-brand"
-                }`}
-              >
-                <span
-                  className={`absolute top-0.5 left-0.5 block h-2.5 w-2.5 rounded-full transition-transform ${
-                    approveAllTools ? "bg-muted-foreground" : "bg-brand translate-x-3"
-                  }`}
-                />
-              </span>
-              <span className="text-muted-foreground font-mono text-[10px]">
-                {approveAllTools ? "gate off" : "gate on"}
-              </span>
-            </label>
 
             <Button
               type="submit"

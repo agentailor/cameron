@@ -26,8 +26,6 @@ interface UISettingsContextType {
   setProvider: (provider: string) => void;
   model: string;
   setModel: (model: string) => void;
-  approveAllTools: boolean;
-  setApproveAllTools: (v: boolean) => void;
 }
 
 const UISettingsContext = createContext<UISettingsContextType | undefined>(undefined);
@@ -41,13 +39,11 @@ export const UISettingsProvider = ({ children }: UISettingsProviderProps) => {
   // query params on every request, so they override the server's default.
   const [provider, setProviderState] = useState<string>("anthropic");
   const [model, setModelState] = useState<string>("claude-haiku-4-5");
-  const [approveAllTools, setApproveAllToolsState] = useState<boolean>(false);
 
   useEffect(() => {
     const saved = loadSettings();
     if (typeof saved.provider === "string") setProviderState(saved.provider);
     if (typeof saved.model === "string") setModelState(saved.model);
-    if (typeof saved.approveAllTools === "boolean") setApproveAllToolsState(saved.approveAllTools);
   }, []);
 
   const setProvider = (v: string) => {
@@ -58,10 +54,6 @@ export const UISettingsProvider = ({ children }: UISettingsProviderProps) => {
     setModelState(v);
     saveSetting("model", v);
   };
-  const setApproveAllTools = (v: boolean) => {
-    setApproveAllToolsState(v);
-    saveSetting("approveAllTools", v);
-  };
 
   return (
     <UISettingsContext.Provider
@@ -70,8 +62,6 @@ export const UISettingsProvider = ({ children }: UISettingsProviderProps) => {
         setProvider,
         model,
         setModel,
-        approveAllTools,
-        setApproveAllTools,
       }}
     >
       {children}

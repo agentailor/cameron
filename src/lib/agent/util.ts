@@ -33,7 +33,15 @@ export interface AgentConfigOptions {
   provider?: string; // 'google' | 'openai' etc.
   systemPrompt?: string; // system prompt override
   tools?: unknown[]; // tools from registry or direct tool objects
-  approveAllTools?: boolean; // if true, skip tool approval prompts
+  /**
+   * Omit the human-in-the-loop middleware so mutating tools run unattended.
+   *
+   * FOR THE EVAL HARNESS ONLY, which calls the agent factory directly and has no human to answer
+   * an interrupt. It is deliberately NOT reachable from an HTTP request: nothing in the route,
+   * the wire protocol, or the UI can set it, because the approval gate is Cameron's first rule.
+   * An approval-gate eval case must leave this unset — that is the behavior it grades.
+   */
+  bypassApprovalForEval?: boolean;
 }
 
 /**

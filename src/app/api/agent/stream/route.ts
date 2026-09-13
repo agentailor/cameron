@@ -19,7 +19,6 @@ export async function GET(req: NextRequest) {
   const provider = searchParams.get("provider") || undefined;
   const allowTool = searchParams.get("allowTool") as "allow" | "deny" | null;
   const toolsParam = searchParams.get("tools") || "";
-  const approveAllTools = searchParams.get("approveAllTools") === "true";
   const attachmentsParam = searchParams.get("attachments") || "";
 
   const tools = toolsParam
@@ -62,7 +61,6 @@ export async function GET(req: NextRequest) {
               provider,
               tools,
               allowTool: allowTool || undefined,
-              approveAllTools,
               attachments,
             },
           });
