@@ -114,8 +114,9 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   const interruptOn = Object.fromEntries(
     MUTATING_TOOL_NAMES.map((name) => [name, { allowedDecisions: ["approve", "reject"] }]),
   );
-  // approveAllTools omits the middleware entirely, so no interrupt is ever created.
-  const middleware = cfg?.approveAllTools
+  // bypassApprovalForEval omits the middleware entirely, so no interrupt is ever created. It is
+  // reachable ONLY from the eval harness — no request can set it.
+  const middleware = cfg?.bypassApprovalForEval
     ? []
     : [
         humanInTheLoopMiddleware({
@@ -186,7 +187,6 @@ export async function streamResponse(params: {
   const agent = await ensureAgent({
     model: opts?.model,
     tools: opts?.tools,
-    approveAllTools: opts?.approveAllTools,
   });
 
   // Handle tool approval (HITL resume) vs normal input. On resume we read the pending HITL request
@@ -838,7 +838,6 @@ logger.info("Agent processing started", {
   threadId,
   model: opts?.model,
   toolCount: tools.length,
-  approveAllTools: opts?.approveAllTools,
 });
 ```
 

@@ -22,11 +22,13 @@ export async function streamResponse(params: {
   const { threadId, userText, opts } = params;
   await ensureThread(threadId, userText);
 
+  // No approval-bypass is threaded through from the request. The gate is Cameron's first rule,
+  // so it is not something a client can turn off — `bypassApprovalForEval` exists only for the
+  // eval harness, which calls the agent factory directly.
   const agent = await ensureAgent({
     model: opts?.model,
     provider: opts?.provider,
     tools: opts?.tools,
-    approveAllTools: opts?.approveAllTools,
   });
 
   const config = {

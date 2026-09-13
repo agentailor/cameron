@@ -17,10 +17,6 @@ const StreamQuery = z.object({
     .string()
     .optional()
     .openapi({ description: "Comma-separated list of enabled tool names" }),
-  approveAllTools: z
-    .enum(["true", "false"])
-    .optional()
-    .openapi({ description: "Skip per-tool approval prompts" }),
   attachments: z
     .string()
     .optional()

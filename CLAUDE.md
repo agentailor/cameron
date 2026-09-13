@@ -137,7 +137,10 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
 - **Tool Approval**: Human-in-the-loop via `humanInTheLoopMiddleware`. Approval is gated **per-tool**
   through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
   `import_transactions_csv`, `create_category`, `set_config`); read tools (incl. `run_sql`) and MCP tools
-  auto-approve. `approveAllTools` omits the middleware entirely. Decisions: `allow`→approve,
+  auto-approve. **The gate cannot be switched off from the product**: no UI control, no query
+  param, and nothing on `MessageOptions` can disable it — `bypassApprovalForEval` omits the
+  middleware for the eval harness alone, which calls the agent factory in-process and has no human
+  to answer an interrupt (`approvalGate.test.ts` pins that boundary). Decisions: `allow`→approve,
   `deny`→reject (with an explanatory follow-up). `MUTATING_TOOL_NAMES` lives in
   `src/lib/agent/mutatingTools.ts` — a **zero-import leaf**; `index.ts` and `capabilities.ts` both
   re-use it from there. It is its own module because **client components need it** (the approval
@@ -333,7 +336,8 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
 ### API Route Patterns
 
 - Stream endpoints use `dynamic = "force-dynamic"` and `runtime = "nodejs"`
-- Query params for streaming: `content`, `threadId`, `model`, `provider`, `allowTool`, `approveAllTools`
+- Query params for streaming: `content`, `threadId`, `model`, `provider`, `allowTool`
+  (deliberately NO approval-bypass param — see the approval workflow above)
 - MCP server CRUD follows REST patterns in `/api/mcp-servers/route.ts`
 - File upload endpoint: `/api/agent/upload` accepts multipart/form-data, returns file metadata
 
@@ -456,7 +460,7 @@ pnpm typecheck:eval                         # free — the root tsc misses this 
   `toolCalled` is a set check — "asked, saved, then logged" and "logged under a guess, then saved"
   leave the same rows in the same tables, and only the order says which happened.
 - **Approval cases** set `approval: "allow" | "deny"`, which keeps the HITL middleware live (plain
-  `approveAllTools` omits it entirely). Paused calls land on `RunCapture.interrupts` — the only
+  `bypassApprovalForEval` omits it entirely). Paused calls land on `RunCapture.interrupts` — the only
   evidence the gate fired, since `trajectory` looks identical either way. These cases mutate, so the
   fixture is re-seeded before each run.
 - **Every run writes `eval/results/latest.json`** (plus a timestamped copy; both gitignored) with

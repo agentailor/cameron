@@ -374,7 +374,7 @@ and tool traffic filtered out — and needs no extra API key, since it uses the 
 ## Approval cases
 
 Setting `approval: "allow" | "deny"` on a case runs it with the human-in-the-loop middleware **live**
-(without it, `approveAllTools` omits the middleware and nothing ever pauses). The runner reads the
+(without it, `bypassApprovalForEval` omits the middleware and nothing ever pauses). The runner reads the
 pending request from the checkpoint and resumes with a `Command`, mirroring `buildResumeCommand` in
 [src/services/agentService.ts](../src/services/agentService.ts).
 

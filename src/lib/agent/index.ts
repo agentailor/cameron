@@ -59,15 +59,18 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   const allTools = [...builtinTools, ...configTools, ...mcpTools] as DynamicTool[];
 
   // Human-in-the-loop approval: mutating tools pause for an approve/reject decision; everything
-  // else (reads, MCP) auto-approves because it isn't listed in `interruptOn`. When the client asks
-  // to auto-approve everything, we omit the middleware entirely so no interrupt is ever created.
+  // else (reads, MCP) auto-approves because it isn't listed in `interruptOn`.
+  //
+  // The middleware is ALWAYS installed for anything reachable from a request — there is no
+  // user-facing switch to turn the gate off. `bypassApprovalForEval` omits it for the eval
+  // harness alone, which has no human to answer an interrupt (see AgentConfigOptions).
   const interruptOn = Object.fromEntries(
     MUTATING_TOOL_NAMES.map((name) => [
       name,
       { allowedDecisions: ["approve", "reject"] as ("approve" | "reject")[] },
     ]),
   );
-  const middleware = cfg?.approveAllTools
+  const middleware = cfg?.bypassApprovalForEval
     ? []
     : [
         humanInTheLoopMiddleware({
