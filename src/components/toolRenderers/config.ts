@@ -36,7 +36,7 @@ export const TOOL_RENDERERS: Record<string, ToolRenderers> = {
   // The result is a skill's markdown instructions — no purpose-built view yet, so it shows as
   // JSON. Listed anyway because an unlisted registered tool is what config.test.ts guards against.
   load_skill: { args: "fields", result: "json" },
-  // The rows arrive as an artifact, not in the result content — see ToolMessage.
+  // The rows arrive as an artifact, not in the result content — see ToolActivityGroup.
   render_chart: { args: "sql", result: "chart" },
 };
 

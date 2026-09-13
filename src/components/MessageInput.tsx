@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Button } from "./ui/button";
-import { ArrowUp, Loader2, Eye, EyeOff, Paperclip, X, ChevronDown } from "lucide-react";
+import { ArrowUp, Loader2, Paperclip, X, ChevronDown } from "lucide-react";
 import { MessageOptions, FileAttachment } from "@/types/message";
 import { ModelConfiguration } from "./ModelConfiguration";
 import { useUISettings } from "@/contexts/UISettingsContext";
@@ -23,16 +23,8 @@ export const MessageInput = ({
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
-  const {
-    hideToolMessages,
-    toggleToolMessages,
-    provider,
-    setProvider,
-    model,
-    setModel,
-    approveAllTools,
-    setApproveAllTools,
-  } = useUISettings();
+  const { provider, setProvider, model, setModel, approveAllTools, setApproveAllTools } =
+    useUISettings();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -251,22 +243,6 @@ export const MessageInput = ({
                 <Paperclip className="h-3.5 w-3.5" />
               )}
               attach
-            </Button>
-
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={toggleToolMessages}
-              className="text-muted-foreground h-7 gap-1.5 px-2.5 font-mono text-[11px]"
-              aria-label={hideToolMessages ? "Show tool messages" : "Hide tool messages"}
-            >
-              {hideToolMessages ? (
-                <EyeOff className="h-3.5 w-3.5" />
-              ) : (
-                <Eye className="h-3.5 w-3.5" />
-              )}
-              {hideToolMessages ? "show tools" : "hide tools"}
             </Button>
           </div>
 

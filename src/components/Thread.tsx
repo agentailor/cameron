@@ -61,8 +61,12 @@ export const Thread = ({ threadId }: ThreadProps) => {
       {messages.length > 0 ? (
         <>
           <div className="min-h-0 flex-1">
-            <ScrollArea className="h-full">
-              <div className="space-y-4 px-4 py-4">
+            {/* Radix renders its viewport as `display: table; min-width: 100%`, and a table sizes
+                to its widest content — so a wide tool payload stretches the whole thread column
+                instead of scrolling inside its own box. Forcing the inner table to `block` keeps
+                the column at the viewport width. */}
+            <ScrollArea className="h-full [&>[data-slot=scroll-area-viewport]>div]:block!">
+              <div className="min-w-0 space-y-4 px-4 py-4">
                 <MessageList messages={messages} approveToolExecution={approveToolExecution} />
               </div>
             </ScrollArea>

@@ -201,15 +201,27 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   under `agent_model_settings`). The active thread is NOT in a context — it is derived from the URL
   by `useActiveThreadId()`, so there is one source of truth.
 - **Custom Hooks**: `useChatThread`, `useMCPTools`, `useThreads` for data domains
-- **Message Components**: Separate components for AI/Human/Tool/Error message types
+- **Message Components**: `AIMessage` (prose only — tool calls riding on it are rendered by
+  `ToolActivityGroup`, not here), `HumanMessage`, `ErrorMessage`
 - **Tool rendering** (`src/components/toolRenderers/`): `config.ts` maps each **built-in** tool to a
   view for its **arguments** and its **result** (`sql`, `table`, `receipt`, field grids); anything
   not listed — every MCP tool, anything added later — falls back to `json`. A closed catalog with an
   open fallback: the payload SELECTS a client-owned renderer, it never describes one. Keyed on tool
   name rather than sniffed from the payload, because sniffing predicates are a second contract that
   drifts. `config.test.ts` pins every key to a really-registered tool, so a rename can't silently
-  drop a tool back to JSON. A tool call's args render in `ToolCallDisplay`, its result in
-  `ToolMessage` — two different renders of one operation.
+  drop a tool back to JSON.
+- **A call and its result render as ONE card** (`ToolActivityGroup.tsx`). The wire delivers them as
+  two messages — the call on an AI message, the result as its own `tool` message — and the template
+  drew two cards for them. `buildThreadItems()` (`src/services/toolActivity.ts`) pairs them by
+  `tool_call_id` (never by adjacency: results arrive when they resolve, and a paused call never gets
+  one) and groups CONSECUTIVE calls into one card. Collapsed by default.
+  - **Header label**: a single call gets its own gist (`run_sql · 37 rows`); several get a generic
+    `N tools called`, because no summary spans differently-shaped payloads. `summarizeResult` takes
+    the tool name so `ok: true` reads as "written" only for a **mutating** tool.
+  - **Two things are never collapsed**: a gated call's ARGUMENTS (you cannot approve what you cannot
+    read) and a CHART (it is the answer, not a detail — and it renders with no JSON receipt under
+    it). A drawn chart leaves the collapsed list entirely.
+  - There is no global "hide tools" toggle any more; collapsing per card replaced it.
 - **Design tokens** (`src/app/globals.css`): paper ground / ink text / one amber `--brand`, mapped
   ONTO shadcn's semantic names so `ui/*` inherits them. Amber marks the approval boundary and
   nothing else. `--muted-foreground` must stay ≥4.5:1 on paper (`--faint` is the decorative-only
@@ -297,7 +309,7 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   the SSE contract is otherwise unchanged. Position in the message list is NOT a pending signal:
   tool results and later AI text both arrive after the call, so "is it last?" is wrong in both
   directions — it hid the gate on a real pause and offered APPROVE on read-only tools.
-- `ToolCallDisplay` additionally requires `isMutatingTool(name)` before rendering the amber panel.
+- `ToolActivityGroup` additionally requires `isMutatingTool(name)` before rendering the amber panel.
   Two independent conditions, because that panel claims "this writes to your data".
 - `src/services/agentService.ts` translates the wire signal into a HITL resume: it reads the pending
   request via `agent.graph.getState()` and resumes with `Command({ resume: { decisions } })` — one
