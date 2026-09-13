@@ -72,6 +72,25 @@ Concretely, tool tests check that:
 - paths that would silently lose data **fail loud and import nothing** (a CSV mapping naming a
   column that isn't a real header; an ambiguous date format)
 
+### The same defect class on the wire
+
+`src/services/messageStream.test.ts` exists for the streaming contract, which failed the same way:
+a payload the _client_ predictably misreads, with nothing asserting it.
+
+Two regressions shipped in #29 and typechecked cleanly. The tool pump awaited `run.output` whenever
+a call had no artifact — but an absent artifact and a not-yet-arrived one are both `undefined`, so
+every ordinary tool waited for the whole run to finish and all results landed at the end of the
+turn. Separately, the approval UI keyed off "is this the last message?", which the first bug then
+made wrong in both directions: no buttons on a genuine pause, and an APPROVE button on read-only
+tools like `load_skill`. The Skills work didn't cause either — it just made turns long enough to
+expose them.
+
+Both are now pinned by tests that were **observed failing first** (removing the fix makes them hang
+and time out, which is the bug's real signature). The lesson generalizes: the SSE chunk sequence is
+a contract with the client the same way a tool payload is a contract with the model, so keep the
+logic in a module a free test can import — `agentService.ts` reaches Postgres at import time, which
+is why `messageStream.ts` is separate.
+
 ## Why unit tests are not enough
 
 A unit test proves `truncated: true` is present in the payload. It cannot prove the agent

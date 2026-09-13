@@ -1,33 +1,17 @@
 import { ensureAgent } from "@/lib/agent";
 import { ensureThread } from "@/lib/thread";
-import type { MessageOptions, MessageResponse, ToolCall } from "@/types/message";
+import type { MessageOptions, MessageResponse } from "@/types/message";
 import * as threadRepo from "@/lib/repositories/threadRepository";
 import { getHistory } from "@/lib/agent/memory";
-import { BaseMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
+import { BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
 import type { HITLRequest, HITLResponse, Decision } from "langchain";
 import { processAttachmentsForAI } from "@/lib/storage/content";
+import { streamMessages, type AgentRun } from "./messageStream";
 import { CallbackHandler } from "@langfuse/langchain";
 
 // Only instantiate when tracing is enabled; avoids errors when Langfuse credentials are absent.
 const langfuseHandler = process.env.LANGFUSE_ENABLED === "true" ? new CallbackHandler() : null;
-
-// Structural view over the `streamEvents(v3)` AgentRunStream — only the projections we forward.
-interface AgentRun {
-  messages: AsyncIterable<{
-    text: AsyncIterable<string>;
-    output: PromiseLike<{ id?: string; tool_calls?: ToolCall[] }>;
-  }>;
-  toolCalls: AsyncIterable<{
-    name: string;
-    callId: string;
-    output: Promise<unknown>;
-    status: Promise<string>;
-  }>;
-  /** State snapshots. The only stream carrying tool artifacts — `toolCalls[].output` is content. */
-  values: AsyncIterable<unknown>;
-  output: Promise<unknown>;
-}
 
 /** Stream a turn (or resume a paused one) as MessageResponse chunks for the SSE route. */
 export async function streamResponse(params: {
@@ -104,104 +88,6 @@ async function buildResumeCommand(
 
   const resume: HITLResponse = { decisions: Array.from({ length: actionCount }, () => decision) };
   return new Command({ resume });
-}
-
-// `run.messages` (token-level AI text) and `run.toolCalls` (tool results) are independent async
-// iterables, so we pump both into a shared queue and drain it as MessageResponse chunks until the
-// run settles.
-function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, void, unknown> {
-  const queue: MessageResponse[] = [];
-  let notify: (() => void) | null = null;
-  let done = false;
-  let failure: unknown = null;
-
-  const push = (msg: MessageResponse) => {
-    queue.push(msg);
-    notify?.();
-  };
-
-  const pumpMessages = async () => {
-    let counter = 0;
-    for await (const msg of run.messages) {
-      // Tokens stream before `.output` resolves; a synthetic id (reused per message) is enough for
-      // the frontend to accumulate text by id.
-      const id = `ai-${Date.now()}-${counter++}`;
-      for await (const token of msg.text) {
-        if (token) push({ type: "ai", data: { id, content: token } });
-      }
-      // Surface tool calls after the text so the approval UI can render Allow/Deny.
-      const assembled = await msg.output;
-      if (assembled?.tool_calls && assembled.tool_calls.length > 0) {
-        push({ type: "ai", data: { id, content: "", tool_calls: assembled.tool_calls } });
-      }
-    }
-  };
-
-  // Artifacts (e.g. render_chart's rows) reach the client but never the model, and they are not on
-  // the toolCalls stream — only on the ToolMessages in state. Collected by call id so
-  // pumpToolCalls can attach them.
-  const artifacts = new Map<string, unknown>();
-  const collectArtifacts = (snapshot: unknown) => {
-    for (const m of (snapshot as { messages?: unknown[] })?.messages ?? []) {
-      if (!ToolMessage.isInstance(m)) continue;
-      if (m.artifact !== undefined && m.tool_call_id) artifacts.set(m.tool_call_id, m.artifact);
-    }
-  };
-  const pumpValues = async () => {
-    for await (const snapshot of run.values) collectArtifacts(snapshot);
-  };
-
-  const pumpToolCalls = async () => {
-    for await (const call of run.toolCalls) {
-      const [output, status] = await Promise.all([call.output, call.status]);
-      const content = typeof output === "string" ? output : JSON.stringify(output ?? "");
-      // The values stream may not have delivered this call's snapshot yet, so fall back to the
-      // final state rather than racing it.
-      let artifact = artifacts.get(call.callId);
-      if (artifact === undefined) {
-        await collectArtifacts(await run.output);
-        artifact = artifacts.get(call.callId);
-      }
-      push({
-        type: "tool",
-        data: {
-          id: call.callId || `tool-${Date.now()}`,
-          content,
-          status,
-          tool_call_id: call.callId,
-          name: call.name,
-          ...(artifact !== undefined ? { artifact } : {}),
-        },
-      });
-    }
-  };
-
-  const runPromise = Promise.all([pumpMessages(), pumpValues(), pumpToolCalls(), run.output])
-    .catch((e) => {
-      failure = e;
-    })
-    .finally(() => {
-      done = true;
-      notify?.();
-    });
-
-  async function* generator(): AsyncGenerator<MessageResponse, void, unknown> {
-    while (true) {
-      while (queue.length > 0) {
-        yield queue.shift()!;
-      }
-      if (done) break;
-      await new Promise<void>((resolve) => {
-        notify = resolve;
-      });
-      notify = null;
-    }
-    while (queue.length > 0) yield queue.shift()!;
-    await runPromise;
-    if (failure) throw failure;
-  }
-
-  return generator();
 }
 
 /** Fetch prior messages for a thread from the LangGraph checkpoint/memory system. */

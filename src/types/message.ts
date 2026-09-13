@@ -66,6 +66,12 @@ export interface AIMessageData {
   additional_kwargs?: Record<string, unknown>;
   invalid_tool_calls?: unknown[];
   response_metadata?: Record<string, unknown>;
+  /**
+   * Ids of this message's tool calls the approval gate paused — sent once the run settles.
+   * Requested but never executed is the only reliable "awaiting approval" signal; position in
+   * the message list is not, since tool results and later AI text arrive after the call.
+   */
+  pendingToolCallIds?: string[];
 }
 
 export interface ToolMessageData {
