@@ -22,8 +22,6 @@ function saveSetting(key: string, value: string | boolean) {
 }
 
 interface UISettingsContextType {
-  hideToolMessages: boolean;
-  toggleToolMessages: () => void;
   provider: string;
   setProvider: (provider: string) => void;
   model: string;
@@ -39,7 +37,6 @@ interface UISettingsProviderProps {
 }
 
 export const UISettingsProvider = ({ children }: UISettingsProviderProps) => {
-  const [hideToolMessages, setHideToolMessages] = useState(false);
   // Defaults must match DEFAULT_MODEL_PROVIDER/NAME in lib/agent/util.ts — these are sent as
   // query params on every request, so they override the server's default.
   const [provider, setProviderState] = useState<string>("anthropic");
@@ -53,7 +50,6 @@ export const UISettingsProvider = ({ children }: UISettingsProviderProps) => {
     if (typeof saved.approveAllTools === "boolean") setApproveAllToolsState(saved.approveAllTools);
   }, []);
 
-  const toggleToolMessages = () => setHideToolMessages((prev) => !prev);
   const setProvider = (v: string) => {
     setProviderState(v);
     saveSetting("provider", v);
@@ -70,8 +66,6 @@ export const UISettingsProvider = ({ children }: UISettingsProviderProps) => {
   return (
     <UISettingsContext.Provider
       value={{
-        hideToolMessages,
-        toggleToolMessages,
         provider,
         setProvider,
         model,
