@@ -2,7 +2,12 @@ import type { MessageResponse, ToolApprovalCallbacks } from "@/types/message";
 import { Bot } from "lucide-react";
 import rehypeKatex from "rehype-katex";
 import { cn } from "@/lib/utils";
-import { getMessageContent, hasToolCalls, getToolCalls } from "@/services/messageUtils";
+import {
+  getMessageContent,
+  hasToolCalls,
+  getToolCalls,
+  getPendingToolCallIds,
+} from "@/services/messageUtils";
 import { ToolCallDisplay } from "./ToolCallDisplay";
 import { useUISettings } from "@/contexts/UISettingsContext";
 import MDEditor from "@uiw/react-md-editor";
@@ -10,17 +15,13 @@ import MDEditor from "@uiw/react-md-editor";
 interface AIMessageProps {
   message: MessageResponse;
   approvalCallbacks?: ToolApprovalCallbacks;
-  showApprovalButtons?: boolean;
 }
 
-export const AIMessage = ({
-  message,
-  approvalCallbacks,
-  showApprovalButtons = false,
-}: AIMessageProps) => {
+export const AIMessage = ({ message, approvalCallbacks }: AIMessageProps) => {
   const messageContent = getMessageContent(message);
   const hasTools = hasToolCalls(message);
   const toolCalls = getToolCalls(message);
+  const pendingToolCallIds = getPendingToolCallIds(message);
   const { hideToolMessages } = useUISettings();
 
   // If tool messages are hidden and there's no text content, don't render anything
@@ -64,7 +65,7 @@ export const AIMessage = ({
             <ToolCallDisplay
               toolCalls={toolCalls}
               approvalCallbacks={approvalCallbacks}
-              showApprovalButtons={showApprovalButtons}
+              pendingToolCallIds={pendingToolCallIds}
             />
           </div>
         )}

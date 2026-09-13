@@ -8,7 +8,8 @@ interface ToolCallDisplayProps {
   toolCalls?: ToolCall[];
   functionCalls?: FunctionCall[];
   approvalCallbacks?: ToolApprovalCallbacks;
-  showApprovalButtons?: boolean;
+  /** Ids the server reported as paused by the gate. Nothing else may open the approval panel. */
+  pendingToolCallIds?: string[];
 }
 
 const renderArgs = (name: string, args: Record<string, unknown> | string) => {
@@ -21,12 +22,17 @@ const ToolCallItem: React.FC<{
   args: Record<string, unknown>;
   id?: string;
   approvalCallbacks?: ToolApprovalCallbacks;
-  showApprovalButtons?: boolean;
-}> = ({ name, args, id, approvalCallbacks, showApprovalButtons }) => {
+  isPending?: boolean;
+}> = ({ name, args, id, approvalCallbacks, isPending }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [responded, setResponded] = useState(false);
 
-  const isPendingApproval = Boolean(showApprovalButtons && id && approvalCallbacks && !responded);
+  // Two independent conditions, both required. `isPending` is the graph's actual paused state;
+  // `isMutatingTool` is the boundary itself. A read-only tool must never render the gate even if
+  // the server somehow reports it pending — the amber panel claims "this writes to your data".
+  const isPendingApproval = Boolean(
+    isPending && isMutatingTool(name) && id && approvalCallbacks && !responded,
+  );
 
   // A gate awaiting a decision is the one place amber appears: it means "this touches money".
   if (isPendingApproval) {
@@ -117,8 +123,9 @@ export const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({
   toolCalls = [],
   functionCalls = [],
   approvalCallbacks,
-  showApprovalButtons = false,
+  pendingToolCallIds = [],
 }) => {
+  const pending = new Set(pendingToolCallIds);
   const hasToolCalls = toolCalls.length > 0;
   const hasFunctionCalls = functionCalls.length > 0;
 
@@ -137,7 +144,7 @@ export const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({
               args={toolCall.args}
               id={toolCall.id}
               approvalCallbacks={approvalCallbacks}
-              showApprovalButtons={showApprovalButtons}
+              isPending={Boolean(toolCall.id && pending.has(toolCall.id))}
             />
           ))}
         </div>
@@ -151,7 +158,6 @@ export const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({
               name={functionCall.name}
               args={functionCall.args}
               approvalCallbacks={approvalCallbacks}
-              showApprovalButtons={showApprovalButtons}
             />
           ))}
         </div>

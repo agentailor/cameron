@@ -96,6 +96,9 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
                   content: newContent,
                   // Update tool call data if present
                   ...(data.tool_calls && { tool_calls: data.tool_calls }),
+                  ...(data.pendingToolCallIds && {
+                    pendingToolCallIds: data.pendingToolCallIds,
+                  }),
                   ...(data.additional_kwargs && { additional_kwargs: data.additional_kwargs }),
                   ...(data.response_metadata && { response_metadata: data.response_metadata }),
                 },

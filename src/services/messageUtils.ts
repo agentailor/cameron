@@ -64,6 +64,17 @@ export function getToolCalls(message: MessageResponse): ToolCall[] {
   return message.data.tool_calls || [];
 }
 
+/**
+ * Ids of this message's tool calls still awaiting approval, as reported by the server. Empty
+ * unless the graph actually paused — the client must never infer this from list position.
+ */
+export function getPendingToolCallIds(message: MessageResponse): string[] {
+  if (!isAIMessageWithToolCalls(message)) {
+    return [];
+  }
+  return message.data.pendingToolCallIds ?? [];
+}
+
 export function getFunctionCalls(message: MessageResponse): FunctionCall[] {
   if (!isAIMessageWithToolCalls(message)) {
     return [];

@@ -290,8 +290,15 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
 
 - `humanInTheLoopMiddleware` (configured in `src/lib/agent/index.ts`) pauses on a **mutating** tool
   call and emits a batched `HITLRequest` interrupt; read/MCP tools run without pausing.
-- Frontend detects the pending call from `tool_calls` on the last AI message, shows the approval UI,
-  and re-opens the stream with `allowTool=allow/deny` (empty content) — the SSE contract is unchanged.
+- **The server says which calls are pending; the client never infers it.** Once a run settles,
+  `streamMessages` re-emits the AI message carrying `pendingToolCallIds` — the calls the model
+  requested that never executed, which is exactly what the gate paused. The frontend shows the
+  approval UI for those ids and re-opens the stream with `allowTool=allow/deny` (empty content);
+  the SSE contract is otherwise unchanged. Position in the message list is NOT a pending signal:
+  tool results and later AI text both arrive after the call, so "is it last?" is wrong in both
+  directions — it hid the gate on a real pause and offered APPROVE on read-only tools.
+- `ToolCallDisplay` additionally requires `isMutatingTool(name)` before rendering the amber panel.
+  Two independent conditions, because that panel claims "this writes to your data".
 - `src/services/agentService.ts` translates the wire signal into a HITL resume: it reads the pending
   request via `agent.graph.getState()` and resumes with `Command({ resume: { decisions } })` — one
   decision per requested action (`allow`→`{type:"approve"}`, `deny`→`{type:"reject", message}`).
@@ -323,6 +330,16 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
 - SSE with React Query: `useChatThread` manages optimistic UI + streaming updates
 - Message accumulation: Frontend concatenates text chunks by message ID
 - Tool approval flow uses Command objects with `resume` action
+- **`src/services/messageStream.ts` owns the chunk ordering**, split out of `agentService.ts`
+  because that module reaches Postgres at import time and a unit test must stay free. It merges the
+  run's independent projections (`messages`, `toolCalls`, `values`) into one ordered queue.
+- **A tool result is emitted when it RESOLVES, never when the run ends.** Only tools listed in
+  `src/lib/agent/artifactTools.ts` (`render_chart`) may await `run.output` to pick up their
+  client-only artifact. Waiting whenever an artifact is merely absent is indistinguishable from
+  waiting for one that will never come — it parked the pump on every ordinary tool and pushed all
+  results to the end of the turn. `messageStream.test.ts` pins both this and the pending contract.
+- **Dedup and React keys are `type:id`, not `id`.** Ids are unique only within a type (an AI
+  message's synthetic id and a tool message's call id are different namespaces).
 
 ## File Upload & Storage
 
