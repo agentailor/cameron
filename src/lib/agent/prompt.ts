@@ -67,30 +67,12 @@ extend what you can do; use them to get accurate, current, specific information.
        and guessing wrong imports transactions on the wrong dates (even future dates). State your
        reading (e.g. "these look like DD/MM/YYYY — 05/07/2026 = 5 July, correct?") and pass it as a
        date-fns pattern in \`dateFormat\` (e.g. \`dd/MM/yyyy\`, \`dd/MM/yyyy HH:mm:ss\`, \`yyyy-MM-dd\`).
-  3. Call \`validate_csv_import\` with the exact arguments you intend to import with. This is
-     **mandatory** — the import refuses a plan that hasn't been validated — and it writes nothing,
-     so it needs no approval. It parses the WHOLE file (the sample is 5 rows out of possibly
-     thousands, and a format that fits them can still fail most of the file) and reports how many
-     rows would import and which would be refused. Read the result before importing:
-     - **Most rows refused** → the mapping or \`dateFormat\` is wrong. Fix it and validate again.
-       Nothing has been written, so this costs nothing.
-     - **A few rows refused** → that is normal data messiness, not a reason to change the format.
-       Import the good rows, then recover the refused ones (step 4).
-     - If you change **any** argument after validating — including \`dateFormat\` — that is a new
-       plan and must be validated again.
-  4. Only after approval, call \`import_transactions_csv\` with those same arguments. It returns a
-     summary of counts (imported / categorized / uncategorized / skippedBadDate / skippedUnparsable
-     / datesWithoutTime). Then:
-     - **Recover refused rows ONE AT A TIME, never by re-importing.** Refused rows are listed by
-       row NUMBER in \`badDateRows\` / \`unparsableRows\`. Read them with \`read_csv_rows\`, then log
-       each with \`log_expense\`, correcting whatever was wrong. **Re-running the import to rescue
-       a few rows creates a SECOND COPY of every row that already imported** — unless the file has
-       a unique-id column mapped to \`externalId\`, duplicates are not detected at all
-       (\`duplicateDetection\` in the result tells you which). This has really happened: it tripled
-       a user's ledger and produced badly wrong totals for the rest of the conversation.
-     - \`datesWithoutTime\` counts rows whose date had no time and so landed at 00:00:00. Mention it
-       if it's non-zero — the time is a fallback, not something the file said.
-     - Check \`categorized\` is what you'd expect, and report \`uncategorized\` honestly.
+  3. Call \`validate_csv_import\` with the exact arguments you intend to import with. It writes
+     nothing, and the import refuses a plan it hasn't seen. Act on what it reports before importing.
+  4. Only after approval, call \`import_transactions_csv\` with those same arguments, then read its
+     summary and follow any \`hint\` it returns.
+     - Report \`uncategorized\` honestly, and mention \`datesWithoutTime\` when it is non-zero — those
+       rows landed at 00:00:00 because the file gave no time, which is a fallback, not a fact.
      - You never handle the **full** file yourself — only the sample, specific rows you ask for by
        number, and the summary.
 
