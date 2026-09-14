@@ -1,7 +1,6 @@
 "use client";
 import { Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { UISettingsProvider } from "@/contexts/UISettingsContext";
 import { OAuthToast } from "@/components/OAuthToast";
 
 const queryClient = new QueryClient({
@@ -15,12 +14,10 @@ const queryClient = new QueryClient({
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <UISettingsProvider>
-        <Suspense fallback={null}>
-          <OAuthToast />
-        </Suspense>
-        {children}
-      </UISettingsProvider>
+      <Suspense fallback={null}>
+        <OAuthToast />
+      </Suspense>
+      {children}
     </QueryClientProvider>
   );
 }

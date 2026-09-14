@@ -7,7 +7,8 @@ import { Loader2 } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 import { useEffect, useRef, useState } from "react";
 import { MessageOptions } from "@/types/message";
-import { useUISettings } from "@/contexts/UISettingsContext";
+import { useModelSettings } from "@/hooks/useModelSettings";
+import { NotConfiguredNotice } from "./NotConfiguredNotice";
 import { deriveThreadTitle } from "@/lib/format/threadTitle";
 
 interface ThreadProps {
@@ -23,7 +24,8 @@ export const Thread = ({ threadId }: ThreadProps) => {
   const { messages, isLoadingHistory, isSending, sendMessage, approveToolExecution } =
     useChatThread({ threadId: activeId });
   const { createThread } = useThreads();
-  const { provider, model } = useUISettings();
+  const { settings } = useModelSettings();
+  const isConfigured = settings?.configured ?? true;
   // Guards against a double-send racing two thread creations before the URL has been adopted.
   const creatingRef = useRef<Promise<string> | null>(null);
 
@@ -74,7 +76,11 @@ export const Thread = ({ threadId }: ThreadProps) => {
           <div className="shrink-0">
             <div className="w-full p-4 pb-6">
               <div className="mx-auto max-w-3xl">
-                <MessageInput onSendMessage={handleSendMessage} isLoading={isSending} />
+                {isConfigured ? (
+                  <MessageInput onSendMessage={handleSendMessage} isLoading={isSending} />
+                ) : (
+                  <NotConfiguredNotice />
+                )}
               </div>
             </div>
           </div>
@@ -94,23 +100,29 @@ export const Thread = ({ threadId }: ThreadProps) => {
                 written without your approval, and your data never leaves this machine.
               </p>
             </div>
-            <MessageInput onSendMessage={handleSendMessage} isLoading={isSending} />
-            <div className="mt-4 flex flex-wrap gap-2">
-              {[
-                "What did I spend on dining last month?",
-                "Log a €12 coffee at Blue Bottle",
-                "Top 5 merchants this year",
-              ].map((example) => (
-                <button
-                  key={example}
-                  type="button"
-                  onClick={() => handleSendMessage(example, { provider, model, tools: [] })}
-                  className="border-border text-muted-foreground hover:border-brand hover:text-foreground cursor-pointer rounded-full border px-3 py-1.5 text-[13px] transition-colors"
-                >
-                  {example}
-                </button>
-              ))}
-            </div>
+            {isConfigured ? (
+              <>
+                <MessageInput onSendMessage={handleSendMessage} isLoading={isSending} />
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {[
+                    "What did I spend on dining last month?",
+                    "Log a €12 coffee at Blue Bottle",
+                    "Top 5 merchants this year",
+                  ].map((example) => (
+                    <button
+                      key={example}
+                      type="button"
+                      onClick={() => handleSendMessage(example, { tools: [] })}
+                      className="border-border text-muted-foreground hover:border-brand hover:text-foreground cursor-pointer rounded-full border px-3 py-1.5 text-[13px] transition-colors"
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <NotConfiguredNotice />
+            )}
           </div>
         </div>
       )}

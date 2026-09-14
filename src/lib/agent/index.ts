@@ -1,13 +1,9 @@
 import { buildSystemPrompt } from "./prompt";
 import { postgresCheckpointer, setupCheckpointer } from "./memory";
 import type { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
-import {
-  AgentConfigOptions,
-  createChatModel,
-  DEFAULT_MODEL_NAME,
-  DEFAULT_MODEL_PROVIDER,
-  sanitizeTool,
-} from "./util";
+import { AgentConfigOptions, sanitizeTool } from "./util";
+import { createChatModel, needsSchemaSanitizing } from "./models";
+import { ModelNotConfiguredError, readModelSettings } from "./modelSettings";
 import type { DynamicStructuredTool } from "@langchain/core/tools";
 import { getMCPTools } from "./mcp";
 import { financeTools } from "./tools/finance";
@@ -28,10 +24,21 @@ import { MUTATING_TOOL_NAMES } from "./capabilities";
  * @returns
  */
 async function buildAgent(cfg?: AgentConfigOptions) {
-  // Resolve model/provider from cfg or defaults.
-  const provider = cfg?.provider || DEFAULT_MODEL_PROVIDER;
-  const modelName = cfg?.model || DEFAULT_MODEL_NAME;
-  const llm = createChatModel({ provider, model: modelName, temperature: 1 });
+  // An explicit pair (the eval harness) bypasses the stored settings entirely.
+  let provider: string;
+  let modelName: string;
+  let baseUrl: string | null = null;
+  if (cfg?.provider && cfg?.model) {
+    provider = cfg.provider;
+    modelName = cfg.model;
+  } else {
+    const stored = await readModelSettings();
+    if (!stored) throw new ModelNotConfiguredError();
+    provider = stored.provider;
+    modelName = stored.model;
+    baseUrl = stored.baseUrl;
+  }
+  const llm = createChatModel({ provider, model: modelName, temperature: 1, baseUrl });
 
   // Built-in finance tools are registered here (server-side) so they are always present and
   // cannot be omitted by the client. MCP tools are loaded dynamically; per-request config tools
@@ -40,10 +47,7 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   // Per-request tools supplied by the caller — not ./tools/config, which is `settingsTools`.
   const configTools = (cfg?.tools || []) as StructuredToolInterface[];
 
-  // Tool definitions stay provider-agnostic (plain Zod). Google Gemini's function-calling API is
-  // the outlier — it rejects standard JSON Schema keywords (exclusiveMinimum, format, $defs, …) that
-  // Zod emits. So we sanitize built-in tool schemas ONLY when the active provider is Google; other
-  // providers (Anthropic, OpenAI) accept the schemas as-is.
+  // Some function-calling APIs reject JSON Schema keywords Zod emits (format, $defs, …).
   const builtin = [
     ...financeTools,
     ...csvImportTools,
@@ -53,7 +57,7 @@ async function buildAgent(cfg?: AgentConfigOptions) {
     ...skillTools,
     ...chartTools,
   ];
-  const builtinTools = (provider === "google"
+  const builtinTools = (needsSchemaSanitizing(provider)
     ? builtin.map((t) => sanitizeTool(t as unknown as DynamicStructuredTool))
     : builtin) as unknown as StructuredToolInterface[];
   const allTools = [...builtinTools, ...configTools, ...mcpTools] as DynamicTool[];

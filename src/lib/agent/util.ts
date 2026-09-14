@@ -1,33 +1,5 @@
-import { ChatOpenAI } from "@langchain/openai";
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { ChatAnthropic } from "@langchain/anthropic";
-import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { DynamicStructuredTool } from "@langchain/core/tools";
 
-export interface CreateChatModelOptions {
-  provider?: string; // 'openai' | 'google' | 'anthropic'
-  model: string;
-  temperature?: number;
-}
-
-/**
- * Central factory for creating a chat model based on provider + model name.
- */
-export function createChatModel({
-  provider = "google",
-  model,
-  temperature = 1,
-}: CreateChatModelOptions): BaseChatModel {
-  switch (provider) {
-    case "openai":
-      return new ChatOpenAI({ model, temperature });
-    case "anthropic":
-      return new ChatAnthropic({ model, temperature });
-    case "google":
-    default:
-      return new ChatGoogleGenerativeAI({ model, temperature });
-  }
-}
 export interface AgentConfigOptions {
   model?: string;
   provider?: string; // 'google' | 'openai' etc.
@@ -222,10 +194,3 @@ export function sanitizeTool(tool: DynamicStructuredTool): DynamicStructuredTool
 
   return tool;
 }
-/**
- * Default model. Keep in sync with the client-side defaults in UISettingsContext and
- * ModelConfiguration — the UI sends provider/model on every request, so a mismatch means the
- * server default silently never applies.
- */
-export const DEFAULT_MODEL_PROVIDER = "anthropic";
-export const DEFAULT_MODEL_NAME = "claude-haiku-4-5";
