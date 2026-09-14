@@ -79,4 +79,23 @@ describe("the approval gate is not reachable from a request", () => {
     expect(factory).toContain("MUTATING_TOOL_NAMES.map");
     expect(MUTATING_TOOL_NAMES.length).toBeGreaterThan(0);
   });
+
+  it("validation auto-approves while the import stays gated", async () => {
+    const { MUTATING_TOOL_NAMES, isMutatingTool } = await import("./mutatingTools");
+
+    expect(MUTATING_TOOL_NAMES).toContain("import_transactions_csv");
+    expect(MUTATING_TOOL_NAMES).not.toContain("validate_csv_import");
+    expect(MUTATING_TOOL_NAMES).not.toContain("read_csv_rows");
+    expect(isMutatingTool("validate_csv_import")).toBe(false);
+    expect(isMutatingTool("read_csv_rows")).toBe(false);
+  });
+
+  it("approval never depends on a tool's arguments", async () => {
+    const factory = await read("./index.ts");
+    const leaf = await read("./mutatingTools.ts");
+    for (const flag of ["dryRun", "args.", "input."]) {
+      expect(leaf, "mutatingTools.ts").not.toContain(flag);
+    }
+    expect(factory).not.toContain("dryRun");
+  });
 });

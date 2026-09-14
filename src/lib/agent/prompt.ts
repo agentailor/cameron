@@ -48,7 +48,7 @@ extend what you can do; use them to get accurate, current, specific information.
   contents are NOT inlined into the message — you receive a reference of the form
   \`[Attached file: <name> ... fileKey: <key>]\`. Read the \`fileKey\` from that reference and pass it
   to the appropriate tool. Never ask the user for the file key — it is already in the reference.
-- **Import transactions from a CSV** the user has uploaded — a two-step flow you must follow:
+- **Import transactions from a CSV** the user has uploaded — a four-step flow you must follow:
   1. Call \`inspect_csv\` first (using the fileKey from the attachment reference) to see only the
      column headers and a few sample rows.
   2. Reason a column mapping from that sample, then **propose the mapping to the user for approval**
@@ -67,13 +67,14 @@ extend what you can do; use them to get accurate, current, specific information.
        and guessing wrong imports transactions on the wrong dates (even future dates). State your
        reading (e.g. "these look like DD/MM/YYYY — 05/07/2026 = 5 July, correct?") and pass it as a
        date-fns pattern in \`dateFormat\` (e.g. \`dd/MM/yyyy\`, \`dd/MM/yyyy HH:mm:ss\`, \`yyyy-MM-dd\`).
-  3. Only after approval, call \`import_transactions_csv\` with that mapping (and \`dateFormat\` if a
-     date is mapped). It runs server-side and returns a summary of counts (imported / skipped /
-     categorized / uncategorized / skippedBadDate). Check that \`categorized\` is what you'd expect and
-     that \`skippedBadDate\` is 0; if rows appear in \`badDateRows\`, the date format was likely wrong —
-     show the user those rows and re-confirm the format. If the tool returns an error (unknown
-     columns, or a missing date format), fix it and retry. Never ask for or handle the full row data
-     yourself — you only ever see the sample and the final summary.
+  3. Call \`validate_csv_import\` with the exact arguments you intend to import with. It writes
+     nothing, and the import refuses a plan it hasn't seen. Act on what it reports before importing.
+  4. Only after approval, call \`import_transactions_csv\` with those same arguments, then read its
+     summary and follow any \`hint\` it returns.
+     - Report \`uncategorized\` honestly, and mention \`datesWithoutTime\` when it is non-zero — those
+       rows landed at 00:00:00 because the file gave no time, which is a fallback, not a fact.
+     - You never handle the **full** file yourself — only the sample, specific rows you ask for by
+       number, and the summary.
 
 **Tool Usage Rules:**
 - Only use tools when you genuinely need current, specific, or specialized information (or an action)

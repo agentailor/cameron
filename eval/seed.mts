@@ -78,9 +78,61 @@ const CSV_ROWS = [
 
 const CSV_HEADERS = ["Date", "Libellé", "Montant", "Catégorie", "Revenu/dépense"] as const;
 
-function csvText(): string {
+/**
+ * The duplicate incident, reproduced. A real export mixed timestamped dates with a few bare ones;
+ * under the declared `dd/MM/yyyy HH:mm:ss` the bare rows were refused, and the retry that followed
+ * re-imported the whole file and duplicated everything that had already landed.
+ *
+ * Most rows carry a time, two do not — so the format the SAMPLE suggests is the timestamped one,
+ * and the bare rows are invisible until the whole file is parsed.
+ */
+const CSV_MIXED_ROWS = [
+  {
+    date: "05/07/2026 08:14:22",
+    note: "Cafe du matin",
+    amount: "4.50",
+    cat: "Dining",
+    type: "Depense",
+  },
+  {
+    date: "06/07/2026 12:03:47",
+    note: "Boulangerie",
+    amount: "12.00",
+    cat: "Groceries",
+    type: "Depense",
+  },
+  {
+    date: "07/07/2026 19:41:05",
+    note: "Ticket de metro",
+    amount: "2.10",
+    cat: "Transport",
+    type: "Depense",
+  },
+  {
+    date: "08/07/2026 13:22:18",
+    note: "Dejeuner",
+    amount: "18.75",
+    cat: "Dining",
+    type: "Depense",
+  },
+  {
+    date: "09/07/2026 17:55:31",
+    note: "Supermarche",
+    amount: "43.20",
+    cat: "Groceries",
+    type: "Depense",
+  },
+  { date: "10/07/2026 21:09:56", note: "Taxi", amount: "27.00", cat: "Transport", type: "Depense" },
+  // No time — the rows the old importer refused.
+  { date: "11/07/2026", note: "Pizza", amount: "22.40", cat: "Dining", type: "Depense" },
+  { date: "12/07/2026", note: "Cinema", amount: "15.00", cat: "Loisirs", type: "Depense" },
+] as const;
+
+function csvText(
+  rows: readonly { date: string; note: string; amount: string; cat: string; type: string }[],
+): string {
   const lines = [CSV_HEADERS.join(",")];
-  for (const r of CSV_ROWS) {
+  for (const r of rows) {
     lines.push([r.date, r.note, r.amount, r.cat, r.type].join(","));
   }
   return lines.join("\n") + "\n";
@@ -122,6 +174,25 @@ export const FIXTURE = {
      * French headers and Paris merchants are a hint, not a fact — so the agent must get this
      * from the user or from stored config, never from the locale.
      */
+    currency: "EUR",
+  },
+  /**
+   * The mixed-date file. Every row must land in ONE import: the two time-less rows are exactly
+   * the ones a strict format used to refuse, and rescuing them by re-importing is what duplicated
+   * a real ledger.
+   */
+  csvMixedDates: {
+    fileKey: "eval/fixtures/transactions-mixed-dates.csv",
+    fileName: "transactions-mixed-dates.csv",
+    rowCount: CSV_MIXED_ROWS.length,
+    /** What the sample rows show, and what the agent should declare. */
+    dateFormat: "dd/MM/yyyy HH:mm:ss",
+    /** Rows with no time in the file — they import at 00:00:00, they do not fail. */
+    rowsWithoutTime: CSV_MIXED_ROWS.filter((r) => !r.date.includes(":")).length,
+    correctFirstMonth: 7,
+    /** Under the reversed MM/dd reading the first row would land in May instead. */
+    wrongFirstMonth: 5,
+    newCategory: "Loisirs",
     currency: "EUR",
   },
 } as const;
@@ -220,9 +291,15 @@ export async function seed(url: string, opts: { withCsv?: boolean } = {}): Promi
 async function seedCsvFixture(): Promise<void> {
   const { uploadFile } = await import("../src/lib/storage/upload.ts");
   await uploadFile(
-    Buffer.from(csvText(), "utf8"),
+    Buffer.from(csvText(CSV_ROWS), "utf8"),
     FIXTURE.csv.fileKey,
     "text/csv",
     FIXTURE.csv.fileName,
+  );
+  await uploadFile(
+    Buffer.from(csvText(CSV_MIXED_ROWS), "utf8"),
+    FIXTURE.csvMixedDates.fileKey,
+    "text/csv",
+    FIXTURE.csvMixedDates.fileName,
   );
 }

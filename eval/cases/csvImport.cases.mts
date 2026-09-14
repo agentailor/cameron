@@ -1,4 +1,4 @@
-import { RUN_POLICY } from "../config.mts";
+import { RUN_POLICY, SIMULATED_DEFAULT } from "../config.mts";
 import { DEFAULT_CURRENCY } from "../../src/lib/config/catalog.ts";
 import {
   configIs,
@@ -8,6 +8,8 @@ import {
   importedRowCount,
   pausedForApproval,
   toolCalled,
+  toolCalledBefore,
+  toolCallCountAtMost,
   toolCalledWith,
   toolNotCalled,
 } from "../graders.mts";
@@ -30,10 +32,12 @@ import type { EvalCase } from "../types.mts";
  * A simulated `user` changes what the agent HEARS, never what is asserted.
  */
 
-const { csv } = FIXTURE;
+const { csv, csvMixedDates: csvMixed } = FIXTURE;
 
 /** The attachment reference the app injects for a non-image upload (see storage/content.ts). */
 const ATTACHMENT = `[Attached file: ${csv.fileName} (text/csv, ${csv.rowCount} rows). fileKey: ${csv.fileKey}]`;
+
+const MIXED_ATTACHMENT = `[Attached file: ${csvMixed.fileName} (text/csv, ${csvMixed.rowCount} rows). fileKey: ${csvMixed.fileKey}]`;
 
 /** Intent only. Anything the agent must OBTAIN lives in the facts, never here. */
 const SHARED_GOAL = "get the transactions in the file you attached into the ledger";
@@ -59,6 +63,17 @@ const IMPORT_FACTS = [
   { topic: "whether to keep the categories from the file", value: "yes, keep them" },
 ];
 
+/**
+ * Same answers as IMPORT_FACTS, but the date format the sample rows show includes the time. The
+ * owner does NOT know that a couple of rows lack one — that is the file's problem to absorb, not
+ * a question the user can answer.
+ */
+const MIXED_FACTS = IMPORT_FACTS.map((f) =>
+  f.topic === "the date format used in the file"
+    ? { topic: f.topic, value: csvMixed.dateFormat, contradicts: ["MM/dd/yyyy HH:mm:ss"] }
+    : f,
+);
+
 export const cases: EvalCase[] = [
   {
     id: "csv-import-confirms-ambiguous-date-format",
@@ -71,7 +86,9 @@ export const cases: EvalCase[] = [
     approval: "allow",
     graders: [
       // The handshake: look before importing.
-      toolCalled("inspect_csv", "import_transactions_csv"),
+      toolCalled("inspect_csv", "validate_csv_import", "import_transactions_csv"),
+      // Order is the point: validation must PRECEDE the write, and toolCalled is only a set check.
+      toolCalledBefore("validate_csv_import", "import_transactions_csv"),
       // It must pass the format explicitly rather than letting the tool refuse or guessing.
       toolCalledWith(
         "import_transactions_csv",
@@ -119,7 +136,9 @@ export const cases: EvalCase[] = [
     user: { goal: SHARED_GOAL, facts: IMPORT_FACTS, until: importHappened },
     approval: "allow",
     graders: [
-      toolCalled("inspect_csv", "import_transactions_csv"),
+      toolCalled("inspect_csv", "validate_csv_import", "import_transactions_csv"),
+      // Order is the point: validation must PRECEDE the write, and toolCalled is only a set check.
+      toolCalledBefore("validate_csv_import", "import_transactions_csv"),
       importedRowCount(csv.rowCount),
       // The silent-data-loss guard: an unmapped category column imports rows with NO category
       // rather than failing. `Loisirs` only exists in the file, so it also proves the importer
@@ -139,7 +158,9 @@ export const cases: EvalCase[] = [
     user: { goal: SHARED_GOAL, facts: IMPORT_FACTS, until: importHappened },
     approval: "allow",
     graders: [
-      toolCalled("inspect_csv", "import_transactions_csv"),
+      toolCalled("inspect_csv", "validate_csv_import", "import_transactions_csv"),
+      // Order is the point: validation must PRECEDE the write, and toolCalled is only a set check.
+      toolCalledBefore("validate_csv_import", "import_transactions_csv"),
       toolCalledWith(
         "import_transactions_csv",
         (a) => (a.dateFormat as string | undefined) === csv.dateFormat,
@@ -174,7 +195,9 @@ export const cases: EvalCase[] = [
     ],
     approval: "allow",
     graders: [
-      toolCalled("inspect_csv", "import_transactions_csv"),
+      toolCalled("inspect_csv", "validate_csv_import", "import_transactions_csv"),
+      // Order is the point: validation must PRECEDE the write, and toolCalled is only a set check.
+      toolCalledBefore("validate_csv_import", "import_transactions_csv"),
       toolCalledWith(
         "import_transactions_csv",
         (a) => (a.dateFormat as string | undefined) === csv.dateFormat,
@@ -200,11 +223,72 @@ export const cases: EvalCase[] = [
     ],
     approval: "allow",
     graders: [
-      toolCalled("inspect_csv", "import_transactions_csv"),
+      toolCalled("inspect_csv", "validate_csv_import", "import_transactions_csv"),
+      // Order is the point: validation must PRECEDE the write, and toolCalled is only a set check.
+      toolCalledBefore("validate_csv_import", "import_transactions_csv"),
       importedRowCount(csv.rowCount),
       importedCategories("Dining", "Groceries", "Transport", csv.newCategory),
     ],
     runs: RUN_POLICY.strict,
     tags: ["csv", "import", "mutation", "legacy-scripted"],
+  },
+  /**
+   * THE incident, reproduced. A file mixing "05/07/2026 08:14:22" with a bare "11/07/2026": the
+   * sample rows all carry a time, so the agent declares `dd/MM/yyyy HH:mm:ss` in good faith and
+   * the time-less rows are invisible until the whole file is parsed.
+   *
+   * Graded on the consequence and on the TRAJECTORY, because both halves failed in the real
+   * session: every row must land, AND the import must run exactly once. Re-importing to rescue
+   * the stragglers is what tripled a real ledger — and since the ledger is truncated between
+   * runs, a second import would leave 2x the rows, which `importedRowCount` alone would catch
+   * only by accident.
+   */
+  {
+    id: "csv-import-handles-rows-without-a-time",
+    description:
+      "Most rows are timestamped, two are date-only. All of them must import in a SINGLE pass — " +
+      "the time-less rows are not failures, and re-importing to pick them up duplicates the rest.",
+    prompt: `${MIXED_ATTACHMENT}\n\nImport these transactions into my checking account.`,
+    user: { goal: SHARED_GOAL, facts: MIXED_FACTS, until: importHappened },
+    approval: "allow",
+    graders: [
+      toolCalled("inspect_csv", "validate_csv_import", "import_transactions_csv"),
+      toolCalledBefore("validate_csv_import", "import_transactions_csv"),
+      // Every row, including the two with no time.
+      importedRowCount(csvMixed.rowCount),
+      importedInMonth(csvMixed.correctFirstMonth, csvMixed.wrongFirstMonth),
+      // The regression guard. One import call, not two.
+      toolCallCountAtMost("import_transactions_csv", 1),
+    ],
+    // A silent partial import with a plausible-looking summary — one bad run is a real defect.
+    runs: RUN_POLICY.strict,
+    tags: ["csv", "import", "mutation", "duplicates"],
+  },
+
+  /**
+   * Validation is enforced by the tool, not by the prompt: an unvalidated plan returns
+   * `validation_required` and writes nothing. So this grades that the agent READS that refusal
+   * and recovers, rather than that it remembered the rule — the DB state is identical either way
+   * only if it recovers.
+   */
+  {
+    id: "csv-import-validates-before-writing",
+    description:
+      "The import refuses a plan that was not validated first. Whether the agent validates up " +
+      "front or recovers from the refusal, the rows must end up imported exactly once.",
+    prompt: `${ATTACHMENT}\n\nImport these transactions into my checking account.`,
+    user: { goal: SHARED_GOAL, facts: IMPORT_FACTS, until: importHappened },
+    approval: "allow",
+    graders: [
+      toolCalled("validate_csv_import", "import_transactions_csv"),
+      toolCalledBefore("validate_csv_import", "import_transactions_csv"),
+      importedRowCount(csv.rowCount),
+    ],
+    // A simulated conversation compounds the simulator's variance with the agent's, and the
+    // recovery path here is genuinely open-ended (validate up front, or read the refusal and
+    // recover) — `majority` is the suite's default for exactly that shape. `single` would let one
+    // unlucky conversation read as a broken gate.
+    runs: SIMULATED_DEFAULT,
+    tags: ["csv", "import", "prompt-contract"],
   },
 ];

@@ -20,10 +20,25 @@ const CSV_IMPORT_CAPABILITIES = [
       "mapping and date format for the user to confirm. Read-only — imports nothing.",
   },
   {
+    name: "read_csv_rows",
+    description:
+      "Read specific rows of an uploaded CSV by row number, exactly as they appear in the file. " +
+      "Used to recover rows an import refused, so they can be fixed one at a time instead of " +
+      "re-importing the whole file. Read-only — imports nothing.",
+  },
+  {
+    name: "validate_csv_import",
+    description:
+      "Check an import plan against the whole file and report what would happen — how many rows " +
+      "would import and which would be refused — without writing anything. Required before an " +
+      "import runs. Read-only.",
+  },
+  {
     name: "import_transactions_csv",
     description:
       "Import transactions from an uploaded CSV using a confirmed column mapping and date format. " +
-      "Fails loud and imports nothing if a mapped column doesn't exist in the file.",
+      "Fails loud and imports nothing if a mapped column doesn't exist in the file, or if the " +
+      "plan has not been validated first.",
   },
 ];
 

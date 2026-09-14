@@ -30,6 +30,8 @@ export const TOOL_RENDERERS: Record<string, ToolRenderers> = {
   inspect_csv: { args: "file", result: "table" },
   log_expense: { args: "expense", result: "receipt" },
   create_category: { args: "fields", result: "receipt" },
+  read_csv_rows: { args: "fields", result: "table" },
+  validate_csv_import: { args: "csvPlan", result: "receipt" },
   import_transactions_csv: { args: "csvPlan", result: "receipt" },
   get_config: { args: "fields", result: "receipt" },
   set_config: { args: "fields", result: "receipt" },
