@@ -1,5 +1,5 @@
 import { createLLMSimulatedUser, runMultiturnSimulation } from "openevals";
-import { createChatModel } from "../src/lib/agent/util.ts";
+import { createChatModel } from "../src/lib/agent/models.ts";
 import { DEFAULT_MAX_TURNS, SIMULATOR_MODEL } from "./config.mts";
 import { buildUserPrompt, CANNOT_ANSWER, DONE } from "./simulatedUser.prompt.mts";
 import type { ConversationTurn, Inconclusive, SimulatedUser } from "./types.mts";

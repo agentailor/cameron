@@ -7,6 +7,7 @@ export interface ChatServiceConfig {
     chat?: string;
     stream?: string;
     threads?: string;
+    config?: string;
   };
   headers?: Record<string, string>;
 }
@@ -18,6 +19,7 @@ const config: ChatServiceConfig = {
     chat: "/chat",
     stream: "/stream",
     threads: "/threads",
+    config: "/config",
   },
 };
 
@@ -36,14 +38,55 @@ export async function fetchMessageHistory(threadId: string): Promise<MessageResp
   return data as MessageResponse[];
 }
 
+export interface ProviderInfo {
+  id: string;
+  label: string;
+  apiKeyEnvVar: string;
+  apiKeyRequired: boolean;
+  requiresBaseUrl: boolean;
+  envNote: string;
+}
+
+export interface AgentConfig {
+  configured: boolean;
+  provider: string | null;
+  model: string | null;
+  baseUrl: string | null;
+  providers: ProviderInfo[];
+}
+
+export interface ModelSettingsInput {
+  provider: string;
+  model: string;
+  baseUrl?: string | null;
+}
+
+export async function fetchAgentConfig(): Promise<AgentConfig> {
+  const response = await fetch(getUrl("config"), { headers: config.headers });
+  if (!response.ok) {
+    throw new Error("Failed to load agent config");
+  }
+  return (await response.json()) as AgentConfig;
+}
+
+export async function saveModelSettings(input: ModelSettingsInput): Promise<void> {
+  const response = await fetch(getUrl("config"), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...config.headers },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || "Failed to save model settings");
+  }
+}
+
 export function createMessageStream(
   threadId: string,
   message: string,
   opts?: MessageOptions,
 ): EventSource {
   const params = new URLSearchParams({ content: message, threadId });
-  if (opts?.model) params.set("model", opts.model);
-  if (opts?.provider) params.set("provider", opts.provider);
   if (opts?.tools?.length) params.set("tools", opts.tools.join(","));
   if (opts?.allowTool) params.set("allowTool", opts.allowTool);
   if (opts?.attachments && opts.attachments.length > 0) {

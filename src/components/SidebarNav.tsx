@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Plug } from "lucide-react";
+import { LayoutGrid, Plug, Settings } from "lucide-react";
 import { RETURN_TO_KEY } from "./BackToChat";
 
 /**
@@ -33,6 +33,25 @@ export const SidebarNav = ({ onOpenMCPConfig }: { onOpenMCPConfig: () => void })
       >
         <LayoutGrid className="h-3.5 w-3.5 shrink-0" />
         capabilities
+      </Link>
+
+      <Link
+        href="/settings"
+        onClick={() => {
+          try {
+            if (pathname !== "/settings") sessionStorage.setItem(RETURN_TO_KEY, pathname);
+          } catch {
+            // Blocked storage: BackToChat falls back to `/`.
+          }
+        }}
+        className={`${item} ${
+          pathname === "/settings"
+            ? "bg-accent text-foreground"
+            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+        }`}
+      >
+        <Settings className="h-3.5 w-3.5 shrink-0" />
+        settings
       </Link>
 
       <button

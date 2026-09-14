@@ -12,7 +12,7 @@
 /** Model under test. `EVAL_MODEL=claude-sonnet-5 pnpm eval` to compare without editing code. */
 export const MODEL = {
   provider: "anthropic",
-  /** Keep in sync with DEFAULT_MODEL_NAME (src/lib/agent/util.ts) — evals should test what ships. */
+  /** Pinned here: the app's model is owner-configured, so evals name their own. */
   name: process.env.EVAL_MODEL ?? "claude-haiku-4-5",
 } as const;
 

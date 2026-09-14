@@ -55,7 +55,8 @@ describe("the approval gate is not reachable from a request", () => {
   it("no UI surface offers a toggle", async () => {
     for (const file of [
       "../../components/MessageInput.tsx",
-      "../../contexts/UISettingsContext.tsx",
+      "../../components/settings/ModelSettingsForm.tsx",
+      "../../app/settings/page.tsx",
     ]) {
       const src = await read(file);
       expect(src, file).not.toContain("approveAllTools");

@@ -332,14 +332,20 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
 
 - `ensureAgent()` ensures Postgres checkpointer is initialized before agent creation
 - MCP servers queried from database on each agent creation for dynamic tool loading
-- Supports OpenAI/Google/Anthropic models via `AgentConfigOptions`
-- **Default model is `anthropic` / `claude-haiku-4-5`, defined in THREE places that must stay in
-  sync**: `DEFAULT_MODEL_PROVIDER`/`DEFAULT_MODEL_NAME` (`src/lib/agent/util.ts`, server),
-  `UISettingsContext` (client initial state), and the provider-switch map in
-  `ModelConfiguration.tsx`. The UI sends `provider`/`model` as query params on every request, so
-  the **client default wins** — changing only the server constant has no effect on the app.
-  Existing users keep their `localStorage` choice (`agent_model_settings`); a new default only
-  applies to fresh browsers.
+- **The owner picks the provider and model in the app; nothing is inferred.** Supported:
+  `google`, `openai`, `anthropic`, `openai-compatible` (any OpenAI chat-completions endpoint —
+  Ollama, vLLM, Groq, OpenRouter, DeepSeek). There is no default pair and no env var for the
+  choice: with nothing stored the app is unconfigured, and `/` says so instead of guessing.
+- **Stored in the `config` table but deliberately NOT in `src/lib/config/catalog.ts`.** That
+  catalog is the allowlist gating `set_config`, so keys absent from it are invisible and
+  unwritable to the agent — Cameron cannot read or change which model it runs on.
+  `src/lib/agent/modelSettings.ts` owns read/write; `readModelSettings()` returning `null` is the
+  single definition of "unconfigured".
+- **API keys stay in env and are never read for readiness.** Settings names the variable each
+  provider needs and never inspects it; a bad key surfaces as a failed message, not a pre-flight
+  check. Keys and the compatible endpoint's base URL are never returned by `/api/agent/config`.
+- `buildAgent` uses an explicit `cfg.provider` + `cfg.model` when given (the eval path), else the
+  stored settings.
 
 ### API Route Patterns
 

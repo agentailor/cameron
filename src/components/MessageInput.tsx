@@ -2,8 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Button } from "./ui/button";
 import { ArrowUp, Loader2, Paperclip, X, ChevronDown } from "lucide-react";
 import { MessageOptions, FileAttachment } from "@/types/message";
-import { ModelConfiguration } from "./ModelConfiguration";
-import { useUISettings } from "@/contexts/UISettingsContext";
+import { useModelSettings } from "@/hooks/useModelSettings";
 import { MAX_ATTACHMENTS } from "@/lib/storage/validation";
 
 interface MessageInputProps {
@@ -23,7 +22,11 @@ export const MessageInput = ({
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
-  const { provider, setProvider, model, setModel } = useUISettings();
+  const { settings, save, isSaving } = useModelSettings();
+  const model = settings?.model ?? "";
+  const [modelDraft, setModelDraft] = useState("");
+
+  useEffect(() => setModelDraft(model), [model]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -112,13 +115,21 @@ export const MessageInput = ({
     setAttachments((prev) => prev.filter((att) => att.key !== key));
   };
 
+  const saveModel = async () => {
+    if (!settings?.provider || !modelDraft.trim() || modelDraft === model) return;
+    await save({
+      provider: settings.provider,
+      model: modelDraft.trim(),
+      baseUrl: settings.baseUrl,
+    });
+    setModelOpen(false);
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if ((!message.trim() && attachments.length === 0) || isLoading) return;
 
     await onSendMessage(message, {
-      model,
-      provider,
       tools: [],
       attachments: attachments.length > 0 ? attachments : undefined,
     });
@@ -216,12 +227,41 @@ export const MessageInput = ({
               </button>
               {modelOpen && (
                 <div className="border-border bg-popover absolute bottom-full left-0 z-50 mb-2 w-72 rounded-lg border p-3 shadow-lg">
-                  <ModelConfiguration
-                    provider={provider}
-                    setProvider={setProvider}
-                    model={model}
-                    setModel={setModel}
+                  <label
+                    htmlFor="model-draft"
+                    className="text-muted-foreground block font-mono text-[10px] tracking-[0.12em]"
+                  >
+                    MODEL
+                  </label>
+                  <input
+                    id="model-draft"
+                    value={modelDraft}
+                    onChange={(e) => setModelDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void saveModel();
+                      }
+                    }}
+                    placeholder="Enter model name"
+                    className="border-border bg-background focus:border-brand focus:ring-brand mt-1.5 w-full rounded-md border px-3 py-1.5 font-mono text-sm focus:ring-1 focus:outline-none"
                   />
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground font-mono text-[10px]">
+                      {settings?.provider ?? "no provider"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void saveModel()}
+                      disabled={isSaving || !modelDraft.trim() || modelDraft === model}
+                      className="text-brand cursor-pointer text-xs disabled:opacity-50"
+                    >
+                      save
+                    </button>
+                  </div>
+                  <a href="/settings" className="text-muted-foreground mt-2 block text-[11px]">
+                    Change provider in Settings →
+                  </a>
                 </div>
               )}
             </div>
