@@ -55,12 +55,32 @@ export interface ImportOptions {
   source?: string; // provenance tag; defaults to "csv"
 }
 
+/**
+ * THE row-numbering convention for every payload that names a row: 1-based over DATA rows,
+ * excluding the header. Must be obeyed everywhere — an off-by-one makes the agent "correct" a
+ * NEIGHBOURING transaction.
+ */
+export function dataRowNumber(recordIndex: number): number {
+  return recordIndex + 1;
+}
+
 /** A row skipped because its date couldn't be parsed with the declared format. */
 export interface BadDateRow {
-  /** 1-based row number in the data (excludes the header row). */
+  /** Row number under {@link dataRowNumber}. */
   row: number;
   /** The raw date string that failed. */
   value: string;
+}
+
+/**
+ * A row skipped because its amount wouldn't parse or its note was empty. Carries the row NUMBER,
+ * not the row — content comes from `read_csv_rows`.
+ */
+export interface UnparsableRow {
+  /** Row number under {@link dataRowNumber}. */
+  row: number;
+  /** Which requirement failed, so the agent can tell a junk row from a mapping mistake. */
+  reason: "amount_unparseable" | "note_missing";
 }
 
 export interface CsvPreview {
@@ -164,23 +184,23 @@ const DATE_MISSING = Symbol("date-missing");
 const DATE_INVALID = Symbol("date-invalid");
 
 /**
- * Parse a date string with the caller-supplied format. Returns the parsed date, or DATE_MISSING
- * (no value to parse — caller defaults to now()), or DATE_INVALID (a value that doesn't match the
- * format — caller reports it, never silently substitutes now()).
- *
- * The parsed wall-clock components are reinterpreted as UTC so the stored calendar day matches what
- * the file says regardless of server timezone (local-midnight → UTC would slip the date a day).
+ * Strip the time portion of a date-fns pattern, or null when there is no time part to strip.
+ * Backs ONE retry in `parseDate`, so a file mixing timestamped and date-only values imports whole.
+ * Truncating only drops precision — it never reinterprets field order.
  */
-function parseDate(
-  raw: string | undefined,
-  format?: string,
-): Date | typeof DATE_MISSING | typeof DATE_INVALID {
-  const value = raw?.trim();
-  if (!value) return DATE_MISSING;
-  // Without a declared format we cannot disambiguate DD/MM from MM/DD — refuse to guess.
-  if (!format) return DATE_INVALID;
-  const local = parseDateFns(value, format, new Date());
-  if (!isValid(local)) return DATE_INVALID;
+export function dateFormatWithoutTime(format: string): string | null {
+  // Time field symbols in date-fns: h/H/K/k (hour), m (minute), s (second), S (fraction),
+  // a/b/B (day period), z/Z/O/X/x (zone). Quoted literals ('...') are left alone.
+  const firstTimeToken = format.search(/[hHKkmsSabBzZOXx]/);
+  if (firstTimeToken === -1) return null;
+  // Drop trailing separators ("dd/MM/yyyy " -> "dd/MM/yyyy") so the pattern ends cleanly.
+  const dateOnly = format.slice(0, firstTimeToken).replace(/[\s,;:/.T'-]+$/, "");
+  return dateOnly.length > 0 ? dateOnly : null;
+}
+
+function toUtc(local: Date): Date {
+  // Reinterpret the parsed wall-clock components as UTC so the stored calendar day matches what
+  // the file says regardless of server timezone (local-midnight → UTC would slip the date a day).
   return new Date(
     Date.UTC(
       local.getFullYear(),
@@ -194,31 +214,73 @@ function parseDate(
 }
 
 /**
- * Apply a column mapping to raw CSV text, producing {@link ImportRow}s ready for the repository's
- * atomic importer. Rows whose amount can't be parsed are skipped and counted. Rows whose date can't
- * be parsed with `opts.dateFormat` are collected in `badDateRows` (NOT silently dated now()) so the
- * caller can surface them. Categories are passed through as NAMES (`categoryName`).
+ * Parse a date string with the caller-supplied format. Returns the parsed date plus whether the
+ * time had to be defaulted, or DATE_MISSING (nothing to parse), or DATE_INVALID (doesn't match the
+ * format — the caller reports it, never substitutes now()).
+ *
+ * A value that fails the full pattern is retried ONCE with the time tokens removed; such a row
+ * lands at 00:00:00 and is counted in `datesWithoutTime`.
  */
-export function mapCsvToTransactions(
-  csvText: string,
-  opts: ImportOptions,
-): {
+function parseDate(
+  raw: string | undefined,
+  format?: string,
+): { date: Date; timeDefaulted: boolean } | typeof DATE_MISSING | typeof DATE_INVALID {
+  const value = raw?.trim();
+  if (!value) return DATE_MISSING;
+  // Without a declared format we cannot disambiguate DD/MM from MM/DD — refuse to guess.
+  if (!format) return DATE_INVALID;
+
+  const local = parseDateFns(value, format, new Date());
+  if (isValid(local)) return { date: toUtc(local), timeDefaulted: false };
+
+  // The declared format carried a time the row doesn't: retry date-only rather than lose the row.
+  const dateOnlyFormat = dateFormatWithoutTime(format);
+  if (dateOnlyFormat) {
+    const dateOnly = parseDateFns(value, dateOnlyFormat, new Date());
+    if (isValid(dateOnly)) {
+      // Force midnight: the reference date supplies today's time for absent tokens.
+      dateOnly.setHours(0, 0, 0, 0);
+      return { date: toUtc(dateOnly), timeDefaulted: true };
+    }
+  }
+  return DATE_INVALID;
+}
+
+/** The outcome of mapping a file: the rows to write, plus every row refused and why. */
+export interface MappedCsv {
   rows: ImportRow[];
-  skipped: number;
+  /** Rows refused because the amount wouldn't parse or the note was empty. */
+  unparsableRows: UnparsableRow[];
+  /** Rows refused because the date didn't match the declared format (even date-only). */
   badDateRows: BadDateRow[];
+  /** Rows that parsed only after dropping the format's time part, so they sit at 00:00:00. */
+  datesWithoutTime: number;
   headers: string[];
-} {
+}
+
+/**
+ * Apply a column mapping to raw CSV text, producing {@link ImportRow}s ready for the repository's
+ * atomic importer, plus a full accounting of every row refused.
+ *
+ * Refused rows carry their ROW NUMBER ({@link dataRowNumber}) so they can be recovered one at a
+ * time. A row whose date can't be parsed is NEVER dated now(). Categories pass through as NAMES.
+ */
+export function mapCsvToTransactions(csvText: string, opts: ImportOptions): MappedCsv {
   const { mapping } = opts;
   const { records, fields: headers } = parseRecords(csvText);
   const rows: ImportRow[] = [];
   const badDateRows: BadDateRow[] = [];
-  let skipped = 0;
+  const unparsableRows: UnparsableRow[] = [];
+  let datesWithoutTime = 0;
 
   records.forEach((rec, i) => {
     const amount = parseAmount(rec[mapping.amount]);
     const note = mapping.note ? rec[mapping.note]?.trim() : "";
     if (amount == null || !note) {
-      skipped++;
+      unparsableRows.push({
+        row: dataRowNumber(i),
+        reason: amount == null ? "amount_unparseable" : "note_missing",
+      });
       return;
     }
 
@@ -226,10 +288,16 @@ export function mapCsvToTransactions(
     const parsed = parseDate(rawDate, opts.dateFormat);
     if (parsed === DATE_INVALID) {
       // A date column was mapped but this row's value doesn't match the format. Report, don't guess.
-      badDateRows.push({ row: i + 1, value: (rawDate ?? "").trim() });
+      badDateRows.push({ row: dataRowNumber(i), value: (rawDate ?? "").trim() });
       return;
     }
-    const occurredAt = parsed === DATE_MISSING ? new Date() : parsed;
+    let occurredAt: Date;
+    if (parsed === DATE_MISSING) {
+      occurredAt = new Date();
+    } else {
+      occurredAt = parsed.date;
+      if (parsed.timeDefaulted) datesWithoutTime++;
+    }
 
     rows.push({
       occurredAt,
@@ -246,5 +314,39 @@ export function mapCsvToTransactions(
     });
   });
 
-  return { rows, skipped, badDateRows, headers };
+  return { rows, unparsableRows, badDateRows, datesWithoutTime, headers };
+}
+
+/**
+ * Read specific data rows by number, raw and keyed by header — the recovery primitive behind
+ * `read_csv_rows`. Raw rather than mapped, because a row is usually read BECAUSE mapping it failed.
+ * Bounded. Row numbers outside the file come back in `missing`, never silently dropped.
+ */
+export function readCsvRows(
+  csvText: string,
+  rowNumbers: number[],
+  limit: number,
+): {
+  rows: { row: number; data: Record<string, string> }[];
+  missing: number[];
+  truncated: boolean;
+  totalRows: number;
+  headers: string[];
+} {
+  const { records, fields: headers } = parseRecords(csvText);
+  // Sorted + de-duplicated so the caller gets a stable, predictable page.
+  const wanted = [...new Set(rowNumbers)].sort((a, b) => a - b);
+
+  const missing = wanted.filter((n) => n < 1 || n > records.length);
+  const present = wanted.filter((n) => n >= 1 && n <= records.length);
+  const page = present.slice(0, limit);
+
+  return {
+    // Echo each row's number beside its content, so a numbering mismatch is self-evident.
+    rows: page.map((n) => ({ row: n, data: records[n - 1] })),
+    missing,
+    truncated: present.length > page.length,
+    totalRows: records.length,
+    headers,
+  };
 }

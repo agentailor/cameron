@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  dateFormatWithoutTime,
   inspectCsv,
   mapCsvToTransactions,
+  readCsvRows,
   unmappedHeaders,
   validateMapping,
   type ColumnMapping,
@@ -93,12 +95,12 @@ describe("unmappedHeaders", () => {
 
 describe("mapCsvToTransactions", () => {
   it("maps rows with the declared date format", () => {
-    const { rows, skipped, badDateRows } = mapCsvToTransactions(CSV, {
+    const { rows, unparsableRows, badDateRows } = mapCsvToTransactions(CSV, {
       ...BASE_OPTS,
       dateFormat: "dd/MM/yyyy",
     });
 
-    expect(skipped).toBe(0);
+    expect(unparsableRows).toEqual([]);
     expect(badDateRows).toEqual([]);
     expect(rows).toHaveLength(2);
 
@@ -163,14 +165,18 @@ describe("mapCsvToTransactions", () => {
     expect(badDateRows).toHaveLength(2);
   });
 
-  it("skips rows with an unparseable amount or a missing note", () => {
+  // A bare count leaves the row unrecoverable — the number and reason are what make it fixable.
+  it("reports rows with an unparseable amount or a missing note by row number", () => {
     const csv = ["Libellé,Montant", "No amount,abc", ",12.00", "Fine,3.00"].join("\n");
-    const { rows, skipped } = mapCsvToTransactions(csv, {
+    const { rows, unparsableRows } = mapCsvToTransactions(csv, {
       mapping: { amount: "Montant", note: "Libellé" },
       account: Account.CHECKING,
     });
     expect(rows).toHaveLength(1);
-    expect(skipped).toBe(2);
+    expect(unparsableRows).toEqual([
+      { row: 1, reason: "amount_unparseable" },
+      { row: 2, reason: "note_missing" },
+    ]);
   });
 
   it("falls back to typeDefault when the type value is unrecognized", () => {
@@ -182,5 +188,124 @@ describe("mapCsvToTransactions", () => {
       typeValues: { expense: ["dépense"], income: ["revenu"] },
     });
     expect(rows[0].type).toBe(TransactionType.income);
+  });
+});
+
+describe("dateFormatWithoutTime", () => {
+  it("strips the time part and trailing separators", () => {
+    expect(dateFormatWithoutTime("dd/MM/yyyy HH:mm:ss")).toBe("dd/MM/yyyy");
+    expect(dateFormatWithoutTime("yyyy-MM-dd'T'HH:mm")).toBe("yyyy-MM-dd");
+    expect(dateFormatWithoutTime("MM/dd/yyyy h:mm a")).toBe("MM/dd/yyyy");
+  });
+
+  it("returns null when there is no time part to strip", () => {
+    expect(dateFormatWithoutTime("dd/MM/yyyy")).toBeNull();
+    expect(dateFormatWithoutTime("yyyy-MM-dd")).toBeNull();
+  });
+});
+
+/**
+ * A file may mix "06/09/2026 22:41:15" with a bare "07/09/2026". Under one declared format the
+ * other shape used to be refused, and re-importing to rescue it duplicates everything that already
+ * landed — so both shapes must import in ONE pass.
+ */
+describe("mapCsvToTransactions — dates without a time", () => {
+  const MIXED = [
+    "Date,Libellé,Montant",
+    "06/09/2026 22:41:15,With time,10.00",
+    "07/09/2026,Without time,20.00",
+  ].join("\n");
+
+  const OPTS = {
+    mapping: { amount: "Montant", note: "Libellé", date: "Date" },
+    account: Account.CHECKING,
+    dateFormat: "dd/MM/yyyy HH:mm:ss",
+  };
+
+  it("imports a row whose value omits the time, at midnight", () => {
+    const { rows, badDateRows, datesWithoutTime } = mapCsvToTransactions(MIXED, OPTS);
+
+    expect(badDateRows).toEqual([]);
+    expect(rows).toHaveLength(2);
+    expect(datesWithoutTime).toBe(1);
+
+    const withTime = rows[0].occurredAt as Date;
+    expect(withTime.toISOString()).toBe("2026-09-06T22:41:15.000Z");
+    // Time defaulted to 00:00:00 — never to "now", and never to the reference date's time.
+    const withoutTime = rows[1].occurredAt as Date;
+    expect(withoutTime.toISOString()).toBe("2026-09-07T00:00:00.000Z");
+  });
+
+  // Truncation may only drop precision, never reinterpret field order — that is the DD/MM-vs-MM/DD
+  // ambiguity parseDate refuses to guess at.
+  it("keeps the declared field order when falling back to date-only", () => {
+    const { rows } = mapCsvToTransactions(MIXED, { ...OPTS, dateFormat: "MM/dd/yyyy HH:mm:ss" });
+    const asMDY = rows[1].occurredAt as Date;
+    expect(asMDY.getUTCMonth()).toBe(6); // July, not September
+    expect(asMDY.getUTCDate()).toBe(9);
+  });
+
+  it("still refuses a value that matches neither the full nor the date-only format", () => {
+    const csv = ["Date,Libellé,Montant", "2026-09-07,Wrong shape,5.00"].join("\n");
+    const { rows, badDateRows, datesWithoutTime } = mapCsvToTransactions(csv, OPTS);
+    expect(rows).toHaveLength(0);
+    expect(datesWithoutTime).toBe(0);
+    expect(badDateRows).toEqual([{ row: 1, value: "2026-09-07" }]);
+  });
+});
+
+describe("readCsvRows", () => {
+  const CSV6 = [
+    "Date,Libellé,Montant",
+    ...Array.from({ length: 6 }, (_, i) => `0${i + 1}/09/2026,Row ${i + 1},${i + 1}.00`),
+  ].join("\n");
+
+  // Row 1 is the first DATA row, matching badDateRows. An off-by-one makes the agent "correct" a
+  // neighbouring transaction.
+  it("reads rows by 1-based data-row number, echoing each number back", () => {
+    const { rows } = readCsvRows(CSV6, [1, 3], 25);
+    expect(rows).toEqual([
+      { row: 1, data: { Date: "01/09/2026", Libellé: "Row 1", Montant: "1.00" } },
+      { row: 3, data: { Date: "03/09/2026", Libellé: "Row 3", Montant: "3.00" } },
+    ]);
+  });
+
+  it("agrees with the row numbers mapCsvToTransactions refused", () => {
+    const csv = [
+      "Date,Libellé,Montant",
+      "01/09/2026,Good,1.00",
+      "nonsense,Bad date,2.00",
+      "03/09/2026,Also good,3.00",
+    ].join("\n");
+    const { badDateRows } = mapCsvToTransactions(csv, {
+      mapping: { amount: "Montant", note: "Libellé", date: "Date" },
+      account: Account.CHECKING,
+      dateFormat: "dd/MM/yyyy",
+    });
+
+    const { rows } = readCsvRows(
+      csv,
+      badDateRows.map((r) => r.row),
+      25,
+    );
+    expect(rows[0].data["Libellé"]).toBe("Bad date");
+  });
+
+  it("sorts and de-duplicates the requested numbers", () => {
+    const { rows } = readCsvRows(CSV6, [3, 1, 3], 25);
+    expect(rows.map((r) => r.row)).toEqual([1, 3]);
+  });
+
+  it("reports out-of-range numbers as missing instead of dropping them", () => {
+    const { rows, missing, totalRows } = readCsvRows(CSV6, [2, 99], 25);
+    expect(rows.map((r) => r.row)).toEqual([2]);
+    expect(missing).toEqual([99]);
+    expect(totalRows).toBe(6);
+  });
+
+  it("bounds the page and says so", () => {
+    const { rows, truncated } = readCsvRows(CSV6, [1, 2, 3, 4, 5, 6], 2);
+    expect(rows).toHaveLength(2);
+    expect(truncated).toBe(true);
   });
 });

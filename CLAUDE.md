@@ -123,12 +123,20 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     returning only its fallback is byte-identical to the owner having chosen that fallback, which
     is the whole defect (issue #11 — a French CSV imported as USD). `key` on `set_config` is a
     plain string, not an enum, so a bad key returns a correctable payload instead of a schema throw.
-  - `src/lib/agent/tools/csvImport.ts` — `inspect_csv` (read-only) + `import_transactions_csv`
-    (mutating/gated); the importer validates every mapping value against the file's real headers and
-    **fails loud** (returns an error, imports nothing) if a mapped column doesn't exist, rather than
-    silently dropping the field. Dates are parsed with an agent-supplied `dateFormat` (date-fns
-    pattern, confirmed with the user) — never guessed; unparseable rows are reported in `badDateRows`
-    (bounded) + `skippedBadDate`, not dated `now()`.
+  - `src/lib/agent/tools/csvImport.ts` — a FOUR-tool flow (inspect → propose → validate → import):
+    `inspect_csv`, `validate_csv_import` and `read_csv_rows` (read-only) + `import_transactions_csv`
+    (mutating/gated). Full detail in [docs/CSV_IMPORT_FLOW.md](docs/CSV_IMPORT_FLOW.md). The load-bearing
+    invariants:
+    - **Validation is mandatory and is a SEPARATE TOOL, not a `dryRun` flag** — the import returns
+      `validation_required` unless `validate_csv_import` ran with the same plan (fingerprinted over
+      every argument, so changing only `dateFormat` re-triggers it). Separate because `interruptOn`
+      is keyed by tool NAME: a flag would make auto-approval depend on a model-authored boolean.
+    - **Nothing is refused without identity** — refused rows are reported by row NUMBER (1-based over
+      DATA rows, via `dataRowNumber()`), read back with `read_csv_rows`, and recovered one at a time
+      with `log_expense`. Re-importing to rescue a few rows is the bug, not the fix.
+    - **Duplicate detection is reported honestly** (`duplicateDetection: "active" | "unavailable"`),
+      never as `skippedDuplicates: 0` — dedup keys on `(source, externalId)` and NULL never equals
+      NULL in Postgres, so a file with no id column is not deduplicated at all.
   - `src/lib/agent/tools/skills.ts` — `load_skill` (read-only): returns one skill's full instructions
     by name. Auto-approves — reading a skill approves nothing it tells you to do. `name` is a plain
     string, not an enum, because the skill names are already in the prompt verbatim: a wrong name is
