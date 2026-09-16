@@ -101,13 +101,18 @@ See [docs/SKILLS.md](docs/SKILLS.md) for the validation rules, the failure polic
 
 ### Run it (Docker only)
 
-**Prerequisites:** Docker, and an API key for one of Anthropic / OpenAI / Google.
+**Prerequisites:** Docker, and a model to talk to — an API key for Anthropic, OpenAI or Google, or
+any **OpenAI-compatible** endpoint (Ollama, vLLM, LM Studio, Groq, OpenRouter, DeepSeek). A local
+runtime needs no key at all; you point Cameron at its base URL in Settings.
+
+You pick the provider and model **in the app**, not in the environment — with nothing chosen
+Cameron says it's unconfigured rather than guessing. `.env` only ever holds the keys.
 
 ```bash
 git clone --branch v2 https://github.com/agentailor/cameron
 cd cameron
 
-cp .env.example .env              # add your model API key
+cp .env.example .env              # add your model API key, if your provider needs one
 docker compose --profile full up  # http://localhost:3100
 ```
 
@@ -131,7 +136,7 @@ to that command **deletes your financial data**.
 
 ```bash
 pnpm install
-cp .env.example .env       # add your model API key
+cp .env.example .env       # add your model API key, if your provider needs one
 docker compose up -d       # dev dependencies — Postgres :5544, MinIO :9100/:9101
 pnpm db:migrate
 pnpm dev                   # http://localhost:3100
