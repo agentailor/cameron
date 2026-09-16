@@ -3,11 +3,12 @@ import { ensureThread } from "@/lib/thread";
 import type { MessageOptions, MessageResponse } from "@/types/message";
 import * as threadRepo from "@/lib/repositories/threadRepository";
 import { getHistory } from "@/lib/agent/memory";
-import { BaseMessage, HumanMessage } from "@langchain/core/messages";
+import { HumanMessage } from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
 import type { HITLRequest, HITLResponse, Decision } from "langchain";
 import { processAttachmentsForAI } from "@/lib/storage/content";
 import { streamMessages, type AgentRun } from "./messageStream";
+import { projectHistory } from "./historyProjection";
 import { CallbackHandler } from "@langfuse/langchain";
 
 // Only instantiate when tracing is enabled; avoids errors when Langfuse credentials are absent.
@@ -98,7 +99,7 @@ export async function fetchThreadHistory(threadId: string): Promise<MessageRespo
   if (!thread) return [];
   try {
     const history = await getHistory(threadId);
-    return history.map((msg: BaseMessage) => msg.toDict() as MessageResponse);
+    return projectHistory(history);
   } catch (e) {
     console.error("fetchThreadHistory error", e);
     return [];

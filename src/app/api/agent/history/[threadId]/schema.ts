@@ -1,13 +1,28 @@
 import { z } from "@/lib/api/openapi/zod";
 import { registry } from "@/lib/api/openapi/registry";
 
-// LangGraph checkpoint messages are loosely typed; documented as an open object
-// array so the docs convey the shape without over-constraining it.
-const HistoryMessage = z
-  .looseObject({
+// Projected to the fields the UI renders (see `projectHistory`); `data` varies by message type.
+const HistoryMessageData = z
+  .object({
     id: z.string().optional(),
-    type: z.string().optional(),
     content: z.unknown().optional(),
+    tool_calls: z.array(z.unknown()).optional().openapi({ description: "AI messages only" }),
+    pendingToolCallIds: z
+      .array(z.string())
+      .optional()
+      .openapi({ description: "Tool calls the approval gate paused" }),
+    tool_call_id: z.string().optional().openapi({ description: "Tool messages only" }),
+    name: z.string().optional().openapi({ description: "Tool messages only" }),
+    status: z.string().optional().openapi({ description: "Tool messages only" }),
+    artifact: z.unknown().optional().openapi({ description: "Client-only tool output (charts)" }),
+    attachments: z.array(z.unknown()).optional().openapi({ description: "Human messages only" }),
+  })
+  .openapi("HistoryMessageData");
+
+const HistoryMessage = z
+  .object({
+    type: z.enum(["human", "ai", "tool", "error"]),
+    data: HistoryMessageData,
   })
   .openapi("HistoryMessage");
 
