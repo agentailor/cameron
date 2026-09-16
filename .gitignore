@@ -36,8 +36,6 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
-# isolated env for AI-run live tests (holds secrets; never commit)
-.env.ai-test
 # env for eval runs (holds an API key; never commit) — see .env.eval.example
 .env.eval
 # Eval run artifacts — ignore the generated JSON by pattern, not the whole directory, so the
