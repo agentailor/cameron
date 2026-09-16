@@ -69,17 +69,50 @@ rule 3 by the fact that nothing ships to a hosted backend — the database is yo
 
 ---
 
+## Skills: instructions loaded on demand
+
+Cameron's know-how doesn't all live in the system prompt. A **skill** is a folder in
+[`skills/`](skills/) holding a `SKILL.md` — instructions in the
+[AgentSkills](https://agentskills.io/specification) format. Only each skill's name and description
+sit in the prompt; the agent calls `load_skill` to pull the full body into context when it decides
+the skill is relevant. That's progressive disclosure: the instructions cost you nothing until
+they're being used.
+
+![Cameron drawing a report from the expense-reporter skill](docs/images/cameron-report-exporter.png)
+
+_Asked for an evolution chart, Cameron loads `expense-reporter`, queries the monthly totals, and
+draws the chart the skill told it to pick._
+
+Adding one is a file, not a code change — create `skills/<name>/SKILL.md` with `name` and
+`description` frontmatter and restart. An invalid skill is dropped and logged; the valid ones still
+load, and an empty `skills/` directory is not an error.
+
+**Reading a skill approves nothing it tells you to do.** `load_skill` is read-only, so it
+auto-approves — but the instructions it returns reach mutating tools through the same gate as
+everything else. Rule 2 holds: the approval boundary does not move because the agent read
+something first.
+
+See [docs/SKILLS.md](docs/SKILLS.md) for the validation rules, the failure policy, and why
+`skills/` (shipped product code) is not `.agents/skills/` (gitignored dev tooling).
+
+---
+
 ## Quick start
 
 ### Run it (Docker only)
 
-**Prerequisites:** Docker, and an API key for one of Anthropic / OpenAI / Google.
+**Prerequisites:** Docker, and a model to talk to — an API key for Anthropic, OpenAI or Google, or
+any **OpenAI-compatible** endpoint (Ollama, vLLM, LM Studio, Groq, OpenRouter, DeepSeek). A local
+runtime needs no key at all; you point Cameron at its base URL in Settings.
+
+You pick the provider and model **in the app**, not in the environment — with nothing chosen
+Cameron says it's unconfigured rather than guessing. `.env` only ever holds the keys.
 
 ```bash
 git clone --branch v2 https://github.com/agentailor/cameron
 cd cameron
 
-cp .env.example .env              # add your model API key
+cp .env.example .env              # add your model API key, if your provider needs one
 docker compose --profile full up  # http://localhost:3100
 ```
 
@@ -103,7 +136,7 @@ to that command **deletes your financial data**.
 
 ```bash
 pnpm install
-cp .env.example .env       # add your model API key
+cp .env.example .env       # add your model API key, if your provider needs one
 docker compose up -d       # dev dependencies — Postgres :5544, MinIO :9100/:9101
 pnpm db:migrate
 pnpm dev                   # http://localhost:3100
@@ -147,6 +180,7 @@ The technical detail lives in [`docs/`](docs/) rather than here:
 | Doc                                       | What's in it                                                                                                                                            |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md)   | System overview, agent workflow, data flow, database schema, MCP integration, approval process, streaming, **project structure**, **available scripts** |
+| [SKILLS.md](docs/SKILLS.md)               | How skills load, the validation rules, and how they're packaged for production                                                                          |
 | [TESTING.md](docs/TESTING.md)             | Why the unit suite stays free and offline, and what belongs in evals instead                                                                            |
 | [API.md](docs/API.md)                     | The generated OpenAPI spec, served at `/api/openapi` and browsable at `/api-docs`                                                                       |
 | [OAUTH.md](docs/OAUTH.md)                 | OAuth for MCP servers that need it                                                                                                                      |
