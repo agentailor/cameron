@@ -66,8 +66,6 @@ deletion is immediate and has no undo.
 
 **Live-test against the dev stack** (`pnpm dev` → `mydb_dev`), never against `--profile full`. Note
 `pnpm dev` hardcodes `-p 3100`, which the production `web` container normally occupies — run
-`npx next dev --turbopack -p 3101` rather than stopping production. (`mydb_test`, `.env.ai-test` and
-`pnpm demo` are dead pre-Docker leftovers; don't revive them.)
 
 ### Backing up the production database
 

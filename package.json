@@ -19,8 +19,7 @@
     "db:push": "drizzle-kit push",
     "db:pull": "drizzle-kit pull",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx src/lib/database/seed.ts",
-    "demo": "dotenv -e .env.ai-test -- next dev --turbopack -p 3200"
+    "db:seed": "tsx src/lib/database/seed.ts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.5.0",
