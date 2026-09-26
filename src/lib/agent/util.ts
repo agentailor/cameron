@@ -3,6 +3,8 @@ import { DynamicStructuredTool } from "@langchain/core/tools";
 export interface AgentConfigOptions {
   model?: string;
   provider?: string; // 'google' | 'openai' etc.
+  /** Endpoint for the `openai-compatible` provider; the others resolve their own. */
+  baseUrl?: string | null;
   systemPrompt?: string; // system prompt override
   tools?: unknown[]; // tools from registry or direct tool objects
   /**

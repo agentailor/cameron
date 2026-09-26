@@ -31,6 +31,7 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   if (cfg?.provider && cfg?.model) {
     provider = cfg.provider;
     modelName = cfg.model;
+    baseUrl = cfg.baseUrl ?? null;
   } else {
     const stored = await readModelSettings();
     if (!stored) throw new ModelNotConfiguredError();

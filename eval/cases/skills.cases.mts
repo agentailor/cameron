@@ -1,6 +1,8 @@
 import { RUN_POLICY } from "../config.mts";
 import {
   statesAmount,
+  toolCallCountAtLeast,
+  toolCallCountAtMost,
   toolCalled,
   toolCalledBefore,
   toolCalledWith,
@@ -14,11 +16,14 @@ import type { EvalCase } from "../types.mts";
  *
  * Nothing here is checkable without a model. A unit test proves `load_skill` returns the body and
  * `render_chart` refuses a bad spec, but not that the agent reaches for the skill at all, reads it
- * BEFORE acting, or leaves it alone when a sentence would do. Those are the ways a skill fails in
- * practice while every test stays green.
+ * BEFORE acting, leaves it alone when a sentence would do, or stops re-reading what it already
+ * has. Those are the ways a skill fails in practice while every test stays green.
+ *
+ * Re-reading is a COST defect, not a correctness one: the answer is still right and the suite
+ * still green, so only the trajectory shows it.
  */
 
-const { dining } = FIXTURE;
+const { dining, groceries } = FIXTURE;
 
 export const cases: EvalCase[] = [
   {
@@ -60,6 +65,31 @@ export const cases: EvalCase[] = [
     // plausible answer rather than a crash, so one green run would not show it is reliable.
     runs: RUN_POLICY.majority,
     tags: ["skills", "charts", "chart-selection"],
+  },
+  {
+    id: "skill-loaded-once-per-conversation",
+    description:
+      "A skill already in context must not be re-loaded. Three chart questions on one thread is " +
+      "ONE load_skill — the body is still in the transcript, so loading it again buys nothing and " +
+      "pays its full token cost on every turn.",
+    // Three DIFFERENT shapes (ranking, trend, comparison): repeating one question could be
+    // answered from the previous turn, passing the grader without re-engaging the skill.
+    prompt: [
+      "Show me a chart of my spending by category.",
+      "Now chart how my total spending changed month by month.",
+      `And plot ${dining.category} against ${groceries.category} per month on one chart.`,
+    ],
+    graders: [
+      // The finding — `toolCalled` is a set check and cannot see a second call.
+      toolCallCountAtMost("load_skill", 1),
+      // Positive halves: the cap also passes on a run that loaded nothing, or went quiet.
+      toolCalled("load_skill"),
+      toolCallCountAtLeast("render_chart", 3),
+    ],
+    // Repeats because re-loading is a per-turn decision; `majority` not `strict` because a
+    // multi-turn conversation compounds variance.
+    runs: RUN_POLICY.majority,
+    tags: ["skills", "charts", "context-efficiency", "multi-turn"],
   },
   {
     id: "single-figure-needs-no-chart",

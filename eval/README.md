@@ -187,6 +187,23 @@ Every run writes to `eval/results/` (gitignored):
 - **`latest.json`** — a stable path, so anything can read the last run without globbing.
 - **`report-<timestamp>.json`** — the same content, kept as history.
 
+### Reading an older run
+
+`pnpm eval` renders only `latest.html`, so every earlier run survives as JSON with nothing to
+display it. `pnpm eval:render` reads any saved report back into the same page:
+
+```bash
+pnpm eval:render --list                                     # what's on disk, newest first
+pnpm eval:render                                            # the newest timestamped report
+pnpm eval:render eval/results/report-2026-09-04T19-21-33.json
+pnpm eval:render <report.json> -o somewhere/else.html       # explicit destination
+```
+
+The HTML lands beside the JSON as `report-<timestamp>.html`. `latest.html` is deliberately never
+overwritten — it belongs to the last run, and an old report sitting at that path would read as the
+current one. `--list` prints each report's date, model and pass ratio, which is usually enough to
+find the run you meant without opening any of them.
+
 The console output scrolls away and can't be diffed or attached to a bug report; a run is slow and
 paid, so the artifact should outlive the terminal. Each case records its per-run grader verdicts
 (with failure reasons), the tool trajectory, anything the approval gate paused, and the agent's

@@ -116,3 +116,27 @@ describe("needsSchemaSanitizing", () => {
     expect(needsSchemaSanitizing(OPENAI_COMPATIBLE_PROVIDER)).toBe(true);
   });
 });
+
+/**
+ * Source-level, like approvalGate.test.ts: a dropped `baseUrl` still typechecks (it is optional)
+ * and only shows up at runtime as "requires a base URL" from a caller that did supply one.
+ */
+describe("buildAgent forwards the compatible endpoint", () => {
+  it("reads baseUrl from an explicit config rather than defaulting it to null", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const src = await readFile(new URL("./index.ts", import.meta.url), "utf-8");
+    const explicitBranch = src.slice(
+      src.indexOf("if (cfg?.provider && cfg?.model)"),
+      src.indexOf("} else {"),
+    );
+    expect(explicitBranch).toContain("cfg.baseUrl");
+  });
+
+  it("passes it on to createChatModel", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const src = await readFile(new URL("./index.ts", import.meta.url), "utf-8");
+    expect(src).toContain(
+      "createChatModel({ provider, model: modelName, temperature: 1, baseUrl }",
+    );
+  });
+});
