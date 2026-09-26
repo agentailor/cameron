@@ -4,7 +4,7 @@ import { ErrorResponse, SuccessResponse } from "@/lib/api/openapi/common";
 
 const ServerType = z.enum(["stdio", "http"]);
 
-// Response shape mirrors the Prisma MCPServer model returned by the handlers.
+// Response shape mirrors the MCPServer domain object returned by the handlers.
 export const MCPServerResponse = z
   .object({
     id: z.string(),

@@ -1,59 +1,25 @@
 "use client";
 
-import { CheckCircle2, AlertCircle, XCircle } from "lucide-react";
-
 export type OAuthStatusType = "UNKNOWN" | "NOT_REQUIRED" | "REQUIRED" | "CONNECTED" | "EXPIRED";
 
 interface OAuthStatusBadgeProps {
   status?: OAuthStatusType | string | null;
 }
 
-const statusConfig: Record<
-  OAuthStatusType,
-  { label: string; className: string; icon?: React.ReactNode }
-> = {
-  UNKNOWN: {
-    label: "",
-    className: "",
-  },
-  NOT_REQUIRED: {
-    label: "",
-    className: "",
-  },
-  REQUIRED: {
-    label: "Auth Required",
-    className: "bg-yellow-100 text-yellow-700",
-    icon: <AlertCircle size={12} />,
-  },
-  CONNECTED: {
-    label: "Connected",
-    className: "bg-green-100 text-green-700",
-    icon: <CheckCircle2 size={12} />,
-  },
-  EXPIRED: {
-    label: "Expired",
-    className: "bg-red-100 text-red-700",
-    icon: <XCircle size={12} />,
-  },
+const statusConfig: Partial<Record<OAuthStatusType, { label: string; dot: string }>> = {
+  REQUIRED: { label: "auth required", dot: "bg-term-yellow" },
+  CONNECTED: { label: "oauth connected", dot: "bg-term-green" },
+  EXPIRED: { label: "auth expired", dot: "bg-term-red" },
 };
 
+/** A status dot + mono label, like the sidebar's status line. Nothing when auth isn't in play. */
 export function OAuthStatusBadge({ status }: OAuthStatusBadgeProps) {
-  // Don't show badge for servers that don't require auth
-  if (!status || status === "NOT_REQUIRED") {
-    return null;
-  }
-
-  const config = statusConfig[status as OAuthStatusType] || statusConfig.UNKNOWN;
-
-  if (!config.label) {
-    return null;
-  }
+  const config = status ? statusConfig[status as OAuthStatusType] : undefined;
+  if (!config) return null;
 
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${config.className}`}
-    >
-      {config.icon}
+    <span className="text-muted-foreground inline-flex items-center gap-1.5 font-mono text-[10px]">
+      <span aria-hidden className={`block h-1.5 w-1.5 rounded-full ${config.dot}`} />
       {config.label}
     </span>
   );

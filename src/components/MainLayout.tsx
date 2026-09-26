@@ -3,7 +3,6 @@ import { ReactNode, useCallback, useEffect, useState } from "react";
 import { ThreadList } from "./ThreadList";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
-import { MCPServerList } from "./MCPServerList";
 import { SidebarNav } from "./SidebarNav";
 
 interface MainLayoutProps {
@@ -18,19 +17,12 @@ export function MainLayout({ children }: MainLayoutProps) {
   useEffect(() => {
     if (window.matchMedia("(max-width: 767px)").matches) setSidebarOpen(false);
   }, []);
-  const [showMCPConfig, setShowMCPConfig] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
-  const openMCPConfig = useCallback(() => setShowMCPConfig(true), []);
-  const closeMCPConfig = useCallback(() => setShowMCPConfig(false), []);
 
   return (
     <div className="bg-background flex h-screen overflow-hidden">
       {/* Sidebar */}
-      <Sidebar
-        isOpen={isSidebarOpen}
-        toggle={toggleSidebar}
-        footer={<SidebarNav onOpenMCPConfig={openMCPConfig} />}
-      >
+      <Sidebar isOpen={isSidebarOpen} toggle={toggleSidebar} footer={<SidebarNav />}>
         <ThreadList />
       </Sidebar>
 
@@ -43,9 +35,6 @@ export function MainLayout({ children }: MainLayoutProps) {
         {/* Main content */}
         <div className="relative h-[calc(100vh-4rem)] flex-1">{children}</div>
       </div>
-
-      {/* MCP Configuration Modal */}
-      <MCPServerList isOpen={showMCPConfig} onClose={closeMCPConfig} />
     </div>
   );
 }

@@ -4,10 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { useModelSettings } from "@/hooks/useModelSettings";
 import type { ProviderInfo } from "@/services/chatService";
-
-const field =
-  "border-border bg-background focus:border-brand focus:ring-brand w-full rounded-md border px-3 py-1.5 text-sm focus:ring-1 focus:outline-none";
-const label = "text-muted-foreground block font-mono text-[10px] tracking-[0.12em]";
+import { field, fieldLabel as label, primaryButton } from "@/components/ui/formStyles";
 
 export const ModelSettingsForm = () => {
   const { settings, isLoading, save, isSaving, saveError } = useModelSettings();
@@ -137,11 +134,7 @@ export const ModelSettingsForm = () => {
       )}
 
       <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={isSaving}
-          className="bg-brand text-brand-foreground hover:bg-brand-bright inline-flex cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm disabled:opacity-60"
-        >
+        <button type="submit" disabled={isSaving} className={primaryButton}>
           {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           Save
         </button>

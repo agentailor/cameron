@@ -102,7 +102,7 @@ To switch to AWS S3, Cloudflare R2, or other S3-compatible storage:
 ### Component Structure
 
 - **Context providers**: `ThreadContext` manages active thread, `UISettingsContext` for UI state
-- **Custom hooks**: `useChatThread`, `useMCPTools`, `useThreads` handle specific data domains
+- **Custom hooks**: `useChatThread`, `useMCPServers`, `useThreads` handle specific data domains
 - **Message components**: Separate components for AI/Human/Tool/Error message types with tool call displays
 
 ### API Route Patterns
@@ -115,7 +115,7 @@ To switch to AWS S3, Cloudflare R2, or other S3-compatible storage:
 
 ### MCP Server Management
 
-- Add servers via `MCPServerForm` component → stored in database → loaded dynamically into agent
+- Add servers on the `/connections` page → stored in database → loaded dynamically into agent
 - Server configs support environment variables and command arguments for stdio type
 - Tool names are prefixed with server name to prevent conflicts
 

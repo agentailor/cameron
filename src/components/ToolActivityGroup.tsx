@@ -38,7 +38,7 @@ function chartOf(activity: ToolActivity): ChartPayload | null {
   return isChartPayload(artifact) ? artifact : null;
 }
 
-/** The amber approval gate. The one place amber appears: it means "this touches money". */
+/** The amber approval gate: in a thread, amber means "this touches money". */
 const ApprovalGate = ({
   activity,
   callbacks,
