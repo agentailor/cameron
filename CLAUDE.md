@@ -304,7 +304,9 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
 ### MCP Server Management
 
 - **`/connections`** (`src/app/connections/page.tsx`, components in `src/components/connections/`)
-  lists servers and adds/edits them inline — no dialogs. Named for connections in general, not MCP,
+  lists servers and adds/edits them inline — no dialogs. The add form sits behind an
+  `Add server` button ABOVE the list (open by default when nothing is connected), so a growing list
+  never pushes it off-screen; a filter or two-pane layout is deferred until lists actually grow. Named for connections in general, not MCP,
   so other kinds can join it later. Stored in the DB and read by the agent on every message, so a
   change applies from the next message with no restart.
 - **The form and the JSON are two views of one draft.** All conversion lives in the pure
