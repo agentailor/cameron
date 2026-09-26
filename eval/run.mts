@@ -79,6 +79,21 @@ async function main() {
     process.exit(1);
   }
 
+  // Fail before spending a run: without a URL every run throws, which reads as a model failure.
+  if (MODEL.provider === "openai-compatible" && !MODEL.baseUrl) {
+    console.error(
+      [
+        "",
+        "EVAL_PROVIDER=openai-compatible needs an endpoint.",
+        "",
+        '  PowerShell:  $env:EVAL_BASE_URL="http://localhost:11434/v1"',
+        "  bash:        EVAL_BASE_URL=http://localhost:11434/v1",
+        "",
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+
   // Match on id OR tag: an id-only filter silently drops cases whose name doesn't happen to
   // contain the filter word, which looks like a complete run.
   const only = args[0];
@@ -146,6 +161,7 @@ async function main() {
         const agent = await getAgent({
           provider: MODEL.provider,
           model: MODEL.name,
+          baseUrl: MODEL.baseUrl,
           bypassApprovalForEval: !testCase.approval,
         });
         const t0 = Date.now();

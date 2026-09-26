@@ -41,6 +41,7 @@ yarn-error.log*
 # Eval run artifacts — ignore the generated JSON by pattern, not the whole directory, so the
 # folder stays usable for tracked source (a viewer) later.
 eval/results/report-*.json
+eval/results/report-*.html
 eval/results/latest.json
 eval/results/latest.html
 

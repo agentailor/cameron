@@ -94,6 +94,19 @@ export function toolCallCountAtMost(name: string, max: number): Grader {
   };
 }
 
+/** A tool was called at least `min` times — the positive half a bare cap needs, since "at most
+ *  one" also passes on a run that never called it. */
+export function toolCallCountAtLeast(name: string, min: number): Grader {
+  const id = `toolCallCountAtLeast(${name},${min})`;
+  return {
+    id,
+    grade: (c: RunCapture) => {
+      const n = c.trajectory.filter((t) => t.name === name).length;
+      return result(id, n >= min, n >= min ? undefined : `called ${name} ${n} times (min ${min})`);
+    },
+  };
+}
+
 /** A SQL-bearing tool call whose query matches `pattern` (e.g. an aggregate). */
 export function sqlMatches(pattern: RegExp): Grader {
   const id = `sqlMatches(${pattern})`;

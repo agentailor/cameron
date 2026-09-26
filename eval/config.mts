@@ -9,11 +9,21 @@
  * Individual knobs still take an env override for one-off comparisons.
  */
 
-/** Model under test. `EVAL_MODEL=claude-sonnet-5 pnpm eval` to compare without editing code. */
+/**
+ * Model under test. `EVAL_MODEL=claude-sonnet-5 pnpm eval` to compare without editing code.
+ *
+ * `EVAL_PROVIDER` reaches the app's other providers; `openai-compatible` also needs
+ * `EVAL_BASE_URL` (and `OPENAI_COMPATIBLE_API_KEY` in `.env.eval` if the endpoint wants one):
+ *
+ *   $env:EVAL_PROVIDER="openai-compatible"
+ *   $env:EVAL_BASE_URL="http://localhost:11434/v1"
+ *   $env:EVAL_MODEL="muse-spark-1.3-contributor"; pnpm eval
+ */
 export const MODEL = {
-  provider: "anthropic",
+  provider: process.env.EVAL_PROVIDER ?? "anthropic",
   /** Pinned here: the app's model is owner-configured, so evals name their own. */
   name: process.env.EVAL_MODEL ?? "claude-haiku-4-5",
+  baseUrl: process.env.EVAL_BASE_URL ?? null,
 } as const;
 
 /**
