@@ -1,25 +1,12 @@
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
-import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import * as mcpServerRepo from "@/lib/repositories/mcpServerRepository";
 import { ServerOAuthProvider } from "@/lib/mcp/oauth-provider";
-import { OAuthStatus } from "../mcp/oauth-detection";
+import { OAuthStatus } from "@/lib/mcp/oauth-status";
+import { toServerConfig, type MCPServerConfig } from "@/lib/mcp/serverConfig";
+import type { MCPServer, MCPTool } from "@/types/mcp";
 import { sanitizeTool } from "./util";
 
-interface StdioMCPServerConfig {
-  transport: "stdio";
-  command: string;
-  args?: string[];
-  env?: Record<string, string>;
-}
-
-interface HttpMCPServerConfig {
-  transport: "http";
-  url: string;
-  headers?: Record<string, string>;
-  authProvider?: OAuthClientProvider;
-}
-
-type MCPServerConfig = StdioMCPServerConfig | HttpMCPServerConfig;
+const oauthProvider = (server: MCPServer) => new ServerOAuthProvider(server.id, server.name);
 
 /**
  * Fetches enabled MCP servers from the database and formats them for MultiServerMCPClient
@@ -29,39 +16,9 @@ export async function getMCPServerConfigs(): Promise<Record<string, MCPServerCon
     const servers = await mcpServerRepo.listEnabled();
 
     const configs: Record<string, MCPServerConfig> = {};
-
     for (const server of servers) {
-      if (server.type === "stdio" && server.command) {
-        const config: StdioMCPServerConfig = {
-          transport: "stdio",
-          command: server.command,
-        };
-
-        if (server.args && Array.isArray(server.args)) {
-          config.args = server.args.filter((arg): arg is string => typeof arg === "string");
-        }
-        if (server.env && typeof server.env === "object" && server.env !== null) {
-          config.env = server.env as Record<string, string>;
-        }
-
-        configs[server.name] = config;
-      } else if (server.type === "http" && server.url) {
-        const config: HttpMCPServerConfig = {
-          transport: "http",
-          url: server.url,
-        };
-
-        if (server.headers && typeof server.headers === "object" && server.headers !== null) {
-          config.headers = server.headers as Record<string, string>;
-        }
-
-        // Add authProvider for servers that require OAuth and have connected
-        if (server.requiresAuth && server.oauthStatus === OAuthStatus.CONNECTED) {
-          config.authProvider = new ServerOAuthProvider(server.id, server.name);
-        }
-
-        configs[server.name] = config;
-      }
+      const config = toServerConfig(server, oauthProvider);
+      if (config) configs[server.name] = config;
     }
 
     return configs;
@@ -118,5 +75,79 @@ export async function getMCPTools() {
   } catch (error) {
     console.error("Failed to get MCP tools:", error);
     return [];
+  }
+}
+
+export type ServerToolsError = "auth_required" | "invalid_config" | "timeout" | "connect_failed";
+
+export type ServerToolsResult =
+  | { ok: true; tools: MCPTool[] }
+  | { ok: false; error: ServerToolsError; message: string };
+
+const PROBE_TIMEOUT_MS = 20_000;
+
+class ProbeTimeout extends Error {}
+
+/**
+ * Connects to ONE server (enabled or not) and lists its tools, then closes the connection.
+ * Unlike {@link getMCPTools}, a failure is reported rather than skipped: with a single server,
+ * "no tools" and "could not connect" must not look the same.
+ */
+export async function listServerTools(server: MCPServer): Promise<ServerToolsResult> {
+  if (
+    server.type === "http" &&
+    (server.oauthStatus === OAuthStatus.REQUIRED || server.oauthStatus === OAuthStatus.EXPIRED)
+  ) {
+    return {
+      ok: false,
+      error: "auth_required",
+      message: "Connect this server with OAuth before listing its tools.",
+    };
+  }
+
+  const config = toServerConfig(server, oauthProvider);
+  if (!config) {
+    return {
+      ok: false,
+      error: "invalid_config",
+      message: server.type === "stdio" ? "No command configured." : "No URL configured.",
+    };
+  }
+
+  const client = new MultiServerMCPClient({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mcpServers: { [server.name]: config } as any,
+    onConnectionError: "throw",
+    throwOnLoadError: true,
+  });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    const tools = await Promise.race([
+      client.getTools(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new ProbeTimeout()), PROBE_TIMEOUT_MS);
+      }),
+    ]);
+    return {
+      ok: true,
+      tools: tools.map((tool) => ({ name: tool.name, description: tool.description || undefined })),
+    };
+  } catch (error) {
+    if (error instanceof ProbeTimeout) {
+      return {
+        ok: false,
+        error: "timeout",
+        message: `No response within ${PROBE_TIMEOUT_MS / 1000}s.`,
+      };
+    }
+    return {
+      ok: false,
+      error: "connect_failed",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    clearTimeout(timer);
+    await client.close().catch(() => {});
   }
 }

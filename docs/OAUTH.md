@@ -15,7 +15,7 @@ OAuth support is implemented using a **lazy detection** approach:
 
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────────┐
-│  MCPServerList  │────►│  /api/oauth/     │────►│  Authorization      │
+│  /connections   │────►│  /api/oauth/     │────►│  Authorization      │
 │  "Connect" btn  │     │  check/[serverId]│     │  Server             │
 └─────────────────┘     └──────────────────┘     └─────────────────────┘
                                │                          │

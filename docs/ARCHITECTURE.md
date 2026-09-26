@@ -897,7 +897,7 @@ src/
 ├── components/
 │   ├── toolRenderers/        # Per-tool views for call args and results (see below)
 │   └── ui/                   # shadcn primitives
-├── hooks/                    # useChatThread, useThreads, useMCPTools
+├── hooks/                    # useChatThread, useThreads, useMCPServers
 ├── lib/
 │   ├── agent/                # Agent factory, MCP loader, checkpointer, tools/
 │   ├── api/openapi/          # Zod → OpenAPI registry

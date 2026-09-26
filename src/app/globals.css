@@ -115,7 +115,7 @@
 
   /* Categorical series colors. Identity, not magnitude: each slot is a different HUE, assigned
      in fixed order and never cycled. Deliberately NOT amber — amber marks the approval boundary
-     and nothing else, so amber bars would read as approval prompts.
+     and primary actions, so amber bars would read as prompts to act.
      Validated against the paper surface (dataviz validator): worst adjacent CVD ΔE 9.1,
      normal-vision ΔE 19.6. Re-run the validator before changing a value or the order — the
      ORDER is the colorblind-safety mechanism, not cosmetics. */

@@ -209,7 +209,7 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
 - **Context Providers**: `UISettingsContext` (UI state + model settings persisted to `localStorage`
   under `agent_model_settings`). The active thread is NOT in a context — it is derived from the URL
   by `useActiveThreadId()`, so there is one source of truth.
-- **Custom Hooks**: `useChatThread`, `useMCPTools`, `useThreads` for data domains
+- **Custom Hooks**: `useChatThread`, `useMCPServers`, `useThreads` for data domains
 - **Message Components**: `AIMessage` (prose only — tool calls riding on it are rendered by
   `ToolActivityGroup`, not here), `HumanMessage`, `ErrorMessage`
 - **Tool rendering** (`src/components/toolRenderers/`): `config.ts` maps each **built-in** tool to a
@@ -233,7 +233,8 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   - There is no global "hide tools" toggle any more; collapsing per card replaced it.
 - **Design tokens** (`src/app/globals.css`): paper ground / ink text / one amber `--brand`, mapped
   ONTO shadcn's semantic names so `ui/*` inherits them. Amber marks the approval boundary and
-  nothing else. `--muted-foreground` must stay ≥4.5:1 on paper (`--faint` is the decorative-only
+  each page's primary CTA (Save / Add — `primaryButton` in `src/components/ui/formStyles.ts`, which
+  every settings-style form shares), and nothing else: not toggles, links or data (charts avoid it). `--muted-foreground` must stay ≥4.5:1 on paper (`--faint` is the decorative-only
   escape hatch). Agent markdown is restyled under `.cameron-md .wmde-markdown …` — MDEditor ships
   its own stylesheet at equal specificity, so overrides must chain BOTH classes or they silently
   lose.
@@ -302,9 +303,29 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
 
 ### MCP Server Management
 
-- Add servers via `MCPServerForm` → stored in database → loaded dynamically into agent
-- Tool names prefixed with server name to prevent conflicts
-- Server configs support environment variables and command arguments
+- **`/connections`** (`src/app/connections/page.tsx`, components in `src/components/connections/`)
+  lists servers and adds/edits them inline — no dialogs. The add form sits behind an
+  `Add server` button ABOVE the list (open by default when nothing is connected), so a growing list
+  never pushes it off-screen; a filter or two-pane layout is deferred until lists actually grow. Named for connections in general, not MCP,
+  so other kinds can join it later. Stored in the DB and read by the agent on every message, so a
+  change applies from the next message with no restart.
+- **The form and the JSON are two views of one draft.** All conversion lives in the pure
+  `src/lib/mcp/configParse.ts` (tested beside it): it reads the `mcpServers` / VS Code `servers`
+  block, a bare map, a single object or a `"name": {…}` fragment, infers the transport when
+  `type`/`transport` is absent, and judges each server separately. Switching JSON → form is refused
+  while the JSON is invalid, so nothing is silently dropped. A paste holding several servers opens a
+  checklist (`BatchReview`) and adds them one at a time with a per-server outcome.
+- **Env values and headers are masked on screen but stored in plaintext** — say so in the UI, never
+  imply they are encrypted.
+- **Tools are listed on demand, one server at a time**: `GET /api/mcp-servers/{id}/tools` connects to
+  that server only (enabled or not), then closes the client. Listing tools means connecting (for stdio,
+  spawning a process), so nothing connects on page load and no tool count is stored — a stored count
+  goes stale while looking current. Failures are typed (`auth_required`, `invalid_config`, `timeout`,
+  `connect_failed`), never an empty list.
+- `toServerConfig()` (`src/lib/mcp/serverConfig.ts`) turns a row into a client config for BOTH the
+  agent (`getMCPTools`) and the probe, so the page connects exactly the way the agent will.
+- Tool names are prefixed `server__tool`; server names are restricted to `[A-Za-z0-9_-]` in the form
+  because the prefix becomes part of a provider tool name.
 - HTTP servers may require OAuth authentication - see [docs/OAUTH.md](docs/OAUTH.md)
 
 ### Tool Approval Workflow
@@ -536,7 +557,7 @@ Machine-readable OpenAPI 3.1 spec generated from per-route Zod schemas — see [
 
 - After editing `src/lib/database/schema.ts`, run `pnpm db:generate` then `pnpm db:migrate` (or `pnpm db:push` in dev)
 - Access the DB only through the repository layer (`src/lib/repositories/`) — never import Drizzle in routes/services
-- Restart dev server to pick up new MCP server configurations
+- MCP server changes apply from the next message (the agent is rebuilt per message)
 - Ports are distinct from the `fullstack-langgraph-nextjs-agent` template (which uses 3000 / 5434 /
   9000 / 9001) so both can run side by side: web **3100**, Postgres **5544**, MinIO API **9100**,
   MinIO Console **9101**. The compose project name is pinned to `cameron-ai` (container names

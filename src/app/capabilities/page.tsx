@@ -1,6 +1,7 @@
 import { ShieldCheck } from "lucide-react";
 import { listCapabilities } from "@/lib/agent/capabilities";
 import { BackToChat } from "@/components/BackToChat";
+import { ConnectedServersLink } from "@/components/connections/ConnectedServersLink";
 
 export const metadata = { title: "Capabilities · Cameron AI" };
 
@@ -16,9 +17,9 @@ export default function CapabilitiesPage() {
         <h1 className="text-foreground text-2xl font-semibold">What Cameron can do</h1>
         <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
           These are Cameron&apos;s built-in tools. Anything that changes your ledger stops and asks
-          you first — Cameron never writes without your approval. MCP servers you connect add
-          further tools, which aren&apos;t listed here.
+          you first — Cameron never writes without your approval.
         </p>
+        <ConnectedServersLink />
 
         {groups.map((group) => (
           <section key={group} className="mt-10">
