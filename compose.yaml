@@ -14,7 +14,7 @@
 #   docker compose down -v                          stop dev, DESTROY dev data (safe: dev only)
 #   docker compose --profile full down              stop production, keep data  ← use this one
 #   docker compose --profile full down -v           DESTROYS REAL FINANCIAL DATA. Back up first;
-#                                                   see "Backing up" in CLAUDE.md.
+#                                                   see "Backing up" in AGENTS.md.
 #
 # Services carrying `profiles:` do not start without the profile.
 
