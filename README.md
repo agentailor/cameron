@@ -187,7 +187,7 @@ The technical detail lives in [`docs/`](docs/) rather than here:
 | [OBSERVABILITY.md](docs/OBSERVABILITY.md) | Langfuse tracing setup                                                                                                                                  |
 | [eval/README.md](eval/README.md)          | The paid, non-deterministic eval suite — never in CI                                                                                                    |
 
-[CLAUDE.md](CLAUDE.md) carries the conventions a coding agent needs to work in this repo.
+[AGENTS.md](AGENTS.md) carries the conventions a coding agent needs to work in this repo.
 
 ---
 
