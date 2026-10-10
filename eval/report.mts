@@ -27,7 +27,7 @@ function fileTimestamp(date: Date): string {
 export interface ReportCase {
   id: string;
   description?: string;
-  /** A single turn, or the turns replayed for a multi-turn case. */
+  /** The opening turn. An array only in reports saved before scripted turns were removed. */
   prompt: string | string[];
   tags?: string[];
   /** `approval` implies the HITL middleware ran live for this case. */
@@ -56,7 +56,7 @@ export interface ReportCase {
     inconclusive?: Inconclusive;
     /**
      * What was actually said. Only a simulated run has this — and it is the ONLY place a
-     * generated user turn is recorded, since `prompt` holds just the scripted opening.
+     * generated user turn is recorded, since `prompt` holds just the opening.
      */
     conversation?: ConversationTurn[];
   }[];

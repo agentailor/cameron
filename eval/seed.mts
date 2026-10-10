@@ -151,6 +151,8 @@ function csvText(
 }
 
 export const FIXTURE = {
+  /** Every seeded row's currency. A case that is not about currency seeds it as the owner's setting. */
+  ledgerCurrency: "USD",
   dining,
   groceries,
   transport,
@@ -254,8 +256,8 @@ export async function seed(url: string, opts: { withCsv?: boolean } = {}): Promi
     }) => {
       const base = params.length;
       values.push(
-        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, 'USD', NULL, NULL, ` +
-          `$${base + 6}, 'CHECKING', 'eval', $${base + 7}, $${base + 8}, $${base + 8})`,
+        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 9}, NULL, ` +
+          `NULL, $${base + 6}, 'CHECKING', 'eval', $${base + 7}, $${base + 8}, $${base + 8})`,
       );
       params.push(
         randomUUID(),
@@ -266,6 +268,7 @@ export async function seed(url: string, opts: { withCsv?: boolean } = {}): Promi
         row.categoryId,
         row.externalId,
         now,
+        FIXTURE.ledgerCurrency,
       );
     };
 

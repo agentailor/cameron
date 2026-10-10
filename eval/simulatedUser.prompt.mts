@@ -17,7 +17,7 @@ export const DONE = "###DONE###";
 export const CANNOT_ANSWER = "###CANNOT_ANSWER###";
 
 /**
- * Build the simulated user's system prompt. Rules 1-4 are tau-bench's; 5-6 are local protocol.
+ * Build the simulated user's system prompt. Rules 1-4 are tau-bench's; 5-8 are local protocol.
  * See "The fact sheet" in eval/README.md for what each one prevents.
  */
 export function buildUserPrompt(user: SimulatedUser): string {
@@ -49,5 +49,11 @@ export function buildUserPrompt(user: SimulatedUser): string {
     "5. Never tell the assistant how to do its job, which tool to use, or what to call.",
     "6. When the assistant has finished and nothing is left for you to answer, reply with exactly",
     `   ${DONE} and nothing else.`,
+    "7. An OFFER is not a question. When the assistant has done what you asked and only offers",
+    '   something extra ("let me know if you want that changed", "I can also file it under X"),',
+    `   you do not need it: reply ${DONE}. Rule 2 is for information the assistant cannot continue`,
+    "   without, not for optional extras.",
+    "8. Never make a request of your own beyond your goal, and never end the conversation in words",
+    `   ("that's all", "I'm done"). The only way to finish is ${DONE}.`,
   ].join("\n");
 }

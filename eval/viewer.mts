@@ -39,7 +39,7 @@ function renderTrajectory(trajectory: string[], interrupts: string[]): string {
 }
 
 /**
- * The transcript of a simulated run — the case-level `prompt` shows only the scripted opening, so
+ * The transcript of a simulated run — the case-level `prompt` shows only the opening, so
  * without this a 2-turn prompt sits beside a 6-turn conversation unexplained. Generated turns are
  * marked: which turns the case anticipated is the distinction worth seeing.
  */
@@ -90,6 +90,7 @@ function renderRun(run: ReportCase["runs"][number], index: number, total: number
 }
 
 function renderCase(c: ReportCase): string {
+  // Older saved reports may carry a scripted array of turns.
   const turns = Array.isArray(c.prompt) ? c.prompt : [c.prompt];
   const status = c.skipped ? "skip" : c.inconclusive ? "warn" : c.passed ? "pass" : "fail";
   const statusLabel = c.inconclusive ? "inconclusive" : status;

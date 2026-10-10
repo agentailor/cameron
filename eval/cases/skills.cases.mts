@@ -73,12 +73,20 @@ export const cases: EvalCase[] = [
       "ONE load_skill — the body is still in the transcript, so loading it again buys nothing and " +
       "pays its full token cost on every turn.",
     // Three DIFFERENT shapes (ranking, trend, comparison): repeating one question could be
-    // answered from the previous turn, passing the grader without re-engaging the skill.
-    prompt: [
-      "Show me a chart of my spending by category.",
-      "Now chart how my total spending changed month by month.",
-      `And plot ${dining.category} against ${groceries.category} per month on one chart.`,
-    ],
+    // answered from the previous turn, passing the grader without re-engaging the skill. The
+    // follow-ups are an agenda, so a clarifying question in between is answered, not skipped.
+    prompt: "Show me a chart of my spending by category.",
+    user: {
+      // Only the opening request: a goal promising "a few charts" had the simulator invent its own.
+      goal: "see a chart of your spending by category",
+      facts: [{ topic: "which time period to cover", value: "everything in the ledger" }],
+      agenda: [
+        "Now chart how my total spending changed month by month.",
+        `And plot ${dining.category} against ${groceries.category} per month on one chart.`,
+      ],
+    },
+    // Not a currency case: with none saved the agent rightly asks, and the user has no answer.
+    config: { currency: FIXTURE.ledgerCurrency },
     graders: [
       // The finding — `toolCalled` is a set check and cannot see a second call.
       toolCallCountAtMost("load_skill", 1),
@@ -89,7 +97,7 @@ export const cases: EvalCase[] = [
     // Repeats because re-loading is a per-turn decision; `majority` not `strict` because a
     // multi-turn conversation compounds variance.
     runs: RUN_POLICY.majority,
-    tags: ["skills", "charts", "context-efficiency", "multi-turn"],
+    tags: ["skills", "charts", "context-efficiency", "multi-turn", "simulated"],
   },
   {
     id: "single-figure-needs-no-chart",

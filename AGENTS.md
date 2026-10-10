@@ -523,14 +523,16 @@ pnpm typecheck:eval                         # free — the root tsc misses this 
   reading or screenshotting.
 - **`eval/tsconfig.json` exists** because the root tsconfig's `include` covers only `.ts`, not
   `.mts` — the whole eval tree was invisible to `tsc --noEmit`. Use `pnpm typecheck:eval`.
-- **Multi-turn**: a case's `prompt` may be an array; turns replay on one `thread_id` and the
-  checkpointer carries the conversation. For any behavior that requires the agent to stop and ask —
-  CSV import is the current example. Grade the **consequence** (what ended up in the DB) rather than
-  the conversation: whether it asked is a claim with many spellings, and there is no judge.
+- **Multi-turn**: `prompt` is a single opening message; every later turn comes from a simulated
+  `user` (below), on one `thread_id` so the checkpointer carries the conversation. There are
+  deliberately **no scripted turns** — a script answers the question the author guessed. Grade the
+  **consequence** (what ended up in the DB) rather than the conversation: whether it asked is a
+  claim with many spellings, and there is no judge.
 - **Simulated users** (`eval/simulatedUser.mts` — the ONLY file importing `openevals`): a case may
   add a `user`, a goal plus a closed fact sheet **derived from `FIXTURE`**, and the simulator
-  answers the agent's questions once the scripted `prompt` turns are spent. It exists because a
-  scripted turn answers the question the case author _guessed_: when the agent asks something
+  answers the agent's questions from the second turn. Its `agenda` holds the user's own follow-ups
+  (a correction, a second question), sent verbatim whenever the simulator would otherwise end.
+  It exists because a scripted turn answers the question the case author _guessed_: when the agent asks something
   reasonable but unforeseen, the script answers a different one, so the suite ends up rewarding
   agents that guess over agents that ask — the inverse of the approval-gate design. The simulator
   model is pinned **separately** from the model under test (`SIMULATOR_MODEL`) at its default temperature

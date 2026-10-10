@@ -223,7 +223,7 @@ that still passed — the number that moves first), and
 `meta.simulator` records which model played the user when any case simulated one.
 
 A simulated run also records what was actually said — the only place a generated user turn appears,
-since `prompt` holds just the scripted opening:
+since `prompt` holds just the opening:
 
 ```bash
 jq '.cases[] | select(.id=="csv-import-confirms-ambiguous-date-format") | .runs[0].conversation' eval/results/latest.json
@@ -231,27 +231,27 @@ jq '.cases[] | select(.id=="csv-import-confirms-ambiguous-date-format") | .runs[
 
 ## Multi-turn cases
 
-A case's `prompt` may be an array. Turns replay in order on one `thread_id`, so the Postgres
-checkpointer carries the conversation — no message history is rebuilt by hand. Each invoke returns
-the whole thread, so the runner collects only what is new; otherwise earlier tool calls would be
-counted again on every turn.
-
-Use it wherever the behavior under test is the agent **stopping to ask** — a single turn cannot
-express the user's answer. CSV import is the current example: it must confirm an ambiguous date
-format before writing anything.
+Every turn after the opening `prompt` comes from a **simulated user** (below): its fact sheet answers
+the agent's questions, and its `agenda` raises the user's own follow-ups. Turns run on one
+`thread_id`, so the Postgres checkpointer carries the conversation — no message history is rebuilt
+by hand. Each invoke returns the whole thread, so the runner collects only what is new; otherwise
+earlier tool calls would be counted again on every turn.
 
 Grade the **consequence, not the conversation.** Whether the agent asked is a claim with many
 phrasings, and there is no judge here; what it did afterwards is a fact in the database.
 
-### Scripted turns answer a question the author guessed
+### Why there are no scripted turns
 
-A scripted array is a recording played on a fixed schedule. It holds only while the agent asks
-exactly what the case author anticipated — and it stops holding the moment the agent asks something
-reasonable but unforeseen ("which account?", "your currency isn't set — is this EUR?"). The script
-then answers a _different_ question, the work never happens, and the graders blame the agent.
+`prompt` used to accept an array of turns replayed on a fixed schedule. That holds only while the
+agent asks exactly what the case author anticipated, and it stops holding the moment the agent asks
+something reasonable but unforeseen ("which account?", "your currency isn't set — is this EUR?").
+The script then answers a _different_ question, the work never happens, and the graders blame the
+agent.
 
 That inverts the suite: it **rewards agents that guess and punishes agents that ask**, which is the
-opposite of Cameron's first hard rule. Hence the simulated user.
+opposite of Cameron's first hard rule. So `prompt` is a single string, and a case needing more than
+one turn uses `user`. If a conversation cannot be expressed that way, fix the simulated user rather
+than reintroducing a script — `agenda` exists because of exactly that.
 
 ## Simulated users
 
@@ -269,9 +269,31 @@ user: {
 },
 ```
 
-`prompt` stays the **fixed opening**; once those turns are spent, a second model answers the agent's
-questions from `facts` alone. An existing case therefore gains the ability to answer without
-changing what it asks first.
+`prompt` stays the **fixed opening**; from the second turn, a second model answers the agent's
+questions from `facts` alone.
+
+### The agenda: the user's own follow-ups
+
+Some later turns are not answers but the user's own initiative: a correction ("that was actually in
+euros"), or a second question. Those go in `agenda`:
+
+```ts
+prompt: "Show me a chart of my spending by category.",
+user: {
+  goal: "see your spending as a few different charts",
+  facts: [{ topic: "which time period to cover", value: "everything in the ledger" }],
+  agenda: [
+    "Now chart how my total spending changed month by month.",
+    "And plot Dining against Groceries per month on one chart.",
+  ],
+},
+```
+
+Each item is sent **verbatim**, in order, at the point where the simulator would otherwise end the
+conversation (`###DONE###`) — that is, once nothing the agent asked is left unanswered. The wording
+is fixed, so a case can rely on the exact request; the timing adapts, so a clarifying question in
+between is answered first instead of being talked over. Keep the `goal` neutral about agenda items:
+a simulator told its goal is "fix the currency" may raise it early, before it knows the answer.
 
 **This does not introduce a judge.** The simulator produces _input_. Every grader is still a
 deterministic function over the capture — `importedInMonth` still asks which month the rows landed
@@ -338,6 +360,12 @@ contract that drifts.
 
 `until` is the consequence-shaped stop and matches the suite's existing stance. Treat it as required
 on a mutating simulated case: it is what keeps cost bounded once the thing under test has happened.
+It is checked **before** the simulator is consulted for each turn, so once it holds the simulator is
+never asked again: a sentinel it might emit after the work is done would otherwise turn a run that
+has its evidence into an inconclusive one.
+
+An `agenda` item (see above) is sent in place of `###DONE###` while any remain, so the first stop in
+the table only applies once the agenda is spent.
 
 ### Inconclusive
 
@@ -372,7 +400,7 @@ but it is printed in its own block, because a silent inconclusive is how coverag
 
 ### When not to simulate
 
-A simulated user is not an upgrade for every case. Two on the books that should stay scripted:
+A simulated user is not an upgrade for every case. Two on the books that should stay single-turn:
 
 - `no-double-prompt-on-mutation` tests that the agent **doesn't** ask when it was given everything.
   A user standing by to answer weakens it — the point is that no answer should ever be needed.
@@ -384,7 +412,7 @@ A simulated user is not an upgrade for every case. Two on the books that should 
 Turns x runs x two models. A simulated case defaults to `RUN_POLICY.majority` rather than the
 suite-wide single run, because a simulated conversation stacks the simulator's variance on the
 agent's and the two _interact_: a differently-phrased answer changes what the agent does next. One
-run of a simulated case therefore carries strictly less evidence than one run of a scripted one.
+run of a simulated case therefore carries strictly less evidence than one run of a single-turn one.
 
 `until` is the real cost control. The simulator itself is cheap — a small model, a short context,
 and tool traffic filtered out — and needs no extra API key, since it uses the same provider.
