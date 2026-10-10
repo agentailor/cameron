@@ -73,7 +73,7 @@ export interface ReportFile {
      * The model that played the USER, when any case simulated one. Recorded because changing it
      * invalidates comparison with older reports the same way a fixture change would.
      */
-    simulator?: { provider: string; model: string; temperature: number };
+    simulator?: { provider: string; model: string };
     passed: number;
     graded: number;
     skipped: number;
@@ -103,7 +103,7 @@ export function buildReport(
     provider: string;
     model: string;
     fast: boolean;
-    simulator?: { provider: string; model: string; temperature: number };
+    simulator?: { provider: string; model: string };
   },
 ): ReportFile {
   const cases: ReportCase[] = outcomes.map((o) => ({

@@ -45,6 +45,11 @@ const SHARED_GOAL = "get the transactions in the file you attached into the ledg
 /** The consequence has landed, so there is nothing further to observe. */
 const importHappened = async () => (await countImportedRows()) > 0;
 
+/** The truthful answer for a file whose type column holds only expense labels. */
+function incomeAnswer(labels: readonly string[]): string {
+  return `none — the file has no income rows; every row is an expense (${labels.join(", ")})`;
+}
+
 /** What the owner knows. Anything absent here is something the agent has to ask for. */
 const IMPORT_FACTS = [
   { topic: "which account these belong to", value: "checking" },
@@ -61,6 +66,11 @@ const IMPORT_FACTS = [
     contradicts: ["MM/dd/yyyy"],
   },
   { topic: "whether to keep the categories from the file", value: "yes, keep them" },
+  // The sample shows only the expense label, so a careful agent asks what income looks like.
+  {
+    topic: "which value in the type column means income",
+    value: incomeAnswer(csv.typeLabels),
+  },
 ];
 
 /**
@@ -71,7 +81,9 @@ const IMPORT_FACTS = [
 const MIXED_FACTS = IMPORT_FACTS.map((f) =>
   f.topic === "the date format used in the file"
     ? { topic: f.topic, value: csvMixed.dateFormat, contradicts: ["MM/dd/yyyy HH:mm:ss"] }
-    : f,
+    : f.topic === "which value in the type column means income"
+      ? { topic: f.topic, value: incomeAnswer(csvMixed.typeLabels) }
+      : f,
 );
 
 export const cases: EvalCase[] = [

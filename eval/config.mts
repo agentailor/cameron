@@ -22,7 +22,7 @@
 export const MODEL = {
   provider: process.env.EVAL_PROVIDER ?? "anthropic",
   /** Pinned here: the app's model is owner-configured, so evals name their own. */
-  name: process.env.EVAL_MODEL ?? "claude-haiku-4-5",
+  name: process.env.EVAL_MODEL ?? "claude-haiku-5-5",
   baseUrl: process.env.EVAL_BASE_URL ?? null,
 } as const;
 
@@ -34,13 +34,13 @@ export const MODEL = {
  * treat a fixture change: it invalidates comparison with older reports, which is why every report
  * records it.
  *
- * Temperature 0 because the simulator is INPUT, and input to a measurement should not be a source
- * of variance. Deliberately small and boring: its job is to relay a fact from a list, not to reason.
+ * No temperature: Haiku 5.5 rejects any but the default, so the simulator runs at the model's
+ * default and its variance is part of the measurement. Deliberately small and boring: its job is
+ * to relay a fact from a list, not to reason.
  */
 export const SIMULATOR_MODEL = {
   provider: "anthropic",
-  name: process.env.EVAL_SIMULATOR_MODEL ?? "claude-haiku-4-5",
-  temperature: 0,
+  name: process.env.EVAL_SIMULATOR_MODEL ?? "claude-haiku-5-5",
 } as const;
 
 /**

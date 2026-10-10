@@ -63,7 +63,6 @@ export async function runSimulatedConversation(opts: {
   const client = createChatModel({
     provider: SIMULATOR_MODEL.provider,
     model: SIMULATOR_MODEL.name,
-    temperature: SIMULATOR_MODEL.temperature,
   });
 
   const simulatedUser = createLLMSimulatedUser({
