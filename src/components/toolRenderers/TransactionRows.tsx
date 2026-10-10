@@ -6,28 +6,38 @@ import { ResultTable } from "./ResultTable";
  * is the one note shown: the payload's `hint` is an instruction to the agent, not to the user.
  */
 
-const COLUMNS = [
-  "occurredAt",
-  "amount",
-  "currency",
-  "type",
-  "note",
-  "category",
-  "merchant",
-  "account",
-];
+type Row = Record<string, unknown>;
 
-export const TransactionRows = ({ payload }: { payload: Record<string, unknown> }) => (
-  <ResultTable
-    payload={{
-      columns: COLUMNS,
-      transactions: Array.isArray(payload.transactions)
-        ? (payload.transactions as Record<string, unknown>[])
-        : [],
-      note: typeof payload.reimportWarning === "string" ? payload.reimportWarning : undefined,
-    }}
-  />
-);
+const COLUMNS = ["date", "amount", "currency", "type", "note", "category", "merchant", "account"];
+
+/** Dropped when no row has a value — an all-NULL column only pushes the others off-screen. */
+const OPTIONAL = new Set(["merchant"]);
+
+function localDate(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? v : d.toLocaleDateString();
+}
+
+export const TransactionRows = ({ payload }: { payload: Row }) => {
+  const source = Array.isArray(payload.transactions) ? (payload.transactions as Row[]) : [];
+  const rows: Row[] = source.map(({ occurredAt, ...rest }) => ({
+    ...rest,
+    date: localDate(occurredAt),
+  }));
+  const columns = COLUMNS.filter(
+    (c) => !OPTIONAL.has(c) || rows.some((r) => r[c] !== null && r[c] !== undefined && r[c] !== ""),
+  );
+  return (
+    <ResultTable
+      payload={{
+        columns,
+        transactions: rows,
+        note: typeof payload.reimportWarning === "string" ? payload.reimportWarning : undefined,
+      }}
+    />
+  );
+};
 
 /** No validation matches this call's arguments, so the server will refuse it. */
 export const NotValidated = () => (

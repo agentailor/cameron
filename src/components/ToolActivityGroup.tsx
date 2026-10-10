@@ -103,7 +103,14 @@ const ApprovalGate = ({
 };
 
 /** The expanded detail for one call: its arguments, then whatever came back. */
-const ActivityDetail = ({ activity }: { activity: ToolActivity }) => {
+const ActivityDetail = ({
+  activity,
+  showArgs = true,
+}: {
+  activity: ToolActivity;
+  /** Off on a shown card: there the result is what the user reviews, and the args are just ids. */
+  showArgs?: boolean;
+}) => {
   const content = contentOf(activity);
   const gist = activity.result ? summarizeResult(content, activity.name) : null;
 
@@ -114,7 +121,7 @@ const ActivityDetail = ({ activity }: { activity: ToolActivity }) => {
         {gist && <span className="text-muted-foreground font-mono text-[11px]">· {gist}</span>}
       </div>
 
-      <ToolArgs toolName={activity.name} args={activity.args} />
+      {showArgs && <ToolArgs toolName={activity.name} args={activity.args} />}
 
       {activity.result ? (
         <ToolResult toolName={activity.name} content={content} />
@@ -200,7 +207,7 @@ export const ToolActivityGroupCard = ({
           key={`shown-${activity.callId}`}
           className="border-border bg-card min-w-0 overflow-hidden rounded-lg border px-4 py-3.5"
         >
-          <ActivityDetail activity={activity} />
+          <ActivityDetail activity={activity} showArgs={false} />
         </div>
       ))}
 
