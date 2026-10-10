@@ -1,5 +1,6 @@
 import type { MessageResponse, ToolCall } from "@/types/message";
 import { isMutatingTool } from "@/lib/agent/mutatingTools";
+import { linkPreviews } from "./editPreview";
 import {
   getMessageContent,
   getPendingToolCallIds,
@@ -26,6 +27,11 @@ export interface ToolActivity {
   isPending: boolean;
   /** Writes, per `MUTATING_TOOL_NAMES`. Its arguments are always shown. */
   isMutating: boolean;
+  /**
+   * For a transaction edit: the validation result previewing exactly this plan, or null if there
+   * is none. Unset for every other tool. See editPreview.ts.
+   */
+  preview?: Record<string, unknown> | null;
 }
 
 /** A consecutive run of tool calls, rendered as a single collapsible card. */
@@ -175,6 +181,9 @@ export function buildThreadItems(input: MessageResponse[]): ThreadItem[] {
     openGroup = null;
     items.push({ kind: "message", id: `${message.type}-${message.data?.id || index}`, message });
   }
+
+  // Thread-wide, in order: an edit's validation is usually in an earlier card than the edit.
+  linkPreviews(items.flatMap((i) => (i.kind === "tools" ? i.activities : [])));
 
   return items;
 }

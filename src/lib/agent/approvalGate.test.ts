@@ -91,6 +91,15 @@ describe("the approval gate is not reachable from a request", () => {
     expect(isMutatingTool("read_csv_rows")).toBe(false);
   });
 
+  it("edit validators auto-approve while the edits stay gated", async () => {
+    const { MUTATING_TOOL_NAMES, isMutatingTool } = await import("./mutatingTools");
+
+    expect(MUTATING_TOOL_NAMES).toContain("update_transaction");
+    expect(MUTATING_TOOL_NAMES).toContain("delete_transaction");
+    expect(isMutatingTool("validate_transaction_update")).toBe(false);
+    expect(isMutatingTool("validate_transaction_delete")).toBe(false);
+  });
+
   it("approval never depends on a tool's arguments", async () => {
     const factory = await read("./index.ts");
     const leaf = await read("./mutatingTools.ts");

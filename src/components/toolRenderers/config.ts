@@ -13,13 +13,24 @@
  * Tools stay unaware of this: nothing here is imported by the tool modules.
  */
 
-export type ArgsRenderer = "sql" | "filters" | "file" | "expense" | "fields" | "csvPlan" | "json";
-export type ResultRenderer = "table" | "receipt" | "chart" | "json";
+export type ArgsRenderer =
+  | "sql"
+  | "filters"
+  | "file"
+  | "expense"
+  | "fields"
+  | "csvPlan"
+  | "txnUpdate"
+  | "txnDelete"
+  | "json";
+export type ResultRenderer = "table" | "receipt" | "chart" | "diff" | "txnRows" | "json";
 
 export interface ToolRenderers {
   /** null = the call has no arguments worth showing; render the name alone. */
   args: ArgsRenderer | null;
   result: ResultRenderer;
+  /** The result is shown outside the collapsed group: the user is asked to review it. */
+  open?: true;
 }
 
 export const TOOL_RENDERERS: Record<string, ToolRenderers> = {
@@ -29,6 +40,11 @@ export const TOOL_RENDERERS: Record<string, ToolRenderers> = {
   describe_finance_schema: { args: null, result: "json" },
   inspect_csv: { args: "file", result: "table" },
   log_expense: { args: "expense", result: "receipt" },
+  // On the approval card an edit shows its matched validation — see services/editPreview.ts.
+  validate_transaction_update: { args: "txnUpdate", result: "diff" },
+  update_transaction: { args: "txnUpdate", result: "diff" },
+  validate_transaction_delete: { args: "txnDelete", result: "txnRows", open: true },
+  delete_transaction: { args: "txnDelete", result: "txnRows" },
   create_category: { args: "fields", result: "receipt" },
   read_csv_rows: { args: "fields", result: "table" },
   validate_csv_import: { args: "csvPlan", result: "receipt" },

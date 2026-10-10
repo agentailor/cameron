@@ -157,6 +157,33 @@ export async function importedCurrencies(): Promise<{ currency: string; count: n
   });
 }
 
+/** Every row carrying this exact note — the correction cases address seeded rows by note. */
+export async function transactionsWithNote(
+  note: string,
+): Promise<{ amountMinor: number; currency: string }[]> {
+  assertEvalDatabase();
+  return withClient(async (c) => {
+    const { rows } = await c.query<{ amount_minor: number; currency: string }>(
+      "SELECT amount_minor, currency FROM transaction WHERE note = $1",
+      [note],
+    );
+    return rows.map((r) => ({ amountMinor: Number(r.amount_minor), currency: r.currency }));
+  });
+}
+
+/** Transactions in the category with this name. */
+export async function countInCategory(name: string): Promise<number> {
+  assertEvalDatabase();
+  return withClient(async (c) => {
+    const { rows } = await c.query<{ count: string }>(
+      `SELECT COUNT(*)::int AS count FROM transaction t
+       JOIN category cat ON cat.id = t.category_id WHERE cat.name = $1`,
+      [name],
+    );
+    return Number(rows[0]?.count ?? 0);
+  });
+}
+
 /** A stored owner setting, or null if the run never established it. */
 export async function configValue(key: string): Promise<string | null> {
   assertEvalDatabase();

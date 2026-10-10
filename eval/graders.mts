@@ -2,11 +2,13 @@ import { MUTATING_TOOL_NAMES } from "../src/lib/agent/capabilities.ts";
 import {
   configValue,
   countImportedRows,
+  countInCategory,
   countRows,
   importedCategoryNames,
   importedCurrencies,
   importedMonths,
   loggedCurrencies,
+  transactionsWithNote,
   type CountableTable,
 } from "./db.mts";
 import type { Grader, RunCapture } from "./types.mts";
@@ -534,6 +536,68 @@ export function toolNeverCalledWith(
         id,
         offenders.length === 0,
         offenders.length ? `${name} was called ${offenders.length}x with ${label}` : undefined,
+      );
+    },
+  };
+}
+
+/**
+ * At least one of `befores` ran before the first `after`. The lookup half of an edit: the id must
+ * come from `query_transactions` or `run_sql`, and either is a legitimate route.
+ */
+export function anyToolCalledBefore(befores: string[], after: string): Grader {
+  const id = `anyToolCalledBefore(${befores.join("|")},${after})`;
+  return {
+    id,
+    grade: (c: RunCapture) => {
+      const names = c.trajectory.map((t) => t.name);
+      const firstAfter = names.indexOf(after);
+      if (firstAfter === -1) return result(id, false, `${after} was never called`);
+      const hit = names.slice(0, firstAfter).some((n) => befores.includes(n));
+      return result(
+        id,
+        hit,
+        hit
+          ? undefined
+          : `${after} ran before any of ${befores.join(", ")} — the id was not looked up`,
+      );
+    },
+  };
+}
+
+/**
+ * Exactly one row carries `note`, with this amount. One row, not "some row": a correction made by
+ * logging the expense again leaves two, and that double-count is the defect being graded.
+ */
+export function storedAmount(note: string, expectedMinor: number): Grader {
+  const id = `storedAmount(${note},${expectedMinor})`;
+  return {
+    id,
+    grade: async () => {
+      const rows = await transactionsWithNote(note);
+      if (rows.length !== 1)
+        return result(id, false, `${rows.length} rows carry the note "${note}"`);
+      const actual = rows[0].amountMinor;
+      return result(
+        id,
+        actual === expectedMinor,
+        actual === expectedMinor ? undefined : `stored ${actual}, expected ${expectedMinor}`,
+      );
+    },
+  };
+}
+
+/** Transactions left in a category after the run. */
+export function categoryRowCount(name: string, expected: number): Grader {
+  const id = `categoryRowCount(${name},${expected})`;
+  return {
+    id,
+    grade: async () => {
+      const actual = await countInCategory(name);
+      return result(
+        id,
+        actual === expected,
+        actual === expected ? undefined : `${name} has ${actual} rows, expected ${expected}`,
       );
     },
   };

@@ -76,7 +76,9 @@ export const logExpense = tool(
       "and will require the user's approval. BEFORE calling this, you must know the currency: " +
       "call `get_config` first. If it reports `isSet: false`, nobody has chosen a currency — ask " +
       "the user which one they use, save it with `set_config`, and only then log. Do NOT log " +
-      "first and fix the currency afterwards: the row is written the moment this is approved.",
+      "first and fix the currency afterwards: the row is written the moment this is approved. " +
+      "This only ADDS rows: to fix a transaction that is already logged, use " +
+      "`update_transaction` — never log it a second time.",
     schema: z.object({
       amount: z
         .number()
@@ -184,7 +186,8 @@ export const queryTransactions = tool(
       "`matched` is how many exist in total, `returned` how many are in this response. When " +
       "`truncated` is true you are seeing a PARTIAL set — never sum or count these rows as if they " +
       "were complete; follow the `hint` to narrow the query or switch to `run_sql`. Prefer the " +
-      "`category` filter over `text` when the user names a spending category (e.g. Dining, Groceries).",
+      "`category` filter over `text` when the user names a spending category (e.g. Dining, Groceries). " +
+      "Each row's `id` is what `update_transaction` and `delete_transaction` take.",
     schema: z.object({
       from: z
         .string()

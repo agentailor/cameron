@@ -1,4 +1,5 @@
 import { financeTools } from "./tools/finance";
+import { transactionEditTools } from "./tools/transactionEdits";
 import { analyticsTools } from "./tools/analytics";
 import { categoryTools } from "./tools/categories";
 import { configTools } from "./tools/config";
@@ -65,7 +66,7 @@ export interface Capability {
 }
 
 const GROUPS: { label: string; tools: { name: string; description: string }[] }[] = [
-  { label: "Transactions", tools: financeTools },
+  { label: "Transactions", tools: [...financeTools, ...transactionEditTools] },
   { label: "Categories", tools: categoryTools },
   { label: "CSV import", tools: CSV_IMPORT_CAPABILITIES },
   { label: "Analysis", tools: analyticsTools },

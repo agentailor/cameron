@@ -62,6 +62,7 @@ So a case earns its place by guarding a **defect class**, not by exercising a fe
 | `cases/approval.cases.mts`   | Cameron's first hard rule: no mutation without human approval; a denial writes nothing.                                                |
 | `cases/discipline.cases.mts` | Prompt contracts — no double-prompting on mutations; recovering from an unknown category.                                              |
 | `cases/csvImport.cases.mts`  | CSV import — an ambiguous date format, a mapped column that must be copied verbatim, and an opening turn that forces the agent to ask. |
+| `cases/correction.cases.mts` | Edits made the wrong way — a correction logged as a second row, an id never looked up, a delete that ignores a denial.                 |
 
 ## The fixture
 
@@ -278,7 +279,7 @@ on. What changed is that the agent may now ask for the information it needs, whi
 the product is supposed to have.
 
 The simulator is pinned separately from the model under test (`SIMULATOR_MODEL` in `config.mts`) at
-temperature 0, and recorded in every report. Changing it invalidates comparison with older reports
+its default temperature (Haiku 5.5 accepts no other), and recorded in every report. Changing it invalidates comparison with older reports
 the same way a fixture change would: moved together, a suite-wide swing could not be attributed —
 you would not know whether the agent got worse or the user got weirder.
 

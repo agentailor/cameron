@@ -134,6 +134,22 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     - **Duplicate detection is reported honestly** (`duplicateDetection: "active" | "unavailable"`),
       never as `skippedDuplicates: 0` — dedup keys on `(source, externalId)` and NULL never equals
       NULL in Postgres, so a file with no id column is not deduplicated at all.
+  - `src/lib/agent/tools/transactionEdits.ts` — two validate → write pairs, full detail in
+    [docs/TRANSACTION_EDITS.md](docs/TRANSACTION_EDITS.md): `validate_transaction_update` →
+    `update_transaction` (one row, partial, in place) and `validate_transaction_delete` →
+    `delete_transaction` (1–25 ids, all or nothing, hard delete). The load-bearing invariants:
+    - **Validation is bound to row state**, not just arguments: it records each row's raw
+      `updated_at` and the write returns `stale` if a row moved on. The repository re-checks under
+      `SELECT … FOR UPDATE` in the same transaction as the write.
+    - **Delete takes ids, never SQL.** No guard can confine an agent-written DELETE the way READ
+      ONLY confines `run_sql`, and a predicate re-evaluated after approval deletes unseen rows.
+    - **Two review points**: an update is reviewed on its approval card (no chat step); a delete's
+      validation is shown expanded in the thread and the agent waits for the user before calling
+      `delete_transaction`, which is then gated as usual.
+    - **The approval card shows the matched validation**, never the agent's description:
+      `linkPreviews` (`src/services/editPreview.ts`) pairs a pending edit with the latest earlier
+      validator result with identical arguments — the server's own rule, so it cannot preview a
+      different plan than the one that runs.
   - `src/lib/agent/tools/skills.ts` — `load_skill` (read-only): returns one skill's full instructions
     by name. Auto-approves — reading a skill approves nothing it tells you to do. `name` is a plain
     string, not an enum, because the skill names are already in the prompt verbatim: a wrong name is
@@ -141,7 +157,8 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     (an enum would also break the legitimate zero-skills case, since `z.enum([])` is invalid).
 - **Tool Approval**: Human-in-the-loop via `humanInTheLoopMiddleware`. Approval is gated **per-tool**
   through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
-  `import_transactions_csv`, `create_category`, `set_config`); read tools (incl. `run_sql`) and MCP tools
+  `import_transactions_csv`, `create_category`, `set_config`, `update_transaction`,
+  `delete_transaction`); read tools (incl. `run_sql`) and MCP tools
   auto-approve. **The gate cannot be switched off from the product**: no UI control, no query
   param, and nothing on `MessageOptions` can disable it — `bypassApprovalForEval` omits the
   middleware for the eval harness alone, which calls the agent factory in-process and has no human
@@ -266,6 +283,10 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   filters _ignoring_ the limit, so callers can tell a capped page from a complete one; the COUNT
   only runs when the page came back full. New bounded list functions should follow this shape —
   returning rows alone makes truncation invisible to the agent.
+- **Guarded edits**: `transactionRepository.updateIfUnchanged` / `removeManyIfUnchanged` lock the
+  rows, compare each one's `version` (the raw `updated_at` literal, from a `TransactionSnapshot`)
+  and write in one transaction, returning `not_found` / `stale` instead of throwing. The old
+  unguarded `remove` is gone; add any new transaction write the same way.
 - **Paged reads use a cursor, not an offset**: `threadRepository.list({ limit, cursor })` returns
   `{ rows, total, nextCursor }` (a `ThreadPage`) and the wire cursor is `(updatedAt, id)` as ISO.
   Offsets are wrong here because the sort key `updatedAt` moves while paging — a message in an older
@@ -512,8 +533,8 @@ pnpm typecheck:eval                         # free — the root tsc misses this 
   scripted turn answers the question the case author _guessed_: when the agent asks something
   reasonable but unforeseen, the script answers a different one, so the suite ends up rewarding
   agents that guess over agents that ask — the inverse of the approval-gate design. The simulator
-  model is pinned **separately** from the model under test (`SIMULATOR_MODEL`) at temperature 0 and
-  recorded in every report; changing it invalidates comparison with older reports. Two sentinels
+  model is pinned **separately** from the model under test (`SIMULATOR_MODEL`) at its default temperature
+  and recorded in every report; changing it invalidates comparison with older reports. Two sentinels
   end a conversation: `###DONE###` (finished — graders run) and `###CANNOT_ANSWER###` (the agent
   asked for something outside the facts → inconclusive, naming the question so the fix is
   mechanical).

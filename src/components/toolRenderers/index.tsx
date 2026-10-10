@@ -4,6 +4,8 @@ import { SqlBlock } from "./SqlBlock";
 import { ResultTable } from "./ResultTable";
 import { FieldGrid } from "./FieldGrid";
 import { Receipt } from "./Receipt";
+import { TransactionDiff, hasDiff } from "./TransactionDiff";
+import { TransactionRows, NotValidated } from "./TransactionRows";
 
 /**
  * Dispatch from the catalog in `config.ts` to a component. A tool with no entry renders as JSON.
@@ -26,8 +28,21 @@ const Json = ({ value }: { value: unknown }) => (
 
 type Args = Record<string, unknown>;
 
-/** Tool-call ARGUMENTS — what the agent is asking to do. */
-export const ToolArgs = ({ toolName, args }: { toolName: string; args: Args }) => {
+/**
+ * Tool-call ARGUMENTS — what the agent is asking to do. On the approval card (`gate`) a
+ * transaction edit shows its matched validation instead: its own arguments are only ids.
+ */
+export const ToolArgs = ({
+  toolName,
+  args,
+  gate = false,
+  preview = null,
+}: {
+  toolName: string;
+  args: Args;
+  gate?: boolean;
+  preview?: Args | null;
+}) => {
   const { args: kind } = renderersFor(toolName);
   if (kind === null) return null;
 
@@ -38,6 +53,22 @@ export const ToolArgs = ({ toolName, args }: { toolName: string; args: Args }) =
     }
     case "expense":
       return <FieldGrid args={args} lead="amount" />;
+    case "txnUpdate": {
+      if (gate) {
+        return preview && hasDiff(preview) ? (
+          <TransactionDiff before={preview.before} after={preview.after} />
+        ) : (
+          <NotValidated />
+        );
+      }
+      const { changes, ...rest } = args;
+      return <FieldGrid args={{ ...rest, ...(changes as Args | undefined) }} />;
+    }
+    case "txnDelete": {
+      if (gate) return preview ? <TransactionRows payload={preview} /> : <NotValidated />;
+      const ids = Array.isArray(args.ids) ? args.ids : [];
+      return <FieldGrid args={{ transactions: ids.length, ids: ids.join(", ") }} />;
+    }
     case "filters":
     case "fields":
     case "file":
@@ -75,6 +106,8 @@ export const ToolResult = ({ toolName, content }: { toolName?: string; content: 
     // find them. An unrecognised shape is JSON, not an empty table.
     if (kind === "table" && hasRows(p)) return <ResultTable payload={p} />;
     if (kind === "receipt") return <Receipt payload={p} />;
+    if (kind === "diff" && hasDiff(p)) return <TransactionDiff before={p.before} after={p.after} />;
+    if (kind === "txnRows" && Array.isArray(p.transactions)) return <TransactionRows payload={p} />;
   }
 
   return <Json value={parsed} />;

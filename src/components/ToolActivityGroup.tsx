@@ -15,9 +15,10 @@ import type { ChartPayload } from "./charts/types";
  * full-width cards per call.
  *
  * Collapsed by default: for most tools the arguments and the payload are machinery, not answers.
- * Two things are never hidden, because hiding them would hide the product:
+ * Three things are never hidden, because hiding them would hide the product:
  *   - a GATED call's arguments — you cannot approve what you cannot read;
- *   - a CHART — it is the answer itself, not a detail of one.
+ *   - a CHART — it is the answer itself, not a detail of one;
+ *   - a result the user is asked to review (`open` in the renderer config) — a delete preview.
  */
 
 const isChartPayload = (v: unknown): v is ChartPayload => {
@@ -67,7 +68,7 @@ const ApprovalGate = ({
         </div>
 
         {/* Never collapsed — the arguments ARE the thing being approved. */}
-        <ToolArgs toolName={activity.name} args={activity.args} />
+        <ToolArgs toolName={activity.name} args={activity.args} gate preview={activity.preview} />
 
         <div className="mt-4 flex items-center gap-2.5">
           <button
@@ -146,7 +147,12 @@ export const ToolActivityGroupCard = ({
   const drawn = new Set(charts.map((c) => c.activity.callId));
   const isGated = (a: ToolActivity) => a.isPending && a.isMutating;
   const gated = approvalCallbacks ? activities.filter(isGated) : [];
-  const collapsible = activities.filter((a) => !isGated(a) && !drawn.has(a.callId));
+  // A result the user is asked to review (a delete preview) is not machinery either.
+  const shown = activities.filter((a) => a.result && renderersFor(a.name).open);
+  const shownIds = new Set(shown.map((a) => a.callId));
+  const collapsible = activities.filter(
+    (a) => !isGated(a) && !drawn.has(a.callId) && !shownIds.has(a.callId),
+  );
 
   return (
     // w-full + min-w-0: the card is a direct child of the message list now (it used to sit inside
@@ -187,6 +193,15 @@ export const ToolActivityGroupCard = ({
           receipt underneath it. */}
       {charts.map(({ activity, chart }) => (
         <Chart key={`chart-${activity.callId}`} payload={chart} />
+      ))}
+
+      {shown.map((activity) => (
+        <div
+          key={`shown-${activity.callId}`}
+          className="border-border bg-card min-w-0 overflow-hidden rounded-lg border px-4 py-3.5"
+        >
+          <ActivityDetail activity={activity} />
+        </div>
       ))}
 
       {gated.map((activity) => (

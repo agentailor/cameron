@@ -65,6 +65,7 @@ describe("listCapabilities", () => {
 
     const groups = [
       "financeTools",
+      "transactionEditTools",
       "csvImportTools",
       "analyticsTools",
       "categoryTools",

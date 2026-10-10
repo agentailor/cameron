@@ -9,6 +9,7 @@ import { Account, TransactionType, type Transaction } from "@/types/finance";
  *
  * Amounts are stored as always-positive minor units (cents); direction is carried by `type`.
  * `updatedAt` is app-managed; ids are app-generated. Bulk imports dedup on (source, externalId).
+ * Edits are guarded by `updatedAt` (`updateIfUnchanged`, `removeManyIfUnchanged`).
  */
 
 type TransactionRow = typeof transactions.$inferSelect;
@@ -267,11 +268,156 @@ export async function importWithCategories(rows: ImportRow[]): Promise<ImportRes
   });
 }
 
-/** Delete a transaction. Returns true if a row was removed, false if it did not exist. */
-export async function remove(id: string): Promise<boolean> {
+/**
+ * A transaction as an edit sees it: the row, its category NAME, and `version` — the raw
+ * `updated_at` literal. Edits compare `version` as the driver returned it, never round-tripped
+ * through `Date` (see the timestamp note in AGENTS.md).
+ */
+export type TransactionSnapshot = Transaction & { categoryName: string | null; version: string };
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+const snapshotColumns = { row: transactions, categoryName: categories.name };
+
+function toSnapshot(r: { row: TransactionRow; categoryName: string | null }): TransactionSnapshot {
+  return { ...toDomain(r.row), categoryName: r.categoryName, version: r.row.updatedAt };
+}
+
+/** Rows for these ids, in no particular order. Missing ids are simply absent. */
+export async function getManyByIds(ids: string[]): Promise<TransactionSnapshot[]> {
+  if (ids.length === 0) return [];
   const rows = await db
-    .delete(transactions)
-    .where(eq(transactions.id, id))
-    .returning({ id: transactions.id });
-  return rows.length > 0;
+    .select(snapshotColumns)
+    .from(transactions)
+    .leftJoin(categories, eq(categories.id, transactions.categoryId))
+    .where(inArray(transactions.id, ids));
+  return rows.map(toSnapshot);
+}
+
+/** Locks the rows for the rest of `tx`, so a version check cannot race the write that follows. */
+async function lockSnapshots(tx: Tx, ids: string[]): Promise<TransactionSnapshot[]> {
+  const rows = await tx
+    .select(snapshotColumns)
+    .from(transactions)
+    .leftJoin(categories, eq(categories.id, transactions.categoryId))
+    .where(inArray(transactions.id, ids))
+    .for("update", { of: transactions });
+  return rows.map(toSnapshot);
+}
+
+async function resolveCategoryIn(tx: Tx, name: string): Promise<{ id: string; created: boolean }> {
+  const [existing] = await tx
+    .select({ id: categories.id })
+    .from(categories)
+    .where(eq(categories.name, name));
+  if (existing) return { id: existing.id, created: false };
+  const ts = now();
+  const [inserted] = await tx
+    .insert(categories)
+    .values({
+      id: crypto.randomUUID(),
+      name,
+      icon: null,
+      color: null,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+    .onConflictDoNothing({ target: categories.name })
+    .returning({ id: categories.id });
+  if (inserted) return { id: inserted.id, created: true };
+  // Inserted concurrently between the lookup and the insert.
+  const [raced] = await tx
+    .select({ id: categories.id })
+    .from(categories)
+    .where(eq(categories.name, name));
+  return { id: raced.id, created: false };
+}
+
+/** Fields an edit may change. `undefined` leaves a field alone. */
+export interface TransactionPatch {
+  occurredAt?: string;
+  amountMinor?: number;
+  type?: TransactionType;
+  note?: string;
+  currency?: string;
+  account?: Account;
+  merchant?: string | null;
+  description?: string | null;
+  /** A category NAME, created if new; `null` uncategorizes. */
+  categoryName?: string | null;
+}
+
+export type GuardedUpdateResult =
+  | {
+      status: "updated";
+      before: TransactionSnapshot;
+      after: TransactionSnapshot;
+      categoryCreated: string | null;
+    }
+  | { status: "not_found" }
+  | { status: "stale" };
+
+/**
+ * Apply `patch` only if the row is still at `version`. The category is resolved in the same
+ * transaction, so a stale or failed update never leaves a new category behind.
+ */
+export async function updateIfUnchanged(
+  id: string,
+  version: string,
+  patch: TransactionPatch,
+): Promise<GuardedUpdateResult> {
+  return db.transaction(async (tx) => {
+    const [before] = await lockSnapshots(tx, [id]);
+    if (!before) return { status: "not_found" };
+    if (before.version !== version) return { status: "stale" };
+
+    const { categoryName, ...fields } = patch;
+    let categoryId: string | null | undefined;
+    let categoryCreated: string | null = null;
+    if (categoryName === null) categoryId = null;
+    else if (categoryName !== undefined) {
+      const resolved = await resolveCategoryIn(tx, categoryName);
+      categoryId = resolved.id;
+      if (resolved.created) categoryCreated = categoryName;
+    }
+
+    await tx
+      .update(transactions)
+      .set({
+        ...fields,
+        ...(categoryId !== undefined ? { categoryId } : {}),
+        updatedAt: now(),
+      })
+      .where(eq(transactions.id, id));
+
+    const [after] = await lockSnapshots(tx, [id]);
+    return { status: "updated", before, after, categoryCreated };
+  });
+}
+
+export type GuardedDeleteResult =
+  | { status: "deleted"; rows: TransactionSnapshot[] }
+  | { status: "not_found"; ids: string[] }
+  | { status: "stale"; ids: string[] };
+
+/**
+ * Delete every row in `expected`, or none: if any is missing or no longer at its version,
+ * nothing is deleted. Returns the deleted rows so the caller can echo them.
+ */
+export async function removeManyIfUnchanged(
+  expected: { id: string; version: string }[],
+): Promise<GuardedDeleteResult> {
+  if (expected.length === 0) return { status: "deleted", rows: [] };
+  return db.transaction(async (tx) => {
+    const ids = expected.map((e) => e.id);
+    const current = new Map((await lockSnapshots(tx, ids)).map((s) => [s.id, s]));
+
+    const missing = ids.filter((id) => !current.has(id));
+    if (missing.length > 0) return { status: "not_found", ids: missing };
+    const stale = expected.filter((e) => current.get(e.id)!.version !== e.version);
+    if (stale.length > 0) return { status: "stale", ids: stale.map((e) => e.id) };
+
+    await tx.delete(transactions).where(inArray(transactions.id, ids));
+    return { status: "deleted", rows: ids.map((id) => current.get(id)!) };
+  });
 }

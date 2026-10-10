@@ -7,6 +7,7 @@ import { ModelNotConfiguredError, readModelSettings } from "./modelSettings";
 import type { DynamicStructuredTool } from "@langchain/core/tools";
 import { getMCPTools } from "./mcp";
 import { financeTools } from "./tools/finance";
+import { transactionEditTools } from "./tools/transactionEdits";
 import { csvImportTools } from "./tools/csvImport";
 import { analyticsTools } from "./tools/analytics";
 import { categoryTools } from "./tools/categories";
@@ -51,6 +52,7 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   // Some function-calling APIs reject JSON Schema keywords Zod emits (format, $defs, …).
   const builtin = [
     ...financeTools,
+    ...transactionEditTools,
     ...csvImportTools,
     ...analyticsTools,
     ...categoryTools,
