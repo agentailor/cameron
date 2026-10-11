@@ -48,8 +48,8 @@ export interface TransactionView {
 export interface Transaction {
   id: string;
   occurredAt: Date;
-  /** Always-positive minor units (cents). Direction is carried by `type`. */
-  amountMinor: number;
+  /** Always positive, in major units (12.50). Direction is carried by `type`. */
+  amount: number;
   type: TransactionType;
   /** Required short human-readable label. */
   note: string;

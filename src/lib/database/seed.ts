@@ -144,7 +144,7 @@ async function seedTransactions(categoryIds: Map<string, string>) {
     const occurredAt = new Date(now - t.daysAgo * 24 * 60 * 60 * 1000);
     return {
       occurredAt,
-      amountMinor: Math.round(t.amount * 100),
+      amount: t.amount,
       type: t.type,
       note: t.note,
       currency: "USD",

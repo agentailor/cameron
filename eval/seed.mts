@@ -25,8 +25,8 @@ const SPEND = [
 
 /** A little income, so `type = 'expense'` filtering is a real discriminator and not a no-op. */
 const INCOME = [
-  { note: "Salary", amountMinor: 500_000 },
-  { note: "Freelance invoice", amountMinor: 125_000 },
+  { note: "Salary", amount: 5_000 },
+  { note: "Freelance invoice", amount: 1_250 },
 ] as const;
 
 /**
@@ -35,9 +35,9 @@ const INCOME = [
  * eval fails for the wrong reason.
  */
 function cycledTotalMajor(count: number, cycle: number): number {
-  let minor = 0;
-  for (let i = 0; i < count; i++) minor += ((i % cycle) + 1) * 100;
-  return minor / 100;
+  let total = 0;
+  for (let i = 0; i < count; i++) total += (i % cycle) + 1;
+  return total;
 }
 
 function spendFixture({ category, count, cycle }: (typeof SPEND)[number]) {
@@ -52,7 +52,7 @@ function seededRow(spend: (typeof SPEND)[number], n: number) {
   return {
     note: `${spend.category} ${n}`,
     category: spend.category,
-    amountMinor: (((n - 1) % spend.cycle) + 1) * 100,
+    amount: ((n - 1) % spend.cycle) + 1,
   };
 }
 
@@ -174,7 +174,7 @@ export const FIXTURE = {
   edits: {
     update: {
       ...seededRow(SPEND[1], 7),
-      correctedMinor: seededRow(SPEND[1], 7).amountMinor + 1800,
+      corrected: seededRow(SPEND[1], 7).amount + 18,
     },
     deleteOne: seededRow(SPEND[2], 3),
     /** A whole category within one delete call's cap, so one batch is the expected shape. */
@@ -248,7 +248,7 @@ export async function seed(url: string, opts: { withCsv?: boolean } = {}): Promi
     const params: unknown[] = [];
     const addRow = (row: {
       occurredAt: string;
-      amountMinor: number;
+      amount: number;
       type: "expense" | "income";
       note: string;
       categoryId: string | null;
@@ -262,7 +262,7 @@ export async function seed(url: string, opts: { withCsv?: boolean } = {}): Promi
       params.push(
         randomUUID(),
         row.occurredAt,
-        row.amountMinor,
+        row.amount,
         row.type,
         row.note,
         row.categoryId,
@@ -277,7 +277,7 @@ export async function seed(url: string, opts: { withCsv?: boolean } = {}): Promi
       for (let i = 0; i < count; i++) {
         addRow({
           occurredAt: new Date(Date.UTC(2026, 0, 1 + (i % 300), 12)).toISOString(),
-          amountMinor: ((i % cycle) + 1) * 100,
+          amount: (i % cycle) + 1,
           type: "expense",
           note: `${category} ${i + 1}`,
           categoryId: categoryIds.get(category) ?? null,
@@ -290,7 +290,7 @@ export async function seed(url: string, opts: { withCsv?: boolean } = {}): Promi
     INCOME.forEach((row, i) => {
       addRow({
         occurredAt: new Date(Date.UTC(2026, i, 28, 12)).toISOString(),
-        amountMinor: row.amountMinor,
+        amount: row.amount,
         type: "income",
         note: row.note,
         categoryId: null,
@@ -300,7 +300,7 @@ export async function seed(url: string, opts: { withCsv?: boolean } = {}): Promi
 
     await client.query(
       `INSERT INTO transaction
-         (id, occurred_at, amount_minor, type, note, currency, description, merchant,
+         (id, occurred_at, amount, type, note, currency, description, merchant,
           category_id, account, source, external_id, created_at, updated_at)
        VALUES ${values.join(", ")}`,
       params,

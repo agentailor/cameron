@@ -8,6 +8,7 @@ import {
   noMutationWithoutApproval,
   pausedForApproval,
   rowCountInStore,
+  statesAmount,
   storedAmount,
   toolCallCountAtMost,
   toolCalledBefore,
@@ -79,14 +80,16 @@ export const cases: EvalCase[] = [
       "validate, then update — and the ledger must end with one row at the new amount.",
     prompt:
       `The transaction "${update.note}" was actually ` +
-      `${(update.correctedMinor / 100).toFixed(2)}. Please correct it.`,
+      `${update.corrected.toFixed(2)}. Please correct it.`,
     approval: "allow",
     graders: [
       anyToolCalledBefore(LOOKUPS, "validate_transaction_update"),
       toolCalledBefore("validate_transaction_update", "update_transaction"),
       pausedForApproval("update_transaction"),
       toolNotCalled("log_expense"),
-      storedAmount(update.note, update.correctedMinor),
+      storedAmount(update.note, update.corrected),
+      // The before-amount, as reported back: a cents hint once made the agent say $0.07 here (#43).
+      statesAmount(update.amount),
       rowCountInStore("transaction", FIXTURE.transactionCount),
     ],
     runs: RUN_POLICY.single,

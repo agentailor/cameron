@@ -23,7 +23,7 @@ describe("describe_finance_schema", () => {
     expect(names).toEqual(expect.arrayContaining(["transaction", "category"]));
     // The conventions are the whole point — they encode what information_schema can't.
     expect(result.conventions).toEqual(
-      expect.arrayContaining([expect.stringMatching(/minor units/i)]),
+      expect.arrayContaining([expect.stringMatching(/major units/i)]),
     );
   });
 
@@ -33,13 +33,19 @@ describe("describe_finance_schema", () => {
     expect((result.tables as { table: string }[])[0].table).toBe("category");
   });
 
-  it("documents that amounts are positive minor units with direction in `type`", async () => {
+  it("documents that amounts are positive major units with direction in `type`", async () => {
     const result = await callTool(describeFinanceSchema, { table: "transaction" });
     const columns = (result.tables as { columns: { name: string; note?: string }[] }[])[0].columns;
-    const amount = columns.find((c) => c.name === "amount_minor");
+    const amount = columns.find((c) => c.name === "amount");
     // Getting this wrong produces answers that are wrong by 100x or sign-flipped.
     expect(amount?.note).toMatch(/positive/i);
-    expect(amount?.note).toMatch(/100/);
+    expect(amount?.note).toMatch(/major units/i);
+  });
+
+  it("never tells the agent to convert amounts", async () => {
+    // Every other tool returns major units; a ÷100 hint here was applied to them too (#43).
+    const text = JSON.stringify(await callTool(describeFinanceSchema, {}));
+    expect(text).not.toMatch(/minor|cents|divide by 100|÷\s*100/i);
   });
 });
 
@@ -53,7 +59,7 @@ describe("run_sql", () => {
     });
 
     const result = await callTool(runSql, {
-      query: "SELECT SUM(amount_minor) AS total FROM transaction",
+      query: "SELECT SUM(amount) AS total FROM transaction",
     });
 
     expect(result.rows).toEqual([{ total: "4200" }]);
@@ -73,7 +79,7 @@ describe("run_sql", () => {
 
     const result = await callTool(runSql, {
       query:
-        "SELECT SUM(t.amount_minor) AS total FROM transaction t " +
+        "SELECT SUM(t.amount) AS total FROM transaction t " +
         "JOIN category c ON c.id = t.category_id WHERE c.name = 'Entertainment'",
     });
 
@@ -109,7 +115,7 @@ describe("run_sql", () => {
     });
 
     const result = await callTool(runSql, {
-      query: "SELECT c.name AS category, SUM(t.amount_minor) AS total FROM transaction t",
+      query: "SELECT c.name AS category, SUM(t.amount) AS total FROM transaction t",
     });
 
     // Uncategorized spend is a real answer — NULL here is data, not an empty result.
@@ -128,8 +134,7 @@ describe("run_sql", () => {
     });
 
     const result = await callTool(runSql, {
-      query:
-        "SELECT c.name AS category, SUM(t.amount_minor) AS total FROM transaction t GROUP BY 1",
+      query: "SELECT c.name AS category, SUM(t.amount) AS total FROM transaction t GROUP BY 1",
     });
 
     expect(result.note).toBeUndefined();

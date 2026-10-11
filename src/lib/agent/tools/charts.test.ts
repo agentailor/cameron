@@ -14,7 +14,7 @@ const repo = await import("@/lib/repositories/analyticsRepository");
 const { renderChart, MAX_CHART_ROWS } = await import("./charts");
 
 const ARGS = {
-  query: "SELECT c.name AS category, SUM(t.amount_minor) AS total FROM transaction t GROUP BY 1",
+  query: "SELECT c.name AS category, SUM(t.amount) AS total FROM transaction t GROUP BY 1",
   chartType: "bar",
   x: "category",
   y: "total",

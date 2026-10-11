@@ -19,7 +19,7 @@ import type {
  * Persistence for transactions — Cameron's system of record. The ONLY ORM seam for
  * transactions; callers get plain {@link Transaction} domain objects, never Drizzle rows.
  *
- * Amounts are stored as always-positive minor units (cents); direction is carried by `type`.
+ * Amounts are always positive, in major units (12.50); direction is carried by `type`.
  * `updatedAt` is app-managed; ids are app-generated. Bulk imports dedup on (source, externalId).
  * Edits are guarded by `updatedAt` (`updateIfUnchanged`, `removeManyIfUnchanged`).
  */
@@ -30,7 +30,7 @@ function toDomain(row: TransactionRow): Transaction {
   return {
     id: row.id,
     occurredAt: columnToDate(row.occurredAt),
-    amountMinor: row.amountMinor,
+    amount: row.amount,
     type: row.type as TransactionType,
     note: row.note,
     currency: row.currency,
@@ -108,7 +108,7 @@ function toValues(input: CreateTransactionInput) {
   return {
     id: crypto.randomUUID(),
     occurredAt: toIso(input.occurredAt),
-    amountMinor: input.amountMinor,
+    amount: input.amount,
     type: input.type,
     note: input.note,
     currency: input.currency,

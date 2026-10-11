@@ -9,8 +9,8 @@ import { validateSelect, enforceLimit, MAX_SQL_ROWS } from "@/lib/finance/sqlGua
  * `analyticsRepository.ts`.
  */
 
-// Curated (not introspected) so it can encode conventions information_schema can't (minor units,
-// direction via `type`). TODO(scale): derive column lists from Drizzle metadata when the schema
+// Curated (not introspected) so it can encode conventions information_schema can't (direction via
+// `type`). TODO(scale): derive column lists from Drizzle metadata when the schema
 // outgrows a hand-written doc.
 interface ColumnDoc {
   name: string;
@@ -37,10 +37,10 @@ const TABLES: Record<string, TableDoc> = {
         note: "when it happened — use for date filters/grouping",
       },
       {
-        name: "amount_minor",
-        type: "integer",
+        name: "amount",
+        type: "numeric(14,2)",
         nullable: false,
-        note: "ALWAYS POSITIVE, minor units (cents). Divide by 100.0 to display. Direction is `type`, NOT the sign.",
+        note: "ALWAYS POSITIVE, major units (12.50) — use as-is. Direction is `type`, NOT the sign.",
       },
       { name: "type", type: "enum('expense','income')", nullable: false },
       { name: "note", type: "text", nullable: false, note: "short human label" },
@@ -83,10 +83,10 @@ const TABLES: Record<string, TableDoc> = {
 };
 
 const CONVENTIONS = [
-  "Spend total: SUM(amount_minor)/100.0 with type = 'expense'.",
+  "Spend total: SUM(amount) with type = 'expense'.",
   "Category names: JOIN category c ON c.id = t.category_id; NULL category_id is uncategorized (COALESCE(c.name,'Uncategorized')).",
   "Date ranges: filter on occurred_at (e.g. occurred_at >= date_trunc('month', now()) - interval '1 month').",
-  "Amounts are minor units — convert to major units (÷100) before showing figures.",
+  "Amounts are already in major units (12.50), like every other tool — never divide or multiply them.",
 ];
 
 export const describeFinanceSchema = tool(
@@ -105,7 +105,7 @@ export const describeFinanceSchema = tool(
     name: "describe_finance_schema",
     description:
       "Return the structured schema of the finance tables (transaction, category) — columns, types, " +
-      "enums, and the key conventions (amounts are positive minor units; direction is the `type` " +
+      "enums, and the key conventions (amounts are positive, in major units; direction is the `type` " +
       "column). Optionally pass `table` to get just one table's columns (keeps context small). Call " +
       "this before writing a query with `run_sql` so your SQL is correct.",
     schema: z.object({
@@ -172,7 +172,7 @@ export const runSql = tool(
       "this for aggregate/analytical questions (totals, top-N, group-by, per-month) that " +
       "`query_transactions` can't answer. Rules: SELECT only (no INSERT/UPDATE/DELETE/DDL — they " +
       "are rejected and cannot run anyway); one statement; results are capped at " +
-      `${MAX_SQL_ROWS} rows. Amounts are POSITIVE MINOR UNITS (÷100 for display). Call ` +
+      `${MAX_SQL_ROWS} rows. Amounts are POSITIVE, in major units (use as-is). Call ` +
       "`describe_finance_schema` first to get columns and conventions. JOIN category for names.",
     schema: z.object({
       query: z

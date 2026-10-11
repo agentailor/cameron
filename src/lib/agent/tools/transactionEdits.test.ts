@@ -25,7 +25,7 @@ const {
 
 function snapshot(overrides: Partial<TransactionSnapshot> = {}): TransactionSnapshot {
   return {
-    ...makeTransaction({ id: "t1", amountMinor: 420, currency: "USD", note: "Coffee" }),
+    ...makeTransaction({ id: "t1", amount: 4.2, currency: "USD", note: "Coffee" }),
     categoryName: "Dining",
     version: "2026-07-05 00:00:00",
     ...overrides,
@@ -181,17 +181,17 @@ describe("update_transaction", () => {
     expect(result.after.currency).toBe("EUR");
   });
 
-  it("converts an amount to minor units", async () => {
+  it("writes the amount as given, in major units", async () => {
     const id = nextId();
     const row = snapshot({ id });
     store(row);
-    written(row, { amountMinor: 2500 });
+    written(row, { amount: 25 });
 
     await callTool(validateTransactionUpdateTool, { id, changes: { amount: 25 } });
     await callTool(updateTransactionTool, { id, changes: { amount: 25 } });
 
     expect(transactionRepo.updateIfUnchanged).toHaveBeenCalledWith(id, row.version, {
-      amountMinor: 2500,
+      amount: 25,
     });
   });
 
