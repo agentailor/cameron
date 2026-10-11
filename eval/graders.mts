@@ -4,6 +4,7 @@ import {
   countImportedRows,
   countInCategory,
   countRows,
+  countWithAmount,
   importedCategoryNames,
   importedCurrencies,
   importedMonths,
@@ -218,6 +219,29 @@ export function pausedForApproval(...names: string[]): Grader {
         id,
         false,
         `never requested: ${missing.join(", ")} (tools called: ${[...called].join(", ") || "none"})`,
+      );
+    },
+  };
+}
+
+/**
+ * One interrupt held at least `min` calls to this tool. A mixed-decision case is about answering a
+ * BATCH per call; if the model made the calls one step at a time, there was no batch to answer, and
+ * the DB assertions would pass for the wrong reason.
+ */
+export function pausedTogether(name: string, min: number): Grader {
+  const id = `pausedTogether(${name},${min})`;
+  return {
+    id,
+    grade: (c: RunCapture) => {
+      const sizes = (c.interruptBatches ?? []).map((b) => b.filter((t) => t.name === name).length);
+      const largest = Math.max(0, ...sizes);
+      return result(
+        id,
+        largest >= min,
+        largest >= min
+          ? undefined
+          : `largest batch held ${largest} ${name} call(s) (batches: ${sizes.join(", ") || "none"})`,
       );
     },
   };
@@ -582,6 +606,22 @@ export function storedAmount(note: string, expected: number): Grader {
         id,
         actual === expected,
         actual === expected ? undefined : `stored ${actual}, expected ${expected}`,
+      );
+    },
+  };
+}
+
+/** Rows in the ledger with exactly this amount after the run. */
+export function rowsWithAmount(amount: number, expected: number): Grader {
+  const id = `rowsWithAmount(${amount},${expected})`;
+  return {
+    id,
+    grade: async () => {
+      const actual = await countWithAmount(amount);
+      return result(
+        id,
+        actual === expected,
+        actual === expected ? undefined : `${actual} rows of ${amount}, expected ${expected}`,
       );
     },
   };

@@ -419,12 +419,18 @@ and tool traffic filtered out — and needs no extra API key, since it uses the 
 
 ## Approval cases
 
-Setting `approval: "allow" | "deny"` on a case runs it with the human-in-the-loop middleware **live**
-(without it, `bypassApprovalForEval` omits the middleware and nothing ever pauses). The runner reads the
-pending request from the checkpoint and resumes with a `Command`, mirroring `buildResumeCommand` in
-[src/services/agentService.ts](../src/services/agentService.ts).
+Setting `approval` on a case runs it with the human-in-the-loop middleware **live** (without it,
+`bypassApprovalForEval` omits the middleware and nothing ever pauses). It is `"allow"`, `"deny"`, or
+a per-call policy `{ label, decide(call) }` — the way to answer one batch with different decisions,
+like a user clicking each card. The runner reads the pending batch and builds the resume through
+the app's own `readPendingBatch` / `resolveDecisions`
+([src/services/approvalDecisions.ts](../src/services/approvalDecisions.ts)), so the model sees
+exactly what the UI would send — including the "held back" reject an approved call gets when a
+sibling is denied.
 
-Paused calls land on `RunCapture.interrupts`. This matters: `trajectory` looks **identical** whether
+Paused calls land on `RunCapture.interrupts`, and grouped per interrupt on `interruptBatches`
+(`pausedTogether` grades that a batch actually happened — a mixed-decision case proves nothing if the
+model made its calls one step at a time). This matters: `trajectory` looks **identical** whether
 a call was gated or executed, because a paused call is still a call the model made — so `interrupts`
 is the only evidence the gate did its job.
 

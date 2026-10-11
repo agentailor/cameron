@@ -5,8 +5,8 @@ import { useChatThread } from "@/hooks/useChatThread";
 import { useThreads } from "@/hooks/useThreads";
 import { Loader2 } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
-import { useEffect, useRef, useState } from "react";
-import { MessageOptions } from "@/types/message";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { MessageOptions, ToolApprovalCallbacks } from "@/types/message";
 import { useModelSettings } from "@/hooks/useModelSettings";
 import { NotConfiguredNotice } from "./NotConfiguredNotice";
 import { deriveThreadTitle } from "@/lib/format/threadTitle";
@@ -21,8 +21,27 @@ export const Thread = ({ threadId }: ThreadProps) => {
   const [activeId, setActiveId] = useState<string | null>(threadId);
   useEffect(() => setActiveId(threadId), [threadId]);
 
-  const { messages, isLoadingHistory, isSending, sendMessage, approveToolExecution } =
-    useChatThread({ threadId: activeId });
+  const {
+    messages,
+    isLoadingHistory,
+    isSending,
+    sendMessage,
+    decideToolCall,
+    undoToolDecision,
+    decisions,
+    batchIds,
+  } = useChatThread({ threadId: activeId });
+  const approvalCallbacks = useMemo<ToolApprovalCallbacks>(
+    () => ({
+      onApprove: (id) => decideToolCall(id, "allow"),
+      onDeny: (id) => decideToolCall(id, "deny"),
+      onUndo: undoToolDecision,
+      decisions,
+      undecided: batchIds.filter((id) => !decisions[id]).length,
+      batchSize: batchIds.length,
+    }),
+    [decideToolCall, undoToolDecision, decisions, batchIds],
+  );
   const { createThread } = useThreads();
   const { settings } = useModelSettings();
   const isConfigured = settings?.configured ?? true;
@@ -69,7 +88,7 @@ export const Thread = ({ threadId }: ThreadProps) => {
                 the column at the viewport width. */}
             <ScrollArea className="h-full [&>[data-slot=scroll-area-viewport]>div]:block!">
               <div className="min-w-0 space-y-4 px-4 py-4">
-                <MessageList messages={messages} approveToolExecution={approveToolExecution} />
+                <MessageList messages={messages} approvalCallbacks={approvalCallbacks} />
               </div>
             </ScrollArea>
           </div>

@@ -1,11 +1,12 @@
 import { ensureAgent } from "@/lib/agent";
 import { ensureThread } from "@/lib/thread";
-import type { MessageOptions, MessageResponse } from "@/types/message";
+import type { ApprovalDecision, MessageOptions, MessageResponse } from "@/types/message";
 import * as threadRepo from "@/lib/repositories/threadRepository";
 import { getHistory } from "@/lib/agent/memory";
 import { HumanMessage } from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
-import type { HITLRequest, HITLResponse, Decision } from "langchain";
+import type { HITLResponse } from "langchain";
+import { readPendingBatch, resolveDecisions } from "./approvalDecisions";
 import { processAttachmentsForAI } from "@/lib/storage/content";
 import { streamMessages, type AgentRun } from "./messageStream";
 import { projectHistory } from "./historyProjection";
@@ -39,8 +40,8 @@ export async function streamResponse(params: {
   };
 
   // A pending approval resumes the interrupt; otherwise start a fresh turn from the user message.
-  const inputs = opts?.allowTool
-    ? await buildResumeCommand(agent, threadId, opts.allowTool)
+  const inputs = opts?.decisions
+    ? await buildResumeCommand(agent, threadId, opts.decisions)
     : { messages: [new HumanMessage({ content: await buildMessageContent(userText, opts) })] };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,36 +61,20 @@ async function buildMessageContent(
   return userText;
 }
 
-// Translate the client's allow/deny into a HITL resume Command. The middleware batches a turn's
-// approval-requiring calls into one interrupt and expects one Decision per action, positionally
-// aligned — so we read the pending request from the checkpoint to size the decisions array.
+// Translate the client's per-call decisions into a HITL resume Command. The pending batch is read
+// from the checkpoint; the id -> position mapping and every refusal live in approvalDecisions.ts.
 async function buildResumeCommand(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   agent: any,
   threadId: string,
-  allowTool: "allow" | "deny",
+  decisions: Record<string, ApprovalDecision>,
 ): Promise<Command> {
-  const decision: Decision =
-    allowTool === "allow"
-      ? { type: "approve" }
-      : { type: "reject", message: "The user denied this action." };
+  // No fallback: an unreadable checkpoint must not resume with a guessed decision.
+  const snapshot = await agent.graph.getState({ configurable: { thread_id: threadId } });
+  const resolved = resolveDecisions({ ...readPendingBatch(snapshot), decisions });
+  if (!resolved.ok) throw new Error(resolved.error);
 
-  let actionCount = 1;
-  try {
-    const snapshot = await agent.graph.getState({ configurable: { thread_id: threadId } });
-    const pending = snapshot.tasks
-      ?.flatMap((t: { interrupts?: { value: unknown }[] }) => t.interrupts ?? [])
-      .map((i: { value: unknown }) => i.value as HITLRequest | undefined)
-      .find((v: HITLRequest | undefined) => v && Array.isArray(v.actionRequests));
-    if (pending && pending.actionRequests.length > 0) {
-      actionCount = pending.actionRequests.length;
-    }
-  } catch (e) {
-    // If state can't be read, fall back to a single decision so the thread can still advance.
-    console.error("Failed to read pending HITL request:", e);
-  }
-
-  const resume: HITLResponse = { decisions: Array.from({ length: actionCount }, () => decision) };
+  const resume: HITLResponse = { decisions: resolved.decisions };
   return new Command({ resume });
 }
 

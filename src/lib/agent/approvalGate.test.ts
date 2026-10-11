@@ -100,6 +100,19 @@ describe("the approval gate is not reachable from a request", () => {
     expect(isMutatingTool("validate_transaction_delete")).toBe(false);
   });
 
+  it("a resume never builds its decisions by repeating one value (#45)", async () => {
+    // One click used to become a decision for the whole batch. The resume must go through the
+    // per-call resolver, and nothing may fill an array of decisions from a single one.
+    const service = await read("../../services/agentService.ts");
+    expect(service).toContain("resolveDecisions(");
+    expect(service).not.toMatch(/Array\.from\(\s*\{\s*length/);
+    expect(service).not.toMatch(/\.fill\(/);
+    expect(service).not.toContain("allowTool");
+
+    const route = await read("../../app/api/agent/stream/route.ts");
+    expect(route).not.toContain("allowTool");
+  });
+
   it("approval never depends on a tool's arguments", async () => {
     const factory = await read("./index.ts");
     const leaf = await read("./mutatingTools.ts");

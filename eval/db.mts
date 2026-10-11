@@ -172,6 +172,18 @@ export async function transactionsWithNote(
   });
 }
 
+/** Transactions with exactly this amount. Seeded amounts are whole, so a cents value is unique. */
+export async function countWithAmount(amount: number): Promise<number> {
+  assertEvalDatabase();
+  return withClient(async (c) => {
+    const { rows } = await c.query<{ count: string }>(
+      "SELECT COUNT(*)::int AS count FROM transaction WHERE amount = $1",
+      [amount],
+    );
+    return Number(rows[0]?.count ?? 0);
+  });
+}
+
 /** Transactions in the category with this name. */
 export async function countInCategory(name: string): Promise<number> {
   assertEvalDatabase();

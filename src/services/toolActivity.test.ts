@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildThreadItems, type ToolActivityGroup } from "./toolActivity";
+import { buildThreadItems, pendingApprovalIds, type ToolActivityGroup } from "./toolActivity";
 import { summarizeActivities } from "./toolSummary";
 import type { MessageResponse, ToolCall } from "@/types/message";
 
@@ -246,5 +246,34 @@ describe("summarizeActivities", () => {
         activity({ name: "load_skill", result: toolResult("c1", "load_skill", '{"ok":true}') }),
       ]),
     ).toBe("load_skill · ok");
+  });
+});
+
+describe("pendingApprovalIds", () => {
+  it("lists every gated call of a paused batch, so each gets its own decision (#45)", () => {
+    const messages = [
+      ai("a1", "", [
+        call("log_expense", "c1"),
+        call("run_sql", "c2"),
+        call("delete_transaction", "c3"),
+      ]),
+      toolResult("c2", "run_sql"),
+      pendingAi("a1", ["c1", "c3"]),
+    ];
+    expect(pendingApprovalIds(messages)).toEqual(["c1", "c3"]);
+  });
+
+  it("drops a call once its result arrives", () => {
+    const messages = [
+      ai("a1", "", [call("log_expense", "c1")]),
+      pendingAi("a1", ["c1"]),
+      toolResult("c1", "log_expense"),
+    ];
+    expect(pendingApprovalIds(messages)).toEqual([]);
+  });
+
+  it("never treats a read-only call as needing approval", () => {
+    const messages = [ai("a1", "", [call("run_sql", "c1")]), pendingAi("a1", ["c1"])];
+    expect(pendingApprovalIds(messages)).toEqual([]);
   });
 });

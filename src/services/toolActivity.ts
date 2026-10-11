@@ -204,3 +204,11 @@ function toActivity(
     isMutating: isMutatingTool(call.name),
   };
 }
+
+/** Ids of the gated calls awaiting a human decision, in thread order. */
+export function pendingApprovalIds(messages: MessageResponse[]): string[] {
+  return buildThreadItems(messages)
+    .flatMap((i) => (i.kind === "tools" ? i.activities : []))
+    .filter((a) => a.isPending && a.isMutating)
+    .map((a) => a.callId);
+}

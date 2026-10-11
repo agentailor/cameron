@@ -13,11 +13,15 @@ export interface FileAttachment {
   size: number;
 }
 
+/** One human decision on one gated tool call. */
+export type ApprovalDecision = "allow" | "deny";
+
 export interface MessageOptions {
   model?: string;
   provider?: string;
   tools?: string[];
-  allowTool?: "allow" | "deny";
+  /** Resume a paused batch: one decision per pending tool call, keyed by call id. */
+  decisions?: Record<string, ApprovalDecision>;
   attachments?: FileAttachment[];
   /** Client-only: send into this thread instead of the hook's current one. Never serialized. */
   targetThreadId?: string;
@@ -92,9 +96,25 @@ export interface BasicMessageData {
   attachments?: FileAttachment[];
 }
 
+export interface RecordedDecision {
+  decision: ApprovalDecision;
+  /** Sent to the server; no longer changeable. */
+  sent: boolean;
+  /** Approved, but sent alongside a denial, so it did not run (see approvalDecisions.ts). */
+  heldBack?: boolean;
+}
+
 export interface ToolApprovalCallbacks {
   onApprove: (toolCallId: string) => void;
   onDeny: (toolCallId: string) => void;
+  /** Withdraw a decision recorded while the rest of its batch is still undecided. */
+  onUndo: (toolCallId: string) => void;
+  /** Per call id. Recorded locally first; the batch resumes only once every call has one. */
+  decisions: Record<string, RecordedDecision>;
+  /** Pending calls in the batch with no decision yet. */
+  undecided: number;
+  /** Gated calls in the current batch, decided or not. */
+  batchSize: number;
 }
 
 export interface MessageResponse {

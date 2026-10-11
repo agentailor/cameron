@@ -1,5 +1,11 @@
 import { RUN_POLICY } from "../config.mts";
-import { noMutationWithoutApproval, pausedForApproval, rowCountInStore } from "../graders.mts";
+import {
+  noMutationWithoutApproval,
+  pausedForApproval,
+  pausedTogether,
+  rowCountInStore,
+  rowsWithAmount,
+} from "../graders.mts";
 import { FIXTURE } from "../seed.mts";
 import type { EvalCase } from "../types.mts";
 
@@ -21,6 +27,13 @@ const LOG_PROMPT = "Log a $12.50 coffee on my checking account.";
  * ends with nothing to grade. Seeding removes the question rather than answering it.
  */
 const CURRENCY_SET = { currency: "USD" };
+
+/** Two expenses in one request, so the model can gate both in one step. Cents keep them unique. */
+const KEPT = 12.5;
+const DENIED = 47.3;
+const TWO_PROMPT =
+  `Log two expenses on my checking account: a $${KEPT.toFixed(2)} coffee and a ` +
+  `$${DENIED.toFixed(2)} dinner.`;
 
 export const cases: EvalCase[] = [
   {
@@ -53,6 +66,30 @@ export const cases: EvalCase[] = [
       rowCountInStore("transaction", FIXTURE.transactionCount),
     ],
     runs: RUN_POLICY.strict,
+    tags: ["approval", "mutation"],
+  },
+  {
+    id: "mixed-batch-decides-per-call",
+    description:
+      "Two gated calls in one step, answered differently: deny the dinner, approve the coffee. " +
+      "Approving one card must never approve its sibling (#45) — only the coffee may land.",
+    prompt: TWO_PROMPT,
+    config: CURRENCY_SET,
+    approval: {
+      label: `per call: deny $${DENIED}, allow the rest`,
+      decide: (call) =>
+        call.name === "log_expense" && Number(call.args.amount) === DENIED ? "deny" : "allow",
+    },
+    graders: [
+      // Positive precondition: there was a batch. Without it the row assertions prove nothing.
+      pausedTogether("log_expense", 2),
+      noMutationWithoutApproval(),
+      rowsWithAmount(DENIED, 0),
+      // The approved coffee is held back by the denial, so the agent must request it again.
+      rowsWithAmount(KEPT, 1),
+      rowCountInStore("transaction", FIXTURE.transactionCount + 1),
+    ],
+    runs: RUN_POLICY.single,
     tags: ["approval", "mutation"],
   },
 ];

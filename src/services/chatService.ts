@@ -88,7 +88,7 @@ export function createMessageStream(
 ): EventSource {
   const params = new URLSearchParams({ content: message, threadId });
   if (opts?.tools?.length) params.set("tools", opts.tools.join(","));
-  if (opts?.allowTool) params.set("allowTool", opts.allowTool);
+  if (opts?.decisions) params.set("decisions", JSON.stringify(opts.decisions));
   if (opts?.attachments && opts.attachments.length > 0) {
     // Serialize attachments as JSON string for query parameter
     params.set("attachments", JSON.stringify(opts.attachments));
