@@ -1,5 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import db from "@/lib/database/db";
+import { columnToDate } from "@/lib/database/timestamps";
 import { configs } from "@/lib/database/schema";
 import type { ConfigEntry } from "@/types/config";
 
@@ -17,7 +18,7 @@ function toDomain(row: ConfigRow): ConfigEntry {
   return {
     key: row.key,
     value: row.value,
-    updatedAt: new Date(row.updatedAt),
+    updatedAt: columnToDate(row.updatedAt),
   };
 }
 

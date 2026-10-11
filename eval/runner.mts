@@ -82,7 +82,6 @@ export async function runCase(agent: Agent, testCase: EvalCase): Promise<RunCapt
   const trajectory: ToolCall[] = [];
   const toolResults: ToolResult[] = [];
   const interrupts: ToolCall[] = [];
-  const turns = Array.isArray(testCase.prompt) ? testCase.prompt : [testCase.prompt];
 
   // Each invoke returns the WHOLE thread; `seen` is the cursor past what's already collected.
   let seen = 0;
@@ -148,14 +147,14 @@ export async function runCase(agent: Agent, testCase: EvalCase): Promise<RunCapt
     if (testCase.user) {
       const simulated = await runSimulatedConversation({
         user: testCase.user,
-        opening: turns,
+        opening: testCase.prompt,
         hooks: { send },
         threadId,
       });
       conversation = simulated.conversation;
       inconclusive = simulated.inconclusive;
     } else {
-      for (const turn of turns) await send(turn);
+      await send(testCase.prompt);
     }
 
     return {

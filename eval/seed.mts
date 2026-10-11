@@ -44,6 +44,18 @@ function spendFixture({ category, count, cycle }: (typeof SPEND)[number]) {
   return { category, count, cycle, totalMajor: cycledTotalMajor(count, cycle) };
 }
 
+/**
+ * One seeded row, addressed the way a user would: by its note. Notes are `${category} ${n}` and
+ * unique, so the note identifies exactly one row; the amount follows the same cycle as the seed.
+ */
+function seededRow(spend: (typeof SPEND)[number], n: number) {
+  return {
+    note: `${spend.category} ${n}`,
+    category: spend.category,
+    amountMinor: (((n - 1) % spend.cycle) + 1) * 100,
+  };
+}
+
 const dining = spendFixture(SPEND[0]);
 const groceries = spendFixture(SPEND[1]);
 const transport = spendFixture(SPEND[2]);
@@ -139,6 +151,8 @@ function csvText(
 }
 
 export const FIXTURE = {
+  /** Every seeded row's currency. A case that is not about currency seeds it as the owner's setting. */
+  ledgerCurrency: "USD",
   dining,
   groceries,
   transport,
@@ -153,6 +167,19 @@ export const FIXTURE = {
    * reports it as unknown, and the agent must not read that as "you have no transactions".
    */
   unknownCategory: "Entertainment",
+  /**
+   * Targets for the correction cases. `corrected` differs from the seeded amount by construction,
+   * so a run that changed nothing can never pass the amount grader.
+   */
+  edits: {
+    update: {
+      ...seededRow(SPEND[1], 7),
+      correctedMinor: seededRow(SPEND[1], 7).amountMinor + 1800,
+    },
+    deleteOne: seededRow(SPEND[2], 3),
+    /** A whole category within one delete call's cap, so one batch is the expected shape. */
+    deleteCategory: transport,
+  },
   /** The uploaded CSV the import cases work from. Seeded into the eval MinIO by `seed()`. */
   csv: {
     fileKey: "eval/fixtures/transactions-fr.csv",
@@ -169,6 +196,8 @@ export const FIXTURE = {
     wrongFirstMonth: 5,
     /** Categories in the file. "Loisirs" is new — the import must create it. */
     newCategory: "Loisirs",
+    /** Every value the type column holds. All expense: the file has no income rows. */
+    typeLabels: [...new Set(CSV_ROWS.map((r) => r.type))],
     /**
      * The currency the owner states in the currency case. Nothing in the FILE says euros — the
      * French headers and Paris merchants are a hint, not a fact — so the agent must get this
@@ -193,6 +222,7 @@ export const FIXTURE = {
     /** Under the reversed MM/dd reading the first row would land in May instead. */
     wrongFirstMonth: 5,
     newCategory: "Loisirs",
+    typeLabels: [...new Set(CSV_MIXED_ROWS.map((r) => r.type))],
     currency: "EUR",
   },
 } as const;
@@ -226,8 +256,8 @@ export async function seed(url: string, opts: { withCsv?: boolean } = {}): Promi
     }) => {
       const base = params.length;
       values.push(
-        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, 'USD', NULL, NULL, ` +
-          `$${base + 6}, 'CHECKING', 'eval', $${base + 7}, $${base + 8}, $${base + 8})`,
+        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 9}, NULL, ` +
+          `NULL, $${base + 6}, 'CHECKING', 'eval', $${base + 7}, $${base + 8}, $${base + 8})`,
       );
       params.push(
         randomUUID(),
@@ -238,6 +268,7 @@ export async function seed(url: string, opts: { withCsv?: boolean } = {}): Promi
         row.categoryId,
         row.externalId,
         now,
+        FIXTURE.ledgerCurrency,
       );
     };
 

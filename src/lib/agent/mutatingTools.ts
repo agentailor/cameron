@@ -11,6 +11,8 @@ export const MUTATING_TOOL_NAMES = [
   "import_transactions_csv",
   "create_category",
   "set_config",
+  "update_transaction",
+  "delete_transaction",
 ] as const;
 
 export function isMutatingTool(name: string): boolean {

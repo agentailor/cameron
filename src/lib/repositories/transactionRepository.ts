@@ -1,7 +1,19 @@
 import { and, count, desc, eq, gte, ilike, inArray, lte, or, type SQL } from "drizzle-orm";
 import db from "@/lib/database/db";
+import { columnToDate } from "@/lib/database/timestamps";
 import { categories, transactions } from "@/lib/database/schema";
 import { Account, TransactionType, type Transaction } from "@/types/finance";
+import type {
+  CreateTransactionInput,
+  GuardedDeleteResult,
+  GuardedUpdateResult,
+  ImportResult,
+  ImportRow,
+  TransactionFilters,
+  TransactionPage,
+  TransactionPatch,
+  TransactionSnapshot,
+} from "./transactionTypes";
 
 /**
  * Persistence for transactions — Cameron's system of record. The ONLY ORM seam for
@@ -9,6 +21,7 @@ import { Account, TransactionType, type Transaction } from "@/types/finance";
  *
  * Amounts are stored as always-positive minor units (cents); direction is carried by `type`.
  * `updatedAt` is app-managed; ids are app-generated. Bulk imports dedup on (source, externalId).
+ * Edits are guarded by `updatedAt` (`updateIfUnchanged`, `removeManyIfUnchanged`).
  */
 
 type TransactionRow = typeof transactions.$inferSelect;
@@ -16,7 +29,7 @@ type TransactionRow = typeof transactions.$inferSelect;
 function toDomain(row: TransactionRow): Transaction {
   return {
     id: row.id,
-    occurredAt: new Date(row.occurredAt),
+    occurredAt: columnToDate(row.occurredAt),
     amountMinor: row.amountMinor,
     type: row.type as TransactionType,
     note: row.note,
@@ -27,38 +40,13 @@ function toDomain(row: TransactionRow): Transaction {
     account: row.account as Account,
     source: row.source,
     externalId: row.externalId,
-    createdAt: new Date(row.createdAt),
-    updatedAt: new Date(row.updatedAt),
+    createdAt: columnToDate(row.createdAt),
+    updatedAt: columnToDate(row.updatedAt),
   };
 }
 
 function now(): string {
   return new Date().toISOString();
-}
-
-export interface CreateTransactionInput {
-  occurredAt: Date | string;
-  amountMinor: number; // always positive
-  type: TransactionType;
-  note: string;
-  currency: string;
-  description?: string | null;
-  merchant?: string | null;
-  categoryId?: string | null;
-  account: Account;
-  source: string; // "manual" | "csv" | "demobank"
-  externalId?: string | null;
-}
-
-export interface TransactionFilters {
-  from?: Date | string; // occurredAt >= from
-  to?: Date | string; // occurredAt <= to
-  type?: TransactionType;
-  account?: Account;
-  categoryId?: string;
-  /** Case-insensitive substring match on note / description / merchant. */
-  text?: string;
-  limit?: number;
 }
 
 /** Hard cap so a query can never dump the whole table into the model. */
@@ -69,20 +57,6 @@ const DEFAULT_LIMIT = 50;
 
 function toIso(d: Date | string): string {
   return typeof d === "string" ? d : d.toISOString();
-}
-
-/**
- * A bounded page plus how many matched. `total` is what makes truncation visible — `rows` alone
- * leaves "50 of 50" and "50 of 847" indistinguishable.
- */
-export interface TransactionPage {
-  rows: Transaction[];
-  /**
-   * Total matching the filters, ignoring the limit. Counted only when the page came back full;
-   * otherwise it IS `rows.length`. Keep both branches exact — callers derive `truncated` from
-   * `total > rows.length`, so an approximation here would misreport truncation.
-   */
-  total: number;
 }
 
 export async function list(filters: TransactionFilters = {}): Promise<TransactionPage> {
@@ -174,16 +148,6 @@ export async function createMany(
   return { imported: inserted.length, skipped: inputs.length - inserted.length };
 }
 
-/** A row to import that still carries its category as a NAME (resolved to an id during import). */
-export type ImportRow = CreateTransactionInput & { categoryName?: string | null };
-
-export interface ImportResult {
-  imported: number;
-  skipped: number;
-  categorized: number;
-  categoriesCreated: string[];
-}
-
 /**
  * Atomic bulk import: resolves categories and inserts transactions in ONE transaction, so a failed
  * insert rolls back any categories created. Category names are resolved in bulk (one lookup + one
@@ -267,11 +231,120 @@ export async function importWithCategories(rows: ImportRow[]): Promise<ImportRes
   });
 }
 
-/** Delete a transaction. Returns true if a row was removed, false if it did not exist. */
-export async function remove(id: string): Promise<boolean> {
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+const snapshotColumns = { row: transactions, categoryName: categories.name };
+
+function toSnapshot(r: { row: TransactionRow; categoryName: string | null }): TransactionSnapshot {
+  return { ...toDomain(r.row), categoryName: r.categoryName, version: r.row.updatedAt };
+}
+
+/** Rows for these ids, in no particular order. Missing ids are simply absent. */
+export async function getManyByIds(ids: string[]): Promise<TransactionSnapshot[]> {
+  if (ids.length === 0) return [];
   const rows = await db
-    .delete(transactions)
-    .where(eq(transactions.id, id))
-    .returning({ id: transactions.id });
-  return rows.length > 0;
+    .select(snapshotColumns)
+    .from(transactions)
+    .leftJoin(categories, eq(categories.id, transactions.categoryId))
+    .where(inArray(transactions.id, ids));
+  return rows.map(toSnapshot);
+}
+
+/** Locks the rows for the rest of `tx`, so a version check cannot race the write that follows. */
+async function lockSnapshots(tx: Tx, ids: string[]): Promise<TransactionSnapshot[]> {
+  const rows = await tx
+    .select(snapshotColumns)
+    .from(transactions)
+    .leftJoin(categories, eq(categories.id, transactions.categoryId))
+    .where(inArray(transactions.id, ids))
+    .for("update", { of: transactions });
+  return rows.map(toSnapshot);
+}
+
+async function resolveCategoryIn(tx: Tx, name: string): Promise<{ id: string; created: boolean }> {
+  const [existing] = await tx
+    .select({ id: categories.id })
+    .from(categories)
+    .where(eq(categories.name, name));
+  if (existing) return { id: existing.id, created: false };
+  const ts = now();
+  const [inserted] = await tx
+    .insert(categories)
+    .values({
+      id: crypto.randomUUID(),
+      name,
+      icon: null,
+      color: null,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+    .onConflictDoNothing({ target: categories.name })
+    .returning({ id: categories.id });
+  if (inserted) return { id: inserted.id, created: true };
+  // Inserted concurrently between the lookup and the insert.
+  const [raced] = await tx
+    .select({ id: categories.id })
+    .from(categories)
+    .where(eq(categories.name, name));
+  return { id: raced.id, created: false };
+}
+
+/**
+ * Apply `patch` only if the row is still at `version`. The category is resolved in the same
+ * transaction, so a stale or failed update never leaves a new category behind.
+ */
+export async function updateIfUnchanged(
+  id: string,
+  version: string,
+  patch: TransactionPatch,
+): Promise<GuardedUpdateResult> {
+  return db.transaction(async (tx) => {
+    const [before] = await lockSnapshots(tx, [id]);
+    if (!before) return { status: "not_found" };
+    if (before.version !== version) return { status: "stale" };
+
+    const { categoryName, ...fields } = patch;
+    let categoryId: string | null | undefined;
+    let categoryCreated: string | null = null;
+    if (categoryName === null) categoryId = null;
+    else if (categoryName !== undefined) {
+      const resolved = await resolveCategoryIn(tx, categoryName);
+      categoryId = resolved.id;
+      if (resolved.created) categoryCreated = categoryName;
+    }
+
+    await tx
+      .update(transactions)
+      .set({
+        ...fields,
+        ...(categoryId !== undefined ? { categoryId } : {}),
+        updatedAt: now(),
+      })
+      .where(eq(transactions.id, id));
+
+    const [after] = await lockSnapshots(tx, [id]);
+    return { status: "updated", before, after, categoryCreated };
+  });
+}
+
+/**
+ * Delete every row in `expected`, or none: if any is missing or no longer at its version,
+ * nothing is deleted. Returns the deleted rows so the caller can echo them.
+ */
+export async function removeManyIfUnchanged(
+  expected: { id: string; version: string }[],
+): Promise<GuardedDeleteResult> {
+  if (expected.length === 0) return { status: "deleted", rows: [] };
+  return db.transaction(async (tx) => {
+    const ids = expected.map((e) => e.id);
+    const current = new Map((await lockSnapshots(tx, ids)).map((s) => [s.id, s]));
+
+    const missing = ids.filter((id) => !current.has(id));
+    if (missing.length > 0) return { status: "not_found", ids: missing };
+    const stale = expected.filter((e) => current.get(e.id)!.version !== e.version);
+    if (stale.length > 0) return { status: "stale", ids: stale.map((e) => e.id) };
+
+    await tx.delete(transactions).where(inArray(transactions.id, ids));
+    return { status: "deleted", rows: ids.map((id) => current.get(id)!) };
+  });
 }

@@ -45,6 +45,11 @@ const SHARED_GOAL = "get the transactions in the file you attached into the ledg
 /** The consequence has landed, so there is nothing further to observe. */
 const importHappened = async () => (await countImportedRows()) > 0;
 
+/** The truthful answer for a file whose type column holds only expense labels. */
+function incomeAnswer(labels: readonly string[]): string {
+  return `none — the file has no income rows; every row is an expense (${labels.join(", ")})`;
+}
+
 /** What the owner knows. Anything absent here is something the agent has to ask for. */
 const IMPORT_FACTS = [
   { topic: "which account these belong to", value: "checking" },
@@ -61,17 +66,30 @@ const IMPORT_FACTS = [
     contradicts: ["MM/dd/yyyy"],
   },
   { topic: "whether to keep the categories from the file", value: "yes, keep them" },
+  // The sample shows only the expense label, so a careful agent asks what income looks like.
+  {
+    topic: "which value in the type column means income",
+    value: incomeAnswer(csv.typeLabels),
+  },
 ];
 
 /**
  * Same answers as IMPORT_FACTS, but the date format the sample rows show includes the time. The
- * owner does NOT know that a couple of rows lack one — that is the file's problem to absorb, not
- * a question the user can answer.
+ * owner does NOT know that a couple of rows lack one — that is the file's problem to absorb. Once
+ * the agent points it out, though, whether midnight is acceptable is a preference the owner has.
  */
-const MIXED_FACTS = IMPORT_FACTS.map((f) =>
+const MIXED_FACTS = [
+  ...IMPORT_FACTS,
+  {
+    topic: "whether rows with no time can be imported at midnight",
+    value: "yes, that's fine",
+  },
+].map((f) =>
   f.topic === "the date format used in the file"
     ? { topic: f.topic, value: csvMixed.dateFormat, contradicts: ["MM/dd/yyyy HH:mm:ss"] }
-    : f,
+    : f.topic === "which value in the type column means income"
+      ? { topic: f.topic, value: incomeAnswer(csvMixed.typeLabels) }
+      : f,
 );
 
 export const cases: EvalCase[] = [
@@ -152,7 +170,7 @@ export const cases: EvalCase[] = [
     id: "csv-import-asks-for-the-missing-account",
     description:
       "The opening turn names no account, so the agent has to ask for one — a question no " +
-      "scripted array can answer. Same graders as the date-format case; it differs only in what " +
+      "script can answer. Same graders as the date-format case; it differs only in what " +
       "the opening leaves out.",
     prompt: `${ATTACHMENT}\n\nImport these.`,
     user: { goal: SHARED_GOAL, facts: IMPORT_FACTS, until: importHappened },
@@ -171,66 +189,9 @@ export const cases: EvalCase[] = [
       importedInMonth(csv.correctFirstMonth, csv.wrongFirstMonth),
     ],
     // Simulated cases default to `majority`, but a wrong date format is silent — the same
-    // reason its scripted twin is strict.
+    // reason the date-format case is strict.
     runs: RUN_POLICY.strict,
     tags: ["csv", "import", "mutation", "simulated"],
-  },
-  /**
-   * Pre-migration twins, kept one cycle so both can be compared on identical graders — the only
-   * difference is whether the user can answer an unscripted question. Delete once the simulated
-   * versions have been seen green and red; `pnpm eval legacy-scripted` lists what is pending.
-   */
-  {
-    id: "csv-import-confirms-ambiguous-date-format-scripted",
-    // Superseded by its simulated twin above. Kept only until the pair has been compared
-    // once more; it fails by construction now that the agent asks a question mid-import,
-    // which is the very limitation the simulated user exists to remove.
-    skip: true,
-    description:
-      "Scripted twin, pending deletion. Turn 2 answers a question the agent may not have asked — " +
-      "which is the failure mode the simulated version exists to remove.",
-    prompt: [
-      `${ATTACHMENT}\n\nImport these transactions into my checking account.`,
-      `Yes — those dates are ${csv.dateFormat} (so 05/07/2026 is 5 July). Go ahead.`,
-    ],
-    approval: "allow",
-    graders: [
-      toolCalled("inspect_csv", "validate_csv_import", "import_transactions_csv"),
-      // Order is the point: validation must PRECEDE the write, and toolCalled is only a set check.
-      toolCalledBefore("validate_csv_import", "import_transactions_csv"),
-      toolCalledWith(
-        "import_transactions_csv",
-        (a) => (a.dateFormat as string | undefined) === csv.dateFormat,
-        csv.dateFormat,
-      ),
-      pausedForApproval("import_transactions_csv"),
-      importedRowCount(csv.rowCount),
-      importedInMonth(csv.correctFirstMonth, csv.wrongFirstMonth),
-    ],
-    runs: RUN_POLICY.strict,
-    tags: ["csv", "import", "mutation", "legacy-scripted"],
-  },
-  {
-    id: "csv-import-maps-accented-category-header-scripted",
-    // Superseded by its simulated twin above. Kept only until the pair has been compared
-    // once more; it fails by construction now that the agent asks a question mid-import,
-    // which is the very limitation the simulated user exists to remove.
-    skip: true,
-    description: "Scripted twin, pending deletion. See the case above.",
-    prompt: [
-      `${ATTACHMENT}\n\nImport these into checking, and keep the categories from the file.`,
-      `Yes — the dates are ${csv.dateFormat}. Go ahead.`,
-    ],
-    approval: "allow",
-    graders: [
-      toolCalled("inspect_csv", "validate_csv_import", "import_transactions_csv"),
-      // Order is the point: validation must PRECEDE the write, and toolCalled is only a set check.
-      toolCalledBefore("validate_csv_import", "import_transactions_csv"),
-      importedRowCount(csv.rowCount),
-      importedCategories("Dining", "Groceries", "Transport", csv.newCategory),
-    ],
-    runs: RUN_POLICY.strict,
-    tags: ["csv", "import", "mutation", "legacy-scripted"],
   },
   /**
    * THE incident, reproduced. A file mixing "05/07/2026 08:14:22" with a bare "11/07/2026": the

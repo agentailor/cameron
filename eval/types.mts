@@ -32,8 +32,8 @@ export interface RunCapture {
    */
   inconclusive?: Inconclusive;
   /**
-   * What was actually said, turn by turn. Only a simulated case fills this: a scripted case's
-   * turns are already in `EvalCase.prompt`, and the report renders those.
+   * What was actually said, turn by turn. Only a simulated case fills this: a single-turn case's
+   * one message is already in `EvalCase.prompt`, and the report renders that.
    */
   conversation?: ConversationTurn[];
   /**
@@ -108,7 +108,17 @@ export interface SimulatedUser {
   /** The closed world the simulator may draw on. Anything else gets `###CANNOT_ANSWER###`. */
   facts: UserFact[];
   /**
-   * Cap on TOTAL user turns, including the `prompt` prefix. Hitting it is `inconclusive`, never a
+   * Follow-up requests the user raises VERBATIM, in order, each once the simulator has nothing left
+   * to answer (it would otherwise say `###DONE###`). For a conversation whose later turns are the
+   * user's own initiative — a correction, a second question — rather than answers to the agent.
+   *
+   * The wording is fixed and the TIMING adapts: a question the agent asks in between is answered
+   * from `facts` first. That is what a scripted array of turns could not do — it answered whatever
+   * question the author guessed would come next.
+   */
+  agenda?: string[];
+  /**
+   * Cap on TOTAL user turns, including the opening `prompt` and every `agenda` item. Hitting it is `inconclusive`, never a
    * failure — the case never got to test what it tests. Defaults to DEFAULT_MAX_TURNS.
    */
   maxTurns?: number;
@@ -136,11 +146,11 @@ export interface EvalCase {
   id: string;
   description?: string;
   /**
-   * The user turn(s), replayed in order on one thread. A string is a single turn; an array is a
-   * conversation — needed whenever the behavior under test is the agent stopping to ask, since a
-   * single turn cannot express the user's answer.
+   * The opening user message. Every later turn comes from `user`: answers from its facts, follow-ups
+   * from its agenda. There is deliberately no scripted list of turns — a script answers the question
+   * the author guessed, and fails the agent for asking a different one.
    */
-  prompt: string | string[];
+  prompt: string;
   graders: Grader[];
   /**
    * Run n times and require passK (pass@k). Omit for a single run — repeats are opt-in, and only
@@ -155,9 +165,8 @@ export interface EvalCase {
   /**
    * Opt into a simulated user, so the agent can ASK and get an answer.
    *
-   * `prompt` stays the fixed opening; the simulator only takes over once those turns are spent. An
-   * existing case therefore gains the ability to answer without changing what it asks first.
-   * Omit for the blind replay every case had before.
+   * `prompt` stays the fixed opening; the simulator takes over from the second turn. Omit for a
+   * single-turn case — one that must be gradeable WITHOUT any answer from the user.
    */
   user?: SimulatedUser;
   /**

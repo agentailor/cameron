@@ -27,6 +27,24 @@ export interface Category {
   updatedAt: Date;
 }
 
+/**
+ * A transaction as the agent and the UI see it: major units, category by name, ISO date. The edit
+ * tools return it and the approval card renders it, so both show the same fields.
+ */
+export interface TransactionView {
+  id: string;
+  occurredAt: string;
+  amount: number;
+  type: string;
+  note: string;
+  currency: string;
+  account: string;
+  category: string | null;
+  merchant: string | null;
+  description: string | null;
+  source: string;
+}
+
 export interface Transaction {
   id: string;
   occurredAt: Date;

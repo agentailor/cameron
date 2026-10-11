@@ -2,6 +2,7 @@ import type { EvalCase } from "../types.mts";
 import { cases as analysis } from "./analysis.cases.mts";
 import { cases as approval } from "./approval.cases.mts";
 import { cases as config } from "./config.cases.mts";
+import { cases as correction } from "./correction.cases.mts";
 import { cases as csvImport } from "./csvImport.cases.mts";
 import { cases as skills } from "./skills.cases.mts";
 import { cases as discipline } from "./discipline.cases.mts";
@@ -20,5 +21,6 @@ export const cases: EvalCase[] = [
   ...discipline,
   ...csvImport,
   ...config,
+  ...correction,
   ...skills,
 ];

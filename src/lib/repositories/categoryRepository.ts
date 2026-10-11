@@ -1,5 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import db from "@/lib/database/db";
+import { columnToDate } from "@/lib/database/timestamps";
 import { categories } from "@/lib/database/schema";
 import { ConflictError, isUniqueViolation } from "@/lib/database/errors";
 import type { Category } from "@/types/finance";
@@ -17,8 +18,8 @@ function toDomain(row: CategoryRow): Category {
     name: row.name,
     icon: row.icon,
     color: row.color,
-    createdAt: new Date(row.createdAt),
-    updatedAt: new Date(row.updatedAt),
+    createdAt: columnToDate(row.createdAt),
+    updatedAt: columnToDate(row.updatedAt),
   };
 }
 

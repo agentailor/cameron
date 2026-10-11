@@ -43,12 +43,12 @@ function textOf(content: unknown): string {
 /**
  * Run a conversation between the agent and a simulated user.
  *
- * `opening` replays verbatim as openevals `fixedResponses` — which counts the opening user message
- * as turn 0, so a case's existing `prompt` maps over unchanged.
+ * `opening` replays verbatim as the openevals `fixedResponses` turn 0. `agenda` items are spliced
+ * in where the simulator would otherwise end the conversation.
  */
 export async function runSimulatedConversation(opts: {
   user: SimulatedUser;
-  opening: string[];
+  opening: string;
   hooks: SimulatedRunHooks;
   threadId: string;
 }): Promise<SimulatedRunResult> {
@@ -63,7 +63,6 @@ export async function runSimulatedConversation(opts: {
   const client = createChatModel({
     provider: SIMULATOR_MODEL.provider,
     model: SIMULATOR_MODEL.name,
-    temperature: SIMULATOR_MODEL.temperature,
   });
 
   const simulatedUser = createLLMSimulatedUser({
@@ -71,8 +70,11 @@ export async function runSimulatedConversation(opts: {
     // `openevals` is ESM-only, so its .d.ts resolves `BaseChatModel` through the ESM path while
     // this .mts gets the CJS twin of the same class — nominally incompatible, identical at runtime.
     client: client as unknown as Parameters<typeof createLLMSimulatedUser>[0]["client"],
-    fixedResponses: opening,
+    fixedResponses: [opening],
   });
+
+  // Consumed in order; each one replaces a DONE the simulator would otherwise have ended on.
+  const agenda = [...(user.agenda ?? [])];
 
   const maxTurns = user.maxTurns ?? DEFAULT_MAX_TURNS;
 
@@ -80,9 +82,20 @@ export async function runSimulatedConversation(opts: {
     threadId,
     maxTurns,
     user: async (params) => {
+      const fixed = params.turnCounter === 0;
+      // The consequence has landed: the conversation is over, whatever the simulator would say next.
+      // Asking anyway can only add noise — an inconclusive verdict on a run that has its evidence.
+      if (!fixed && user.until && (await user.until())) return { role: "user", content: DONE };
+
       const message = await simulatedUser(params);
       const raw = textOf(message.content);
-      const fixed = params.turnCounter < opening.length;
+
+      // Nothing left to answer, but the user still has something to ask: raise it, word for word.
+      if (!fixed && raw.includes(DONE) && !raw.includes(CANNOT_ANSWER) && agenda.length > 0) {
+        const next = agenda.shift()!;
+        conversation.push({ role: "user", text: next, source: "fixed" });
+        return { ...message, content: next };
+      }
 
       if (!fixed && raw.trim() === "") {
         inconclusive = {
