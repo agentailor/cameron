@@ -1,5 +1,6 @@
 import { and, count, desc, eq, gte, ilike, inArray, lte, or, type SQL } from "drizzle-orm";
 import db from "@/lib/database/db";
+import { columnToDate } from "@/lib/database/timestamps";
 import { categories, transactions } from "@/lib/database/schema";
 import { Account, TransactionType, type Transaction } from "@/types/finance";
 import type {
@@ -28,7 +29,7 @@ type TransactionRow = typeof transactions.$inferSelect;
 function toDomain(row: TransactionRow): Transaction {
   return {
     id: row.id,
-    occurredAt: new Date(row.occurredAt),
+    occurredAt: columnToDate(row.occurredAt),
     amountMinor: row.amountMinor,
     type: row.type as TransactionType,
     note: row.note,
@@ -39,8 +40,8 @@ function toDomain(row: TransactionRow): Transaction {
     account: row.account as Account,
     source: row.source,
     externalId: row.externalId,
-    createdAt: new Date(row.createdAt),
-    updatedAt: new Date(row.updatedAt),
+    createdAt: columnToDate(row.createdAt),
+    updatedAt: columnToDate(row.updatedAt),
   };
 }
 

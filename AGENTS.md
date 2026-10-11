@@ -297,10 +297,12 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   pages it with `useInfiniteQuery` (`THREADS_PAGE_SIZE`).
 - **Timestamp columns are `mode: "string"` and return NAIVE literals that are already UTC**
   (`"2026-09-05 10:20:18.013"`). `new Date(...)` on one reads it as LOCAL time and silently shifts
-  it by the viewer's offset. `threadRepository` converts through `columnTimestampToIso` /
-  `toColumnTimestamp` in both directions; any new code reading these columns must do the same. This
-  bug is invisible: a shifted cursor still validates and still queries, it just matches nothing and
-  ends the list early.
+  it by the server's offset. Every repository reads them through `columnToDate` /
+  `columnTimestampToIso` and writes comparisons through `toColumnTimestamp`, all in
+  `src/lib/database/timestamps.ts`; any new code reading these columns must do the same. This bug is
+  invisible: a shifted value still parses, and a shifted cursor still queries — it just matches
+  nothing and ends the list early. (Until #44 only `threadRepository` did this, so every
+  transaction's `occurredAt` came back an hour off on a UTC+1 host.)
 - **Error translation** lives in the repositories: a duplicate name surfaces as `ConflictError`
   (→ HTTP 409); a missing row returns `null`/`false` (→ HTTP 404). Routes check return values, not
   driver error codes.

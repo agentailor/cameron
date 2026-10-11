@@ -1,5 +1,6 @@
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 import db from "@/lib/database/db";
+import { columnToDate } from "@/lib/database/timestamps";
 import { mcpServers } from "@/lib/database/schema";
 import { MCPServerType, type MCPServer } from "@/types/mcp";
 import { ConflictError, isUniqueViolation } from "@/lib/database/errors";
@@ -34,8 +35,8 @@ function toDomain(row: MCPServerRow): MCPServer {
     clientInfo: row.clientInfo,
     codeVerifier: row.codeVerifier,
     oauthStatus: row.oauthStatus,
-    createdAt: new Date(row.createdAt),
-    updatedAt: new Date(row.updatedAt),
+    createdAt: columnToDate(row.createdAt),
+    updatedAt: columnToDate(row.updatedAt),
   };
 }
 

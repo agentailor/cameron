@@ -2,6 +2,7 @@ import { and, count, desc, eq, lt, or } from "drizzle-orm";
 import db from "@/lib/database/db";
 import { threads } from "@/lib/database/schema";
 import type { ThreadRecord } from "@/types/mcp";
+import { columnTimestampToIso, toColumnTimestamp } from "@/lib/database/timestamps";
 
 /**
  * Persistence for Thread metadata. This is the ONLY seam between the app and the ORM
@@ -28,25 +29,6 @@ function toDomain(row: ThreadRow): ThreadRecord {
 
 function now(): string {
   return new Date().toISOString();
-}
-
-/**
- * The `mode: "string"` timestamp columns hand back a naive literal ("2026-09-05 10:20:18.013")
- * that is ALREADY UTC; `new Date(...)` would read it as local and shift it by the offset. These
- * two helpers pin the interpretation to UTC in both directions. Getting it wrong is silent — the
- * cursor still validates and still queries, it just matches nothing and ends the list early.
- */
-function columnTimestampToIso(value: string): string {
-  const iso = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? value : date.toISOString();
-}
-
-/** ISO string -> the literal format the timestamp columns compare against (UTC, no zone suffix). */
-function toColumnTimestamp(iso: string): string | null {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().replace("T", " ").replace("Z", "");
 }
 
 /** Opaque position in the thread list, encoding the sort key of the last row returned. */
