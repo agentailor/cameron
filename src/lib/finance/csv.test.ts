@@ -104,16 +104,16 @@ describe("mapCsvToTransactions", () => {
     expect(badDateRows).toEqual([]);
     expect(rows).toHaveLength(2);
 
-    // Amounts become always-positive minor units; direction lives in `type`.
+    // Amounts are always positive; direction lives in `type`.
     expect(rows[0]).toMatchObject({
-      amountMinor: 450,
+      amount: 4.5,
       type: TransactionType.expense,
       note: "Café du coin",
       categoryName: "Restaurants",
       account: Account.CHECKING,
       source: "csv",
     });
-    expect(rows[1]).toMatchObject({ amountMinor: 250000, type: TransactionType.income });
+    expect(rows[1]).toMatchObject({ amount: 2500, type: TransactionType.income });
   });
 
   // The ambiguity the import tool refuses to guess at: 05/07/2026 is 5 July or 7 May

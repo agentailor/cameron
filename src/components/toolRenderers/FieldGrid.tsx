@@ -12,7 +12,6 @@ type Args = Record<string, unknown>;
 
 const LABELS: Record<string, string> = {
   amount: "AMOUNT",
-  amountMinor: "AMOUNT",
   category: "CATEGORY",
   merchant: "MERCHANT",
   occurredAt: "DATE",

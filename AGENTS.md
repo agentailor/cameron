@@ -303,6 +303,11 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   invisible: a shifted value still parses, and a shifted cursor still queries — it just matches
   nothing and ends the list early. (Until #44 only `threadRepository` did this, so every
   transaction's `occurredAt` came back an hour off on a UTC+1 host.)
+- **Amounts are major units everywhere** (`amount numeric(14,2)`, always positive, direction in
+  `type`): stored, returned by every tool, and seen by `run_sql`. There is no cents column and no
+  conversion step — a unit that differed between tools made the agent report $7.00 as $0.07 (#43).
+  `numeric` is exact; Drizzle's `mode: "number"` parses it, while raw `run_sql` results return it
+  as a string.
 - **Error translation** lives in the repositories: a duplicate name surfaces as `ConflictError`
   (→ HTTP 409); a missing row returns `null`/`false` (→ HTTP 404). Routes check return values, not
   driver error codes.

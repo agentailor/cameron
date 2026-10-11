@@ -12,16 +12,6 @@ import { DEFAULT_CURRENCY } from "@/lib/config/catalog";
  * will pause for approval.
  */
 
-/** Convert a decimal amount (e.g. 12.50) to always-positive minor units (1250 cents). */
-function toMinor(amount: number): number {
-  return Math.round(Math.abs(amount) * 100);
-}
-
-/** Convert minor units back to a display decimal (1250 -> 12.5). */
-function toMajor(minor: number): number {
-  return minor / 100;
-}
-
 /**
  * Resolve a category name to its id, creating it if new. Reports `created` so the caller can
  * surface a category coined as a side effect of logging.
@@ -44,7 +34,7 @@ export const logExpense = tool(
     const category = await resolveCategory(input.category);
     const txn = await transactionRepo.create({
       occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
-      amountMinor: toMinor(input.amount),
+      amount: Math.abs(input.amount),
       type: input.type as TransactionType,
       note: input.note,
       currency: input.currency ?? DEFAULT_CURRENCY,
@@ -59,7 +49,7 @@ export const logExpense = tool(
       ok: true,
       id: txn.id,
       occurredAt: txn.occurredAt.toISOString(),
-      amount: toMajor(txn.amountMinor),
+      amount: txn.amount,
       type: txn.type,
       note: txn.note,
       account: txn.account,
@@ -152,7 +142,7 @@ export const queryTransactions = tool(
     const items = rows.map((t) => ({
       id: t.id,
       occurredAt: t.occurredAt.toISOString(),
-      amount: toMajor(t.amountMinor),
+      amount: t.amount,
       type: t.type,
       note: t.note,
       merchant: t.merchant,

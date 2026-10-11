@@ -18,7 +18,7 @@ export function toTransactionView(t: TransactionSnapshot): TransactionView {
   return {
     id: t.id,
     occurredAt: t.occurredAt.toISOString(),
-    amount: t.amountMinor / 100,
+    amount: t.amount,
     type: t.type,
     note: t.note,
     currency: t.currency,

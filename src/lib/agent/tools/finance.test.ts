@@ -24,7 +24,7 @@ beforeEach(() => {
 describe("query_transactions", () => {
   it("returns matching transactions with amounts in major units", async () => {
     vi.mocked(transactionRepo.list).mockResolvedValue({
-      rows: [makeTransaction({ amountMinor: 1250, note: "Coffee" })],
+      rows: [makeTransaction({ amount: 12.5, note: "Coffee" })],
       total: 1,
     });
 
@@ -118,7 +118,7 @@ describe("log_expense", () => {
     const occurredAt = new Date("2026-07-05T09:30:00.000Z");
     vi.mocked(categoryRepo.getByName).mockResolvedValue(makeCategory({ name: "Coffee" }));
     vi.mocked(transactionRepo.create).mockResolvedValue(
-      makeTransaction({ amountMinor: 450, note: "Café du coin", occurredAt, currency: "EUR" }),
+      makeTransaction({ amount: 4.5, note: "Café du coin", occurredAt, currency: "EUR" }),
     );
 
     const result = await callTool(logExpense, {
@@ -141,8 +141,8 @@ describe("log_expense", () => {
     });
   });
 
-  it("converts a decimal amount to positive minor units", async () => {
-    vi.mocked(transactionRepo.create).mockResolvedValue(makeTransaction({ amountMinor: 1299 }));
+  it("writes the amount in major units, as given", async () => {
+    vi.mocked(transactionRepo.create).mockResolvedValue(makeTransaction({ amount: 12.99 }));
 
     await callTool(logExpense, {
       amount: 12.99,
@@ -152,7 +152,7 @@ describe("log_expense", () => {
     });
 
     expect(transactionRepo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ amountMinor: 1299, type: TransactionType.expense }),
+      expect.objectContaining({ amount: 12.99, type: TransactionType.expense }),
     );
   });
 

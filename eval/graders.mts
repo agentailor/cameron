@@ -569,19 +569,19 @@ export function anyToolCalledBefore(befores: string[], after: string): Grader {
  * Exactly one row carries `note`, with this amount. One row, not "some row": a correction made by
  * logging the expense again leaves two, and that double-count is the defect being graded.
  */
-export function storedAmount(note: string, expectedMinor: number): Grader {
-  const id = `storedAmount(${note},${expectedMinor})`;
+export function storedAmount(note: string, expected: number): Grader {
+  const id = `storedAmount(${note},${expected})`;
   return {
     id,
     grade: async () => {
       const rows = await transactionsWithNote(note);
       if (rows.length !== 1)
         return result(id, false, `${rows.length} rows carry the note "${note}"`);
-      const actual = rows[0].amountMinor;
+      const actual = rows[0].amount;
       return result(
         id,
-        actual === expectedMinor,
-        actual === expectedMinor ? undefined : `stored ${actual}, expected ${expectedMinor}`,
+        actual === expected,
+        actual === expected ? undefined : `stored ${actual}, expected ${expected}`,
       );
     },
   };

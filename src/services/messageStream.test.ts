@@ -123,7 +123,7 @@ describe("streamMessages ordering", () => {
 describe("streamMessages pending approvals", () => {
   const call: ToolCall = {
     name: "log_expense",
-    args: { amountMinor: 500 },
+    args: { amount: 5 },
     id: "pending-1",
     type: "tool_call",
   };

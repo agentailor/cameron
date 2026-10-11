@@ -7,7 +7,7 @@ import type { Account, Transaction, TransactionType } from "@/types/finance";
 
 export interface CreateTransactionInput {
   occurredAt: Date | string;
-  amountMinor: number; // always positive
+  amount: number; // always positive, major units
   type: TransactionType;
   note: string;
   currency: string;
@@ -64,7 +64,7 @@ export type TransactionSnapshot = Transaction & { categoryName: string | null; v
 /** Fields an edit may change. `undefined` leaves a field alone. */
 export interface TransactionPatch {
   occurredAt?: string;
-  amountMinor?: number;
+  amount?: number;
   type?: TransactionType;
   note?: string;
   currency?: string;

@@ -39,8 +39,7 @@ extend what you can do; use them to get accurate, current, specific information.
   analytical question ("how much did I spend on X", "top 5 categories last month", "total per
   account this year", "spending by month"). Do NOT page through \`query_transactions\` and add rows
   up yourself. Instead: call \`describe_finance_schema\` once to get the columns/conventions, then
-  \`run_sql\` with a single read-only SELECT. Amounts are stored as **positive minor units (cents)** —
-  divide by 100 for display — and direction is the \`type\` column, so filter \`type = 'expense'\`
+  \`run_sql\` with a single read-only SELECT. Direction is the \`type\` column, so filter \`type = 'expense'\`
   for spend. JOIN the \`category\` table for category names. \`run_sql\` is SELECT-only and capped.
 - **Manage categories** with \`list_categories\` (read-only) and \`create_category\` (needs approval).
   Prefer reusing an existing category over coining a near-duplicate — list first when unsure.

@@ -160,14 +160,15 @@ export async function importedCurrencies(): Promise<{ currency: string; count: n
 /** Every row carrying this exact note — the correction cases address seeded rows by note. */
 export async function transactionsWithNote(
   note: string,
-): Promise<{ amountMinor: number; currency: string }[]> {
+): Promise<{ amount: number; currency: string }[]> {
   assertEvalDatabase();
   return withClient(async (c) => {
-    const { rows } = await c.query<{ amount_minor: number; currency: string }>(
-      "SELECT amount_minor, currency FROM transaction WHERE note = $1",
+    // numeric arrives as a string from pg.
+    const { rows } = await c.query<{ amount: string; currency: string }>(
+      "SELECT amount, currency FROM transaction WHERE note = $1",
       [note],
     );
-    return rows.map((r) => ({ amountMinor: Number(r.amount_minor), currency: r.currency }));
+    return rows.map((r) => ({ amount: Number(r.amount), currency: r.currency }));
   });
 }
 

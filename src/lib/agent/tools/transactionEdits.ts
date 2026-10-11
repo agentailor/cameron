@@ -189,9 +189,6 @@ async function planUpdate(input: UpdateInput): Promise<{ error: Payload } | { pl
   const patch: TransactionPatch = {};
   for (const f of changed) {
     switch (f) {
-      case "amount":
-        patch.amountMinor = Math.round(after.amount * 100);
-        break;
       case "occurredAt":
         patch.occurredAt = after.occurredAt;
         break;

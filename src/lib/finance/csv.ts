@@ -301,7 +301,7 @@ export function mapCsvToTransactions(csvText: string, opts: ImportOptions): Mapp
 
     rows.push({
       occurredAt,
-      amountMinor: Math.round(amount * 100),
+      amount,
       type: resolveType(mapping.type ? rec[mapping.type] : undefined, opts),
       note,
       currency: opts.currency ?? DEFAULT_CURRENCY,

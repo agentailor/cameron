@@ -6,6 +6,7 @@ import {
   boolean,
   integer,
   json,
+  numeric,
   jsonb,
   timestamp,
   uniqueIndex,
@@ -98,8 +99,8 @@ export const transactions = pgTable(
     id: text("id").primaryKey().notNull(),
     // When the transaction happened (distinct from created_at, the row insert time).
     occurredAt: timestamp("occurred_at", { precision: 3, mode: "string" }).notNull(),
-    // Amount is ALWAYS positive minor units (cents); direction is carried by `type`.
-    amountMinor: integer("amount_minor").notNull(),
+    // ALWAYS positive, in major units (12.50); direction is carried by `type`.
+    amount: numeric("amount", { precision: 14, scale: 2, mode: "number" }).notNull(),
     type: transactionType("type").notNull(),
     // Required short human-readable label — a transaction with only an amount is not usable.
     note: text("note").notNull(),

@@ -92,7 +92,7 @@ describe("buildThreadItems", () => {
   it("marks a paused call pending and leaves its result null", () => {
     // A gated call has NO result message — pairing by adjacency would mis-assign the next one.
     const items = buildThreadItems([
-      ai("a1", "", [call("log_expense", "c1", { amountMinor: 450 })]),
+      ai("a1", "", [call("log_expense", "c1", { amount: 4.5 })]),
       pendingAi("a1", ["c1"]),
     ]);
 

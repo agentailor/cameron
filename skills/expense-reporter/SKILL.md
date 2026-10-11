@@ -45,24 +45,22 @@ does the shaping.
 
 ```sql
 -- bar: spending by category
-SELECT c.name AS category, SUM(t.amount_minor) / 100.0 AS total
+SELECT c.name AS category, SUM(t.amount) AS total
 FROM transaction t JOIN category c ON c.id = t.category_id
 WHERE t.type = 'expense'
 GROUP BY c.name
 ORDER BY total DESC;
 
 -- line: spending per month
-SELECT to_char(t.occurred_at, 'YYYY-MM') AS month, SUM(t.amount_minor) / 100.0 AS total
+SELECT to_char(t.occurred_at, 'YYYY-MM') AS month, SUM(t.amount) AS total
 FROM transaction t
 WHERE t.type = 'expense'
 GROUP BY month
 ORDER BY month;
 ```
 
-Three things that make a chart wrong rather than ugly:
+Two things that make a chart wrong rather than ugly:
 
-- **Divide by 100 in the query.** Amounts are minor units; a chart axis reading `14672` when the
-  owner spent $146.72 is simply incorrect.
 - **`ORDER BY` matters.** A bar chart is read as a ranking, so sort by the measure. A line chart is
   read left-to-right as time, so sort by the time column.
 - **Alias every computed column**, because `x` and `y` must name columns the query actually

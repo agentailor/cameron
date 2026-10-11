@@ -46,7 +46,7 @@ export function makeTransaction(overrides: Partial<Transaction> = {}): Transacti
   return {
     id: crypto.randomUUID(),
     occurredAt: now,
-    amountMinor: 1250,
+    amount: 12.5,
     type: TransactionType.expense,
     note: "Coffee",
     currency: "USD",

@@ -106,7 +106,7 @@ export const renderChart = tool(
       "data (use `run_sql` for that) and do not describe values you have not read. Pick " +
       "`chartType` by the question: `line` when the x-axis is time (a trend), `bar` when it is " +
       "categories (a comparison). `x`, `y` and `series` must name columns your SELECT actually " +
-      "returns — alias computed columns (e.g. `SUM(amount_minor) AS total`). Aggregate in SQL: at " +
+      "returns — alias computed columns (e.g. `SUM(amount) AS total`). Aggregate in SQL: at " +
       `most ${MAX_CHART_ROWS} rows can be charted. Not every answer needs a chart — a single ` +
       "figure is a sentence and a short ranking is better read as a table from `run_sql`.",
     schema: z.object({
@@ -115,7 +115,7 @@ export const renderChart = tool(
         .min(1)
         .describe(
           "A single read-only SQL SELECT producing one row per point, already aggregated " +
-            "(e.g. SELECT c.name AS category, SUM(t.amount_minor) AS total ... GROUP BY c.name)",
+            "(e.g. SELECT c.name AS category, SUM(t.amount) AS total ... GROUP BY c.name)",
         ),
       chartType: z
         .enum(CHART_TYPES)
