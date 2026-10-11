@@ -1,6 +1,11 @@
 import { z } from "@/lib/api/openapi/zod";
 import { registry } from "@/lib/api/openapi/registry";
 
+/** One decision per pending tool call, keyed by call id. Carried JSON-encoded in `decisions`. */
+export const ApprovalDecisions = z
+  .record(z.string().min(1), z.enum(["allow", "deny"]))
+  .refine((d) => Object.keys(d).length > 0, { message: "decisions must not be empty" });
+
 const StreamQuery = z.object({
   content: z.string().openapi({ description: "User message text", example: "Hello" }),
   threadId: z.string().optional().openapi({ description: "Thread identifier" }),
@@ -9,10 +14,15 @@ const StreamQuery = z.object({
     .string()
     .optional()
     .openapi({ description: "Model provider (openai/google/anthropic)" }),
-  allowTool: z
-    .enum(["allow", "deny"])
+  decisions: z
+    .string()
     .optional()
-    .openapi({ description: "Tool approval decision" }),
+    .openapi({
+      description:
+        "Resume a paused approval batch. JSON object mapping EVERY pending tool call id to " +
+        '"allow" or "deny". A missing, unknown or extra id is refused and nothing resumes.',
+      example: '{"call_abc":"allow","call_def":"deny"}',
+    }),
   tools: z
     .string()
     .optional()

@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { ChevronDown, ChevronRight, Check, X, Lock } from "lucide-react";
-import type { ToolApprovalCallbacks } from "@/types/message";
+import type { RecordedDecision, ToolApprovalCallbacks } from "@/types/message";
 import type { ToolActivity } from "@/services/toolActivity";
 import { summarizeActivities, summarizeResult } from "@/services/toolSummary";
 import { ToolArgs, ToolResult, renderersFor } from "./toolRenderers";
@@ -39,6 +39,14 @@ function chartOf(activity: ToolActivity): ChartPayload | null {
   return isChartPayload(artifact) ? artifact : null;
 }
 
+/** What a decided gate says in place of its buttons. */
+function decisionStatus(recorded: RecordedDecision, undecided: number): string {
+  if (recorded.heldBack)
+    return "not run: another call in this step was denied — Cameron will ask again";
+  if (recorded.sent) return recorded.decision === "allow" ? "sent" : "nothing was written";
+  return `waiting for ${undecided} more ${undecided === 1 ? "decision" : "decisions"}`;
+}
+
 /** The amber approval gate: in a thread, amber means "this touches money". */
 const ApprovalGate = ({
   activity,
@@ -47,7 +55,9 @@ const ApprovalGate = ({
   activity: ToolActivity;
   callbacks: ToolApprovalCallbacks;
 }) => {
-  const [responded, setResponded] = useState(false);
+  // Decisions live in the hook, per call: one card never decides for its siblings.
+  const recorded = callbacks.decisions[activity.callId];
+  const batched = callbacks.batchSize > 1;
 
   return (
     <div className="border-brand bg-card overflow-hidden rounded-lg border shadow-[0_0_0_4px_var(--brand-soft)]">
@@ -70,33 +80,57 @@ const ApprovalGate = ({
         {/* Never collapsed — the arguments ARE the thing being approved. */}
         <ToolArgs toolName={activity.name} args={activity.args} gate preview={activity.preview} />
 
-        <div className="mt-4 flex items-center gap-2.5">
-          <button
-            disabled={responded}
-            onClick={() => {
-              setResponded(true);
-              callbacks.onApprove(activity.callId);
-            }}
-            className="bg-brand text-brand-foreground hover:bg-brand-bright flex cursor-pointer items-center gap-1.5 rounded-md px-5 py-2 font-mono text-xs font-semibold tracking-wide transition-colors disabled:cursor-default disabled:opacity-50"
-          >
-            <Check className="h-3.5 w-3.5" />
-            APPROVE
-          </button>
-          <button
-            disabled={responded}
-            onClick={() => {
-              setResponded(true);
-              callbacks.onDeny(activity.callId);
-            }}
-            className="border-border text-muted-foreground hover:bg-accent hover:text-foreground flex cursor-pointer items-center gap-1.5 rounded-md border px-4 py-2 font-mono text-xs font-medium tracking-wide transition-colors disabled:cursor-default disabled:opacity-50"
-          >
-            <X className="h-3.5 w-3.5" />
-            DENY
-          </button>
-          <span className="text-muted-foreground ml-auto font-mono text-[10px]">
-            nothing is written until you approve
-          </span>
-        </div>
+        {recorded ? (
+          <div className="mt-4 flex flex-wrap items-center gap-2.5">
+            <span
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-mono text-xs font-semibold tracking-wide ${
+                recorded.decision === "allow"
+                  ? "bg-brand/15 text-brand-dim"
+                  : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {recorded.decision === "allow" ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : (
+                <X className="h-3.5 w-3.5" />
+              )}
+              {recorded.decision === "allow" ? "APPROVED" : "DENIED"}
+            </span>
+            <span className="text-muted-foreground font-mono text-[11px]">
+              {decisionStatus(recorded, callbacks.undecided)}
+            </span>
+            {!recorded.sent && (
+              <button
+                onClick={() => callbacks.onUndo(activity.callId)}
+                className="text-muted-foreground hover:text-foreground ml-auto cursor-pointer font-mono text-[11px] underline underline-offset-2"
+              >
+                change
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="mt-4 flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={() => callbacks.onApprove(activity.callId)}
+              className="bg-brand text-brand-foreground hover:bg-brand-bright flex cursor-pointer items-center gap-1.5 rounded-md px-5 py-2 font-mono text-xs font-semibold tracking-wide transition-colors"
+            >
+              <Check className="h-3.5 w-3.5" />
+              APPROVE
+            </button>
+            <button
+              onClick={() => callbacks.onDeny(activity.callId)}
+              className="border-border text-muted-foreground hover:bg-accent hover:text-foreground flex cursor-pointer items-center gap-1.5 rounded-md border px-4 py-2 font-mono text-xs font-medium tracking-wide transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+              DENY
+            </button>
+            <span className="text-muted-foreground ml-auto font-mono text-[10px]">
+              {batched
+                ? "nothing runs until every call here is decided · a denial sends them all back"
+                : "nothing is written until you approve"}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

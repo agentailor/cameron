@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { MessageOptions, MessageResponse, AIMessageData } from "@/types/message";
+import type {
+  MessageOptions,
+  MessageResponse,
+  AIMessageData,
+  ApprovalDecision,
+  RecordedDecision,
+} from "@/types/message";
 import { createMessageStream, fetchMessageHistory } from "@/services/chatService";
+import { pendingApprovalIds } from "@/services/toolActivity";
 
 interface UseChatThreadOptions {
   threadId: string | null;
@@ -15,7 +22,12 @@ export interface UseChatThreadReturn {
   sendError: Error | null;
   sendMessage: (text: string, opts?: MessageOptions) => Promise<void>;
   refetchMessages: () => Promise<unknown>;
-  approveToolExecution: (toolCallId: string, action: "allow" | "deny") => Promise<void>;
+  /** Record one call's decision; the batch resumes once every pending call has one. */
+  decideToolCall: (toolCallId: string, action: ApprovalDecision) => void;
+  undoToolDecision: (toolCallId: string) => void;
+  decisions: Record<string, RecordedDecision>;
+  /** The gated calls in the batch still to be sent, decided or not. */
+  batchIds: string[];
 }
 
 export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThreadReturn {
@@ -24,6 +36,7 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
   const currentMessageRef = useRef<MessageResponse | null>(null);
   const [sendError, setSendError] = useState<Error | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [decisions, setDecisions] = useState<Record<string, RecordedDecision>>({});
 
   const {
     data: messages = [],
@@ -46,10 +59,15 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId, refetchMessagesQuery]);
 
-  // Shared function to handle SSE streaming for both sendMessage and approveToolExecution
+  // Shared function to handle SSE streaming for both sendMessage and decideToolCall
   const handleStreamResponse = useCallback(
-    async (streamParams: { threadId: string; text?: string; opts?: MessageOptions }) => {
-      const { threadId, text = "", opts } = streamParams;
+    async (streamParams: {
+      threadId: string;
+      text?: string;
+      opts?: MessageOptions;
+      onError?: () => void;
+    }) => {
+      const { threadId, text = "", opts, onError } = streamParams;
 
       setIsSending(true);
       setSendError(null);
@@ -151,6 +169,7 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
             ]);
           } finally {
             // Always clean up the stream and flags on error
+            onError?.();
             setIsSending(false);
             currentMessageRef.current = null;
             stream.close();
@@ -160,6 +179,7 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
       } catch (err: unknown) {
         // Network/setup failure before the stream started: capture and expose the error
         setSendError(err as Error);
+        onError?.();
         setIsSending(false);
         currentMessageRef.current = null;
       }
@@ -194,19 +214,56 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
     [threadId, queryClient, handleStreamResponse],
   );
 
-  const approveToolExecution = useCallback(
-    async (toolCallId: string, action: "allow" | "deny") => {
-      if (!threadId) return;
+  // A sent decision stays recorded: a denied call gets no live result, so its id stays in the
+  // pending marker until the next history load, and must not count toward a new batch.
+  const batchIds = useMemo(
+    () => pendingApprovalIds(messages).filter((id) => !decisions[id]?.sent),
+    [messages, decisions],
+  );
 
-      // Handle the streaming response with allowTool parameter, empty content since we're resuming
-      await handleStreamResponse({
+  const decideToolCall = useCallback(
+    (toolCallId: string, action: ApprovalDecision) => {
+      if (!threadId || isSending || !batchIds.includes(toolCallId)) return;
+
+      const next = { ...decisions, [toolCallId]: { decision: action, sent: false } };
+      if (!batchIds.every((id) => next[id])) {
+        setDecisions(next);
+        return;
+      }
+
+      // Every call in the batch is decided: send them together, one decision per call id.
+      const batch = Object.fromEntries(batchIds.map((id) => [id, next[id].decision]));
+      const anyDenied = Object.values(batch).includes("deny");
+      const sent = Object.fromEntries(
+        batchIds.map((id) => [
+          id,
+          { decision: batch[id], sent: true, heldBack: anyDenied && batch[id] === "allow" },
+        ]),
+      );
+      setDecisions({ ...next, ...sent });
+
+      void handleStreamResponse({
         threadId,
         text: "",
-        opts: { allowTool: action },
+        opts: { decisions: batch },
+        // Refused or failed: nothing resumed, so the batch is undecided again.
+        onError: () =>
+          setDecisions((d) =>
+            Object.fromEntries(Object.entries(d).filter(([id]) => !batchIds.includes(id))),
+          ),
       });
     },
-    [threadId, handleStreamResponse],
+    [threadId, isSending, batchIds, decisions, handleStreamResponse],
   );
+
+  const undoToolDecision = useCallback((toolCallId: string) => {
+    setDecisions((d) => {
+      if (!d[toolCallId] || d[toolCallId].sent) return d;
+      const rest = { ...d };
+      delete rest[toolCallId];
+      return rest;
+    });
+  }, []);
 
   useEffect(
     () => () => {
@@ -227,6 +284,9 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
     sendError,
     sendMessage,
     refetchMessages: refetchMessagesQuery,
-    approveToolExecution,
+    decideToolCall,
+    undoToolDecision,
+    decisions,
+    batchIds,
   };
 }

@@ -24,6 +24,8 @@ export interface RunCapture {
    * either way.
    */
   interrupts: ToolCall[];
+  /** The same paused calls, grouped by the interrupt (model step) that paused them. */
+  interruptBatches?: ToolCall[][];
   /** Set if invoke threw — a crash is a graded failure, not a harness failure. */
   error?: string;
   /**
@@ -43,6 +45,15 @@ export interface RunCapture {
    */
   pausedAtEnd?: boolean;
 }
+
+/**
+ * How a case answers the approval gate. A per-call policy decides each paused call on its own,
+ * the way a user clicking each card does — it is how a mixed batch is evaluated (#45).
+ */
+export type ApprovalPolicy =
+  | "allow"
+  | "deny"
+  | { label: string; decide: (call: ToolCall) => "allow" | "deny" };
 
 /**
  * Why a run produced no gradeable evidence.
@@ -158,10 +169,11 @@ export interface EvalCase {
    */
   runs?: { n: number; passK: number };
   /**
-   * Run with the human-in-the-loop middleware LIVE and answer its interrupt with this decision.
-   * Omit to auto-approve everything. Implies the case mutates, so the fixture is reset per run.
+   * Run with the human-in-the-loop middleware LIVE and answer its interrupts: one decision for
+   * every call, or a per-call policy. Omit to auto-approve everything. Implies the case mutates,
+   * so the fixture is reset per run.
    */
-  approval?: "allow" | "deny";
+  approval?: ApprovalPolicy;
   /**
    * Opt into a simulated user, so the agent can ASK and get an answer.
    *

@@ -364,15 +364,27 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
 - **The server says which calls are pending; the client never infers it.** Once a run settles,
   `streamMessages` re-emits the AI message carrying `pendingToolCallIds` — the calls the model
   requested that never executed, which is exactly what the gate paused. The frontend shows the
-  approval UI for those ids and re-opens the stream with `allowTool=allow/deny` (empty content);
-  the SSE contract is otherwise unchanged. Position in the message list is NOT a pending signal:
+  approval UI for those ids and, once every one has a decision, re-opens the stream with
+  `decisions={"<callId>":"allow"|"deny",…}` (empty content); the SSE contract is otherwise unchanged. Position in the message list is NOT a pending signal:
   tool results and later AI text both arrive after the call, so "is it last?" is wrong in both
   directions — it hid the gate on a real pause and offered APPROVE on read-only tools.
 - `ToolActivityGroup` additionally requires `isMutatingTool(name)` before rendering the amber panel.
   Two independent conditions, because that panel claims "this writes to your data".
-- `src/services/agentService.ts` translates the wire signal into a HITL resume: it reads the pending
-  request via `agent.graph.getState()` and resumes with `Command({ resume: { decisions } })` — one
-  decision per requested action (`allow`→`{type:"approve"}`, `deny`→`{type:"reject", message}`).
+- **One decision per call, never one for the batch (#45).** The middleware batches every gated call
+  of one model step into one interrupt and aligns decisions by POSITION; its `actionRequests` carry
+  no call id. Each card records its own decision in `useChatThread` ("waiting for N more", with a
+  `change` link) and the batch is sent only when all are in.
+  `src/services/approvalDecisions.ts` (pure, tested beside it) owns the mapping: `readPendingBatch`
+  rebuilds the order from the paused AI message's gated calls, and `resolveDecisions` checks it
+  against the action requests (name + args) and **refuses** — nothing resumes — on a missing,
+  unknown or invalid id or any misalignment. A decision is never defaulted or copied.
+- **A denial sends the whole step back — by design, not a workaround.** Calls the model makes in one
+  step form one plan, so they run together or not at all; a denial lets the model re-plan rather
+  than run the rest of a plan the user partly refused. Don't "fix" it so approved siblings run.
+  Mechanically: when any call in a batch is rejected, the middleware drops the APPROVED siblings
+  and returns to the model, so those would vanish from the history unseen. `resolveDecisions`
+  therefore rejects them with `HELD_BACK_MESSAGE` ("approved, not run — request it again"), and
+  the agent re-requests them, gated again. The card says "not run" rather than pretending it ran. The eval harness answers interrupts through the same two functions.
 
 ## Project-Specific Patterns
 
@@ -398,7 +410,7 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
 ### API Route Patterns
 
 - Stream endpoints use `dynamic = "force-dynamic"` and `runtime = "nodejs"`
-- Query params for streaming: `content`, `threadId`, `model`, `provider`, `allowTool`
+- Query params for streaming: `content`, `threadId`, `model`, `provider`, `decisions`
   (deliberately NO approval-bypass param — see the approval workflow above)
 - MCP server CRUD follows REST patterns in `/api/mcp-servers/route.ts`
 - File upload endpoint: `/api/agent/upload` accepts multipart/form-data, returns file metadata

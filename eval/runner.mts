@@ -1,11 +1,18 @@
 import { HumanMessage, isAIMessage, isToolMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
-import type { Decision, HITLRequest, HITLResponse } from "langchain";
+import type { HITLResponse } from "langchain";
 import { randomUUID } from "node:crypto";
+import {
+  readPendingBatch,
+  resolveDecisions,
+  type GraphSnapshot,
+  type PendingBatch,
+} from "../src/services/approvalDecisions.ts";
 import { LIMITS } from "./config.mts";
 import { runSimulatedConversation } from "./simulatedUser.mts";
 import type {
+  ApprovalPolicy,
   ConversationTurn,
   EvalCase,
   Inconclusive,
@@ -61,19 +68,31 @@ function lastAssistantText(messages: BaseMessage[]): string {
 }
 
 /**
- * Read the approval request the graph is paused on, exactly the way the app does
- * (see `buildResumeCommand` in src/services/agentService.ts). Returns [] when nothing is pending —
- * which for an approval case is itself the finding: the mutation never hit the gate.
+ * Read the batch the graph is paused on, exactly the way the app does (`readPendingBatch`, shared
+ * with src/services/agentService.ts). An empty batch means nothing is pending — which for an
+ * approval case is itself the finding: the mutation never hit the gate.
  */
-async function pendingActions(agent: Agent, threadId: string): Promise<ToolCall[]> {
-  const snapshot = (await agent.graph.getState({ configurable: { thread_id: threadId } })) as {
-    tasks?: { interrupts?: { value: unknown }[] }[];
-  };
-  const pending = snapshot.tasks
-    ?.flatMap((t) => t.interrupts ?? [])
-    .map((i) => i.value as HITLRequest | undefined)
-    .find((v) => v && Array.isArray(v.actionRequests));
-  return (pending?.actionRequests ?? []).map((a) => ({ name: a.name, args: a.args }));
+async function pendingBatch(agent: Agent, threadId: string): Promise<PendingBatch> {
+  const snapshot = await agent.graph.getState({ configurable: { thread_id: threadId } });
+  return readPendingBatch(snapshot as GraphSnapshot);
+}
+
+const callsOf = (batch: PendingBatch): ToolCall[] =>
+  batch.actionRequests.map((a) => ({ name: a.name, args: a.args as Record<string, unknown> }));
+
+/** Answer one batch through the app's own resolver, so the model sees what the UI would send. */
+function resumeFor(policy: ApprovalPolicy, batch: PendingBatch): Command {
+  const decide = typeof policy === "string" ? () => policy : policy.decide;
+  const decisions = Object.fromEntries(
+    batch.pausedCalls.map((c) => [
+      c.id,
+      decide({ name: c.name, args: c.args as Record<string, unknown> }),
+    ]),
+  );
+  const resolved = resolveDecisions({ ...batch, decisions });
+  if (!resolved.ok) throw new Error(`approval resume refused: ${resolved.error}`);
+  const resume: HITLResponse = { decisions: resolved.decisions };
+  return new Command({ resume });
 }
 
 export async function runCase(agent: Agent, testCase: EvalCase): Promise<RunCapture> {
@@ -82,6 +101,7 @@ export async function runCase(agent: Agent, testCase: EvalCase): Promise<RunCapt
   const trajectory: ToolCall[] = [];
   const toolResults: ToolResult[] = [];
   const interrupts: ToolCall[] = [];
+  const interruptBatches: ToolCall[][] = [];
 
   // Each invoke returns the WHOLE thread; `seen` is the cursor past what's already collected.
   let seen = 0;
@@ -109,32 +129,34 @@ export async function runCase(agent: Agent, testCase: EvalCase): Promise<RunCapt
 
     // With `approval` set the middleware is live, so a mutating call pauses instead of running.
     if (testCase.approval) {
-      let batch = await pendingActions(agent, threadId);
-      interrupts.push(...batch);
+      let batch = await pendingBatch(agent, threadId);
+      const record = () => {
+        if (batch.actionRequests.length === 0) return;
+        interrupts.push(...callsOf(batch));
+        interruptBatches.push(callsOf(batch));
+      };
+      record();
 
       // A turn can pause more than once — keep resuming until nothing is pending.
       // See "Approval cases" in eval/README.md for why answering only the first breaks a case.
-      for (let guard = 0; batch.length > 0 && guard < LIMITS.recursionLimit; guard++) {
-        const decision: Decision =
-          testCase.approval === "allow"
-            ? { type: "approve" }
-            : { type: "reject", message: "The user denied this action." };
-        // One decision per action request, positionally aligned.
-        const resume: HITLResponse = { decisions: batch.map(() => decision) };
-
-        result = await agent.invoke(new Command({ resume }), config);
+      for (
+        let guard = 0;
+        batch.actionRequests.length > 0 && guard < LIMITS.recursionLimit;
+        guard++
+      ) {
+        result = await agent.invoke(resumeFor(testCase.approval, batch), config);
         fresh = result.messages.slice(seen);
         collect(fresh, trajectory, toolResults);
         seen = result.messages.length;
         finalText = lastAssistantText(fresh) || finalText;
         turnText = lastAssistantText(fresh) || turnText;
 
-        batch = await pendingActions(agent, threadId);
-        interrupts.push(...batch);
+        batch = await pendingBatch(agent, threadId);
+        record();
       }
 
       // Still pending: the agent is waiting, not finished — a distinction `trajectory` can't make.
-      pausedAtEnd = batch.length > 0;
+      pausedAtEnd = batch.actionRequests.length > 0;
     }
 
     return turnText;
@@ -162,6 +184,7 @@ export async function runCase(agent: Agent, testCase: EvalCase): Promise<RunCapt
       trajectory,
       toolResults,
       interrupts,
+      interruptBatches,
       pausedAtEnd,
       ...(conversation ? { conversation } : {}),
       ...(inconclusive ? { inconclusive } : {}),
@@ -182,6 +205,14 @@ export async function runCase(agent: Agent, testCase: EvalCase): Promise<RunCapt
         },
       };
     }
-    return { finalText, trajectory, toolResults, interrupts, pausedAtEnd, error: message };
+    return {
+      finalText,
+      trajectory,
+      toolResults,
+      interrupts,
+      interruptBatches,
+      pausedAtEnd,
+      error: message,
+    };
   }
 }

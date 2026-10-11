@@ -189,18 +189,14 @@ export async function streamResponse(params: {
     tools: opts?.tools,
   });
 
-  // Handle tool approval (HITL resume) vs normal input. On resume we read the pending HITL request
-  // from the checkpoint to emit one decision per proposed action (approve / reject).
+  // Handle tool approval (HITL resume) vs normal input. A resume carries one decision per pending
+  // call id; approvalDecisions.ts maps them onto the middleware's positional array (or refuses).
   let inputs;
-  if (opts?.allowTool) {
-    const decision =
-      opts.allowTool === "allow"
-        ? { type: "approve" }
-        : { type: "reject", message: "The user denied this action." };
+  if (opts?.decisions) {
     const snapshot = await agent.graph.getState({ configurable: { thread_id: threadId } });
-    const pending = snapshot.tasks?.flatMap((t) => t.interrupts ?? []).map((i) => i.value)[0];
-    const count = pending?.actionRequests?.length ?? 1;
-    inputs = new Command({ resume: { decisions: Array.from({ length: count }, () => decision) } });
+    const resolved = resolveDecisions({ ...readPendingBatch(snapshot), decisions: opts.decisions });
+    if (!resolved.ok) throw new Error(resolved.error);
+    inputs = new Command({ resume: { decisions: resolved.decisions } });
   } else {
     inputs = { messages: [new HumanMessage(userText)] };
   }
@@ -252,7 +248,7 @@ export function useChatThread({ threadId }: UseChatThreadOptions) {
   return {
     messages,
     sendMessage,
-    approveToolExecution,
+    decideToolCall,
     // ... other methods
   };
 }
@@ -430,26 +426,17 @@ there are no more tool calls. `humanInTheLoopMiddleware` runs after the `model` 
 ### Interrupt Handling
 
 The middleware surfaces a batched `HITLRequest` and is resumed with a matching `HITLResponse` — one
-decision per proposed action. The service (`agentService.ts`) reads the pending request from the
-checkpoint and builds the decisions from the client's `allow` / `deny` signal:
+decision per proposed action, aligned by position, while the action requests carry no call id. The
+client sends one decision per call id (`decisions={"<callId>":"allow"|"deny"}`), and
+`src/services/approvalDecisions.ts` turns that into the positional array:
 
-```typescript
-import { Command } from "@langchain/langgraph";
-import type { Decision, HITLResponse } from "langchain";
-
-const decision: Decision =
-  allowTool === "allow"
-    ? { type: "approve" }
-    : { type: "reject", message: "The user denied this action." };
-
-// One decision per proposed action, positionally aligned to the request.
-const snapshot = await agent.graph.getState({ configurable: { thread_id: threadId } });
-const pending = snapshot.tasks?.flatMap((t) => t.interrupts ?? []).map((i) => i.value)[0];
-const count = pending?.actionRequests?.length ?? 1;
-
-const resume: HITLResponse = { decisions: Array.from({ length: count }, () => decision) };
-await agent.stream(new Command({ resume }), { configurable: { thread_id: threadId } });
-```
+- `readPendingBatch(snapshot)` reads the interrupt's action requests and the paused AI message's gated
+  calls (filtered by `MUTATING_TOOL_NAMES`) — the same order the middleware used.
+- `resolveDecisions(...)` checks the two line up (name + args), then refuses on any missing, unknown
+  or invalid id. It never defaults a decision or copies one to another call.
+- If any call is denied, the middleware drops approved siblings and returns to the model, so those are
+  sent as rejects with `HELD_BACK_MESSAGE` ("approved, not run — request it again") instead of
+  vanishing from the history.
 
 ## 🔧 MCP Integration
 
@@ -593,16 +580,13 @@ MCP tools run without pausing.
 ### Frontend Implementation
 
 ```typescript
-const approveToolExecution = useCallback(
-  async (toolCallId: string, action: "allow" | "deny") => {
-    await handleStreamResponse({
-      threadId,
-      text: "",
-      opts: { allowTool: action },
-    });
-  },
-  [threadId, handleStreamResponse],
-);
+// useChatThread: each card records its own decision; the batch is sent once all are in.
+const decideToolCall = (toolCallId: string, action: "allow" | "deny") => {
+  const next = { ...decisions, [toolCallId]: { decision: action, sent: false } };
+  if (!batchIds.every((id) => next[id])) return setDecisions(next); // "waiting for N more"
+  const batch = Object.fromEntries(batchIds.map((id) => [id, next[id].decision]));
+  handleStreamResponse({ threadId, text: "", opts: { decisions: batch } });
+};
 ```
 
 ## 🌊 Streaming Architecture

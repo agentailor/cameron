@@ -20,23 +20,15 @@ const ToolActivityGroupCard = dynamic(
 
 interface MessageListProps {
   messages: MessageResponse[];
-  approveToolExecution?: (toolCallId: string, action: "allow" | "deny") => Promise<void>;
+  approvalCallbacks?: ToolApprovalCallbacks;
 }
 
-const MessageList = ({ messages, approveToolExecution }: MessageListProps) => {
+const MessageList = ({ messages, approvalCallbacks }: MessageListProps) => {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  // Create approval callbacks for tool execution
-  const approvalCallbacks: ToolApprovalCallbacks | undefined = approveToolExecution
-    ? {
-        onApprove: (toolCallId: string) => approveToolExecution(toolCallId, "allow"),
-        onDeny: (toolCallId: string) => approveToolExecution(toolCallId, "deny"),
-      }
-    : undefined;
 
   // Dedup, plus pairing of each call with its result; see services/toolActivity.ts.
   const items = useMemo(() => buildThreadItems(messages), [messages]);

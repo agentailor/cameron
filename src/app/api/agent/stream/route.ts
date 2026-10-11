@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { streamResponse } from "@/services/agentService";
-import type { MessageResponse, FileAttachment } from "@/types/message";
+import type { MessageResponse, FileAttachment, ApprovalDecision } from "@/types/message";
+import { ApprovalDecisions } from "./schema";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
   const threadId = searchParams.get("threadId") || "unknown";
   const model = searchParams.get("model") || undefined;
   const provider = searchParams.get("provider") || undefined;
-  const allowTool = searchParams.get("allowTool") as "allow" | "deny" | null;
+  const decisionsParam = searchParams.get("decisions");
   const toolsParam = searchParams.get("tools") || "";
   const attachmentsParam = searchParams.get("attachments") || "";
 
@@ -38,6 +39,21 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // A malformed decision set is refused inside the stream, so the client sees why.
+  let decisions: Record<string, ApprovalDecision> | undefined;
+  let decisionsError: string | undefined;
+  if (decisionsParam !== null) {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(decisionsParam);
+    } catch {
+      raw = undefined;
+    }
+    const parsed = ApprovalDecisions.safeParse(raw);
+    if (parsed.success) decisions = parsed.data;
+    else decisionsError = "Invalid approval decisions; nothing was resumed.";
+  }
+
   // Thread existence handled in service.
 
   const encoder = new TextEncoder();
@@ -53,6 +69,7 @@ export async function GET(req: NextRequest) {
       // Run the agent streaming in the background
       (async () => {
         try {
+          if (decisionsError) throw new Error(decisionsError);
           const iterable = await streamResponse({
             threadId,
             userText: userContent,
@@ -60,7 +77,7 @@ export async function GET(req: NextRequest) {
               model,
               provider,
               tools,
-              allowTool: allowTool || undefined,
+              decisions,
               attachments,
             },
           });

@@ -30,8 +30,8 @@ export interface ReportCase {
   /** The opening turn. An array only in reports saved before scripted turns were removed. */
   prompt: string | string[];
   tags?: string[];
-  /** `approval` implies the HITL middleware ran live for this case. */
-  approval?: "allow" | "deny";
+  /** `approval` implies the HITL middleware ran live: "allow", "deny", or a per-call policy's label. */
+  approval?: string;
   /**
    * Present when the case ran with a simulated user. Fact VALUES are deliberately omitted — a
    * report is a shared artifact, and the count plus the goal is enough to explain the run.
@@ -111,7 +111,8 @@ export function buildReport(
     description: o.testCase.description,
     prompt: o.testCase.prompt,
     tags: o.testCase.tags,
-    approval: o.testCase.approval,
+    approval:
+      typeof o.testCase.approval === "object" ? o.testCase.approval.label : o.testCase.approval,
     ...(o.testCase.user
       ? {
           user: {
