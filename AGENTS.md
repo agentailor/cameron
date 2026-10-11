@@ -283,6 +283,8 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   filters _ignoring_ the limit, so callers can tell a capped page from a complete one; the COUNT
   only runs when the page came back full. New bounded list functions should follow this shape —
   returning rows alone makes truncation invisible to the agent.
+- **Transaction repository types** (inputs, pages, snapshots, guarded results) live beside it in
+  `transactionTypes.ts`, so callers can name them without importing the database client.
 - **Guarded edits**: `transactionRepository.updateIfUnchanged` / `removeManyIfUnchanged` lock the
   rows, compare each one's `version` (the raw `updated_at` literal, from a `TransactionSnapshot`)
   and write in one transaction, returning `not_found` / `stale` instead of throwing. The old

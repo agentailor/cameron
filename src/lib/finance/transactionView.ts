@@ -1,5 +1,5 @@
 import type { TransactionView } from "@/types/finance";
-import type { TransactionSnapshot } from "@/lib/repositories/transactionRepository";
+import type { TransactionSnapshot } from "@/lib/repositories/transactionTypes";
 
 /** The fields a {@link TransactionView} carries, in display order. */
 export const TRANSACTION_VIEW_FIELDS = [

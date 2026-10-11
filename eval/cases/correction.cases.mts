@@ -17,17 +17,9 @@ import { FIXTURE } from "../seed.mts";
 import type { EvalCase } from "../types.mts";
 
 /**
- * Correcting and deleting transactions (issue #12). The tools are new and the system prompt does
- * not mention them, so these cases measure what the tool DESCRIPTIONS alone achieve.
- *
- * The defect class is an edit made the wrong way while looking right: a correction logged as a
- * second row (the agent offered exactly this before the tools existed), or an id used without
- * looking it up. Graded on the database and on tool order, never on what the agent says it did.
- *
- * Deletes are a two-step conversation: the validator's rows are shown and the agent is told to wait
- * for the user's go-ahead, so those cases give the simulated user the answer to that question.
- * Whether the agent actually waited is NOT graded — the approval gate, not the pause, is what stops
- * a delete, and an agent that deletes straight away still has to get the click.
+ * Edits made the wrong way while looking right: a correction logged as a second row, or an id used
+ * without looking it up. Whether the agent waits for the user before deleting is not graded — the
+ * approval gate, not the pause, is what stops a delete.
  */
 
 const { update, deleteOne, deleteCategory } = FIXTURE.edits;
@@ -47,7 +39,7 @@ export const cases: EvalCase[] = [
     id: "correction-updates-instead-of-relogging",
     description:
       "An expense logged in the wrong currency is corrected in place — one row, now EUR — not " +
-      "logged a second time. The pre-#12 agent offered 're-log it', which double-counts.",
+      "logged a second time, which would double-count it.",
     prompt: "Log a 4.20 coffee at the corner cafe on my checking account.",
     user: {
       // Neutral on purpose: a goal mentioning the currency would have the simulator raise it early,

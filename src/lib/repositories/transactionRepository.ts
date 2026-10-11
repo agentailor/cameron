@@ -2,6 +2,17 @@ import { and, count, desc, eq, gte, ilike, inArray, lte, or, type SQL } from "dr
 import db from "@/lib/database/db";
 import { categories, transactions } from "@/lib/database/schema";
 import { Account, TransactionType, type Transaction } from "@/types/finance";
+import type {
+  CreateTransactionInput,
+  GuardedDeleteResult,
+  GuardedUpdateResult,
+  ImportResult,
+  ImportRow,
+  TransactionFilters,
+  TransactionPage,
+  TransactionPatch,
+  TransactionSnapshot,
+} from "./transactionTypes";
 
 /**
  * Persistence for transactions — Cameron's system of record. The ONLY ORM seam for
@@ -37,31 +48,6 @@ function now(): string {
   return new Date().toISOString();
 }
 
-export interface CreateTransactionInput {
-  occurredAt: Date | string;
-  amountMinor: number; // always positive
-  type: TransactionType;
-  note: string;
-  currency: string;
-  description?: string | null;
-  merchant?: string | null;
-  categoryId?: string | null;
-  account: Account;
-  source: string; // "manual" | "csv" | "demobank"
-  externalId?: string | null;
-}
-
-export interface TransactionFilters {
-  from?: Date | string; // occurredAt >= from
-  to?: Date | string; // occurredAt <= to
-  type?: TransactionType;
-  account?: Account;
-  categoryId?: string;
-  /** Case-insensitive substring match on note / description / merchant. */
-  text?: string;
-  limit?: number;
-}
-
 /** Hard cap so a query can never dump the whole table into the model. */
 const MAX_LIMIT = 200;
 
@@ -70,20 +56,6 @@ const DEFAULT_LIMIT = 50;
 
 function toIso(d: Date | string): string {
   return typeof d === "string" ? d : d.toISOString();
-}
-
-/**
- * A bounded page plus how many matched. `total` is what makes truncation visible — `rows` alone
- * leaves "50 of 50" and "50 of 847" indistinguishable.
- */
-export interface TransactionPage {
-  rows: Transaction[];
-  /**
-   * Total matching the filters, ignoring the limit. Counted only when the page came back full;
-   * otherwise it IS `rows.length`. Keep both branches exact — callers derive `truncated` from
-   * `total > rows.length`, so an approximation here would misreport truncation.
-   */
-  total: number;
 }
 
 export async function list(filters: TransactionFilters = {}): Promise<TransactionPage> {
@@ -175,16 +147,6 @@ export async function createMany(
   return { imported: inserted.length, skipped: inputs.length - inserted.length };
 }
 
-/** A row to import that still carries its category as a NAME (resolved to an id during import). */
-export type ImportRow = CreateTransactionInput & { categoryName?: string | null };
-
-export interface ImportResult {
-  imported: number;
-  skipped: number;
-  categorized: number;
-  categoriesCreated: string[];
-}
-
 /**
  * Atomic bulk import: resolves categories and inserts transactions in ONE transaction, so a failed
  * insert rolls back any categories created. Category names are resolved in bulk (one lookup + one
@@ -268,13 +230,6 @@ export async function importWithCategories(rows: ImportRow[]): Promise<ImportRes
   });
 }
 
-/**
- * A transaction as an edit sees it: the row, its category NAME, and `version` — the raw
- * `updated_at` literal. Edits compare `version` as the driver returned it, never round-tripped
- * through `Date` (see the timestamp note in AGENTS.md).
- */
-export type TransactionSnapshot = Transaction & { categoryName: string | null; version: string };
-
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 const snapshotColumns = { row: transactions, categoryName: categories.name };
@@ -333,30 +288,6 @@ async function resolveCategoryIn(tx: Tx, name: string): Promise<{ id: string; cr
   return { id: raced.id, created: false };
 }
 
-/** Fields an edit may change. `undefined` leaves a field alone. */
-export interface TransactionPatch {
-  occurredAt?: string;
-  amountMinor?: number;
-  type?: TransactionType;
-  note?: string;
-  currency?: string;
-  account?: Account;
-  merchant?: string | null;
-  description?: string | null;
-  /** A category NAME, created if new; `null` uncategorizes. */
-  categoryName?: string | null;
-}
-
-export type GuardedUpdateResult =
-  | {
-      status: "updated";
-      before: TransactionSnapshot;
-      after: TransactionSnapshot;
-      categoryCreated: string | null;
-    }
-  | { status: "not_found" }
-  | { status: "stale" };
-
 /**
  * Apply `patch` only if the row is still at `version`. The category is resolved in the same
  * transaction, so a stale or failed update never leaves a new category behind.
@@ -394,11 +325,6 @@ export async function updateIfUnchanged(
     return { status: "updated", before, after, categoryCreated };
   });
 }
-
-export type GuardedDeleteResult =
-  | { status: "deleted"; rows: TransactionSnapshot[] }
-  | { status: "not_found"; ids: string[] }
-  | { status: "stale"; ids: string[] };
 
 /**
  * Delete every row in `expected`, or none: if any is missing or no longer at its version,

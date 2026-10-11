@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TransactionSnapshot } from "@/lib/repositories/transactionRepository";
+import type { TransactionSnapshot } from "@/lib/repositories/transactionTypes";
 import { callTool, makeCategory, makeTransaction } from "./testing";
 
 /** Contract tests for the edit tools — repositories stubbed. See docs/TRANSACTION_EDITS.md. */

@@ -1,7 +1,7 @@
 import Papa from "papaparse";
 import { parse as parseDateFns, isValid } from "date-fns";
 import { Account, TransactionType } from "@/types/finance";
-import type { ImportRow } from "@/lib/repositories/transactionRepository";
+import type { ImportRow } from "@/lib/repositories/transactionTypes";
 import { DEFAULT_CURRENCY } from "@/lib/config/catalog";
 
 /**

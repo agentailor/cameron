@@ -2,10 +2,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import * as transactionRepo from "@/lib/repositories/transactionRepository";
-import type {
-  TransactionPatch,
-  TransactionSnapshot,
-} from "@/lib/repositories/transactionRepository";
+import type { TransactionPatch, TransactionSnapshot } from "@/lib/repositories/transactionTypes";
 import * as categoryRepo from "@/lib/repositories/categoryRepository";
 import { toTransactionView, TRANSACTION_VIEW_FIELDS } from "@/lib/finance/transactionView";
 import { Account, TransactionType, type TransactionView } from "@/types/finance";
