@@ -1,4 +1,4 @@
-import { tracingEnabled } from "./src/lib/tracing/config";
+import { tracingEnabled } from "./lib/tracing/config";
 
 export async function startTracing() {
   if (!tracingEnabled()) return;

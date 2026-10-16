@@ -595,8 +595,10 @@ Phoenix by default. Full detail in [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md
   gate as an event (tool names only) and the resume's approve/reject counts.
 - **`semconv.ts` is the only file naming `gen_ai.*` / `cameron.*` attributes.** The conventions are
   still Development stability; isolate any rename there.
-- **`instrumentation.ts`** starts the Node SDK with the OTLP/proto exporter. Next.js adds its own
-  route and `fetch` spans to the same trace.
+- **`src/instrumentation.ts`** starts the Node SDK with the OTLP/proto exporter. It must live in
+  `src/`: with an `src/app` layout the production build only looks there (a root-level file still
+  runs under `pnpm dev`, which hides the gap). Next.js adds its own route and `fetch` spans to the
+  same trace.
 - No vendor SDK: Langfuse, Jaeger or anything OTLP is an endpoint change, not a code change.
 
 ## OpenAPI / API Docs

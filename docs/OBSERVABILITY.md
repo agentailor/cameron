@@ -128,7 +128,7 @@ if you do.
 
 | File                             | Role                                                                                  |
 | -------------------------------- | ------------------------------------------------------------------------------------- |
-| `instrumentation.ts`             | Starts the OTel Node SDK with the OTLP/proto exporter, only when tracing is enabled   |
+| `src/instrumentation.ts`         | Starts the OTel Node SDK with the OTLP/proto exporter, only when tracing is enabled   |
 | `src/lib/tracing/config.ts`      | `tracingEnabled()` and `captureContent()`, read from the environment                  |
 | `src/lib/tracing/genAiTracer.ts` | LangChain callback handler that turns one run's callbacks into spans; one per request |
 | `src/lib/tracing/semconv.ts`     | The only file naming `gen_ai.*` and `cameron.*` attributes                            |
@@ -146,6 +146,10 @@ Notes for changing it:
 - **The approval pause is only visible on the HITL node.** It fails with `GraphInterrupt` (which
   carries the gated tool names), while the run itself ends normally. A resumed run's input is the
   `Command`, which is where the decision counts come from.
+- **`instrumentation.ts` must live in `src/`.** With an `src/app` layout, `next build` only looks
+  for it there; a root-level file still runs under `pnpm dev`, but the production (standalone)
+  build silently leaves it out, so production would never trace. Its Node-only half is
+  `src/instrumentation.node.ts`, imported only on the Node runtime so the Edge build never sees it.
 - **Model `fetch` spans are not children of the `chat` span.** Next.js creates them in the route's
   context; a callback handler can open spans but can't make them the active context for code it
   doesn't call.
