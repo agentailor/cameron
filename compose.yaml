@@ -212,6 +212,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY:-}
 
       # Traces go to this stack's own Phoenix, metadata only. PROD_-prefixed so a host-dev value in
       # .env (e.g. localhost:6006) never redirects production traces. See docs/OBSERVABILITY.md.
