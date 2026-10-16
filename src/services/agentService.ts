@@ -10,10 +10,8 @@ import { readPendingBatch, resolveDecisions } from "./approvalDecisions";
 import { processAttachmentsForAI } from "@/lib/storage/content";
 import { streamMessages, type AgentRun } from "./messageStream";
 import { projectHistory } from "./historyProjection";
-import { CallbackHandler } from "@langfuse/langchain";
-
-// Only instantiate when tracing is enabled; avoids errors when Langfuse credentials are absent.
-const langfuseHandler = process.env.LANGFUSE_ENABLED === "true" ? new CallbackHandler() : null;
+import { GenAiTracer } from "@/lib/tracing/genAiTracer";
+import { tracingEnabled } from "@/lib/tracing/config";
 
 /** Stream a turn (or resume a paused one) as MessageResponse chunks for the SSE route. */
 export async function streamResponse(params: {
@@ -36,7 +34,7 @@ export async function streamResponse(params: {
   const config = {
     version: "v3" as const,
     configurable: { thread_id: threadId },
-    ...(langfuseHandler ? { callbacks: [langfuseHandler] } : {}),
+    ...(tracingEnabled() ? { callbacks: [new GenAiTracer()] } : {}),
   };
 
   // A pending approval resumes the interrupt; otherwise start a fresh turn from the user message.

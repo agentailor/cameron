@@ -1,126 +1,157 @@
-# Observability with Langfuse
+# Observability
 
-This document explains how LLM observability is implemented in this template using [Langfuse](https://langfuse.com), and how to configure it for cloud or self-hosted setups.
+Cameron traces every agent run with [OpenTelemetry](https://opentelemetry.io), using the
+[GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/), and exports the
+spans over OTLP to a backend **you** run. The default is [Phoenix](https://phoenix.arize.com),
+self-hosted next to Cameron. Any OTLP backend works by changing one variable.
 
-## What is Langfuse?
+## Why the traces stay with you
 
-Langfuse is an open-source LLM observability platform. It captures traces of your agent runs, giving you visibility into:
+A trace of an agent run can hold the most sensitive data in the system: what you asked, every
+transaction a tool read, every amount the model wrote. Cameron's third rule is that financial data
+stays on infrastructure you control, and that has to include the traces. So:
 
-- Every LLM call (model, prompt, completion, token usage, latency)
-- Tool invocations and their inputs/outputs
-- The full agent step sequence per conversation turn
-- Costs and error rates over time
+- **Tracing is off unless you name an endpoint.** There is no default destination in the code.
+- **Content is a second, separate opt-in.** With it off (the default), only metadata leaves the
+  process — see [What a trace contains](#what-a-trace-contains).
+- **There is no vendor SDK.** Cameron emits standard spans; the backend is your choice.
 
-For a `createAgent` agent like this one, a single user message typically produces a trace that shows the model node → tools node chain, with nested LLM calls inside. When a mutating tool is proposed, the `humanInTheLoopMiddleware` pauses the run (an interrupt) until the user approves or denies.
-
-## Integration Architecture
-
-Two mechanisms work together to provide full coverage:
-
-```
-Next.js process starts
-  └─ instrumentation.ts register() called once (before any route)
-       └─ (if LANGFUSE_ENABLED=true) NodeSDK.start() — OTel active globally
-
-Request → /api/agent/stream
-  └─ agentService.ts streamResponse()
-       └─ agent.stream({ callbacks: [langfuseHandler] })
-            ├─ LangGraph events → CallbackHandler → Langfuse
-            └─ OTel spans (HTTP calls, etc.) → LangfuseSpanProcessor → Langfuse
-```
-
-**1. OpenTelemetry span processor** (`instrumentation.ts`)
-
-- Initialized once at process startup via Next.js's built-in instrumentation hook
-- Captures infrastructure-level spans: HTTP requests, database calls, anything OTel-instrumented
-- Uses `@langfuse/otel` → `LangfuseSpanProcessor`
-
-**2. LangChain CallbackHandler** (`src/services/agentService.ts`)
-
-- Attached to each `agent.stream()` call
-- Captures LangChain/LangGraph-specific semantic events: chain starts/ends, LLM calls with token counts, tool invocations, agent steps
-- Uses `@langfuse/langchain` → `CallbackHandler`
-
-Both are gated behind `LANGFUSE_ENABLED=true` — when disabled, there is zero overhead and no network calls to Langfuse.
-
-## Setup
-
-### Option A: Langfuse Cloud
-
-1. Create a free account at [cloud.langfuse.com](https://cloud.langfuse.com) (EU region) or [us.cloud.langfuse.com](https://us.cloud.langfuse.com) (US region)
-2. Create a project and navigate to **Settings → API Keys**
-3. Copy your Secret Key and Public Key
-4. Add to your `.env.local`:
+## Quick start (development)
 
 ```bash
-LANGFUSE_ENABLED=true
-LANGFUSE_SECRET_KEY="sk-lf-..."
-LANGFUSE_PUBLIC_KEY="pk-lf-..."
-LANGFUSE_BASE_URL="https://cloud.langfuse.com"
+docker compose --profile tracing up -d     # dev Postgres + MinIO + Phoenix on 127.0.0.1:6006
 ```
 
-5. Restart the dev server — traces will appear in your Langfuse project immediately.
-
-### Option B: Self-Hosted Langfuse
-
-Langfuse ships its own Docker Compose file with all required services (web, worker, Postgres, MinIO, Redis, ClickHouse). The recommended approach is to clone the Langfuse repo and run it directly.
-
-Full guide: [langfuse.com/self-hosting/deployment/docker-compose](https://langfuse.com/self-hosting/deployment/docker-compose)
-
-**Quick start (local):**
+Add to `.env.local`, then restart `pnpm dev`:
 
 ```bash
-# 1. Clone the Langfuse repository
-git clone https://github.com/langfuse/langfuse.git
-cd langfuse
-
-# 2. Update secrets in docker-compose.yml (lines marked with # CHANGEME)
-
-# 3. Start all services
-docker compose up
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:6006
 ```
 
-After 2–3 minutes, `langfuse-web-1` will log "Ready". Open [http://localhost:3000](http://localhost:3000), create an account, and get your API keys from **Settings → API Keys**.
+Send a message, then open <http://localhost:6006>. Spans land in Phoenix's `default` project;
+each Cameron thread is a Phoenix **session**, so an approval pause and its resume sit together.
 
-> **Note:** Langfuse runs on port 3000 by default. Cameron's dev server uses **3100** (see
-> `.env.example`), so there is no conflict — but if you've changed Cameron's port back to 3000,
-> run one of them elsewhere (e.g. `pnpm dev --port 3200`).
+The trace list shows each trace's top span, which is Next.js's `GET /api/agent/stream` request span,
+so its kind reads `unknown`: it carries no GenAI attributes. That is expected — agent and HTTP
+tracing share one trace on purpose. Token and cost totals per trace and per session still add up,
+because Phoenix sums them over the whole tree; filter spans by `span_kind == 'AGENT'` to list
+agent runs alone.
 
-Add to `.env.local` (adjust the port if needed):
+## Production
 
-```bash
-LANGFUSE_ENABLED=true
-LANGFUSE_SECRET_KEY="sk-lf-..."
-LANGFUSE_PUBLIC_KEY="pk-lf-..."
-LANGFUSE_BASE_URL="http://localhost:3000"
+`docker compose --profile full up` starts `phoenix-prod` (127.0.0.1:**6016**) with its own volume,
+and the `web` service traces to it out of the box — metadata only. Production traces are kept
+apart from dev traces for the same reason the databases are (see "Two stacks" in
+[AGENTS.md](../AGENTS.md)): `docker compose --profile full down -v` deletes them along with your
+financial data.
+
+The production variables are `PROD_`-prefixed so a host-dev value in `.env` can never redirect
+production traces:
+
+| Variable                                                  | Default                            |
+| --------------------------------------------------------- | ---------------------------------- |
+| `PROD_OTEL_EXPORTER_OTLP_ENDPOINT`                        | `http://phoenix-prod:6006`         |
+| `PROD_OTEL_EXPORTER_OTLP_HEADERS`                         | _(empty)_                          |
+| `PROD_OTEL_SDK_DISABLED`                                  | `false` — `true` turns tracing off |
+| `PROD_OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | `false`                            |
+
+Both Phoenix services bind to loopback only and run with Phoenix's usage telemetry disabled.
+Phoenix has no login by default; don't publish its port.
+
+## Configuration
+
+Everything is a standard OpenTelemetry variable:
+
+| Variable                                             | Effect                                                                 |
+| ---------------------------------------------------- | ---------------------------------------------------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`                        | Turns tracing on and sets the destination (`/v1/traces` is appended).  |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`                 | Same, but the full traces URL.                                         |
+| `OTEL_EXPORTER_OTLP_HEADERS`                         | Auth for backends that need it (`key=value,key2=value2`).              |
+| `OTEL_SERVICE_NAME`                                  | Defaults to `cameron`.                                                 |
+| `OTEL_SDK_DISABLED`                                  | `true` turns tracing off even with an endpoint set.                    |
+| `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | `true` adds prompts, messages, tool arguments, results and error text. |
+
+## What a trace contains
+
+One user message (or one approval decision) is one trace:
+
+```
+GET /api/agent/stream                       Next.js route span
+└─ executing api route (app) …
+   ├─ invoke_agent cameron                   the agent run                 (AGENT)
+   │  ├─ chat <model>                        a model call                  (LLM)
+   │  ├─ execute_tool <tool>                 a tool call                   (TOOL)
+   │  └─ chat <model>
+   └─ fetch POST <provider url>              Next.js's own fetch spans
 ```
 
-## Disabling Tracing
+Graph nodes and middleware get no span. **With content capture off**, these are the only
+attributes Cameron sets:
 
-Set `LANGFUSE_ENABLED=false` (or omit it entirely) in your `.env.local` and restart. No code changes required. There is zero performance overhead when disabled.
+| Span           | Attributes                                                                                                                                               |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `invoke_agent` | `gen_ai.agent.name`, `gen_ai.conversation.id` (the thread id), `cameron.run.resumed`, and on a resume `cameron.approval.approved` / `.rejected` counts   |
+| `chat`         | `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.usage.input_tokens` / `output_tokens`, `gen_ai.response.finish_reasons` |
+| `execute_tool` | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.type`, `cameron.tool.mutating`                                                                   |
+| any, on error  | `error.type` and ERROR status — no message, no stack trace (an error message can quote an amount)                                                        |
 
-## What a Trace Looks Like
+When the approval gate pauses a run, the `invoke_agent` span gets a `cameron.approval.requested`
+event listing the gated **tool names** — never their arguments. A pause is not an error.
 
-For a single user message that triggers a mutating tool call, you will see a trace in Langfuse with roughly this structure:
+**With content capture on**, Cameron adds `gen_ai.system_instructions`, `gen_ai.input.messages`,
+`gen_ai.output.messages`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result`, the error
+message and the exception event. On `invoke_agent`, the input is the turn's new user message (a
+resume has none — its input is a decision) and the output is the run's last assistant message. Image and file blocks are recorded by type only, never inlined.
+Turn this on to debug, not by default: the result of a `run_sql` or `query_transactions` call is
+your ledger.
 
-```
-Trace: user-message
-  ├─ model node
-  │    └─ LLM call (model, input messages, output, token counts)
-  ├─ humanInTheLoopMiddleware
-  │    └─ interrupt (human-in-the-loop pause — mutating tools only)
-  ├─ tools node
-  │    └─ Tool execution (tool name, input args, output)
-  └─ model node (second pass)
-       └─ LLM call (final response generation)
-```
+The thread id is metadata, not content, so it is always sent; it is a random id, not a name.
 
-For a read-only tool the middleware interrupt is absent — the `tools` node runs straight after the first `model` node.
+## Other backends
 
-## Key Files
+The spans are plain OTLP, so a different backend is an endpoint change:
 
-| File                           | Role                                                     |
-| ------------------------------ | -------------------------------------------------------- |
-| `instrumentation.ts`           | Next.js OTel init hook — runs once before any route      |
-| `src/services/agentService.ts` | Attaches `CallbackHandler` to each `agent.stream()` call |
-| `.env.example`                 | Documents all required environment variables             |
+| Backend                  | Run it                                                                                   | Endpoint                                |
+| ------------------------ | ---------------------------------------------------------------------------------------- | --------------------------------------- |
+| Jaeger (generic tracing) | `docker run -p 127.0.0.1:16686:16686 -p 127.0.0.1:4318:4318 jaegertracing/jaeger:2.11.0` | `http://localhost:4318`                 |
+| Self-hosted Langfuse     | [docker compose guide](https://langfuse.com/self-hosting/deployment/docker-compose)      | `http://localhost:3000/api/public/otel` |
+
+Langfuse also needs `OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic%20<base64 of pk-lf-…:sk-lf-…>`
+(header values are URL-encoded, so the space is `%20`).
+
+Jaeger shows the same tree but no LLM-specific view (messages, token counts appear as raw
+attributes). Phoenix and Langfuse understand the GenAI conventions natively. A hosted backend also
+works, but then your traces are no longer on infrastructure you control — keep content capture off
+if you do.
+
+## How it's built
+
+| File                             | Role                                                                                  |
+| -------------------------------- | ------------------------------------------------------------------------------------- |
+| `src/instrumentation.ts`         | Starts the OTel Node SDK with the OTLP/proto exporter, only when tracing is enabled   |
+| `src/lib/tracing/config.ts`      | `tracingEnabled()` and `captureContent()`, read from the environment                  |
+| `src/lib/tracing/genAiTracer.ts` | LangChain callback handler that turns one run's callbacks into spans; one per request |
+| `src/lib/tracing/semconv.ts`     | The only file naming `gen_ai.*` and `cameron.*` attributes                            |
+| `src/lib/tracing/messages.ts`    | LangChain messages → the semconv message format (content capture only)                |
+| `src/services/agentService.ts`   | Attaches a `GenAiTracer` to each run when tracing is enabled                          |
+
+Notes for changing it:
+
+- **The GenAI conventions are still at Development stability.** Every attribute name lives in
+  `semconv.ts`; a rename is a one-file change. Phoenix (20.23) converts these attributes to its own
+  OpenInference format at ingest, which is how it shows span kinds, sessions and token counts.
+- **LangChain's callback arguments don't match its type definitions.** `handleChainStart` is called
+  with `(chain, inputs, runId, parentRunId, tags, metadata, …)`; the `.d.ts` puts `parentRunId`
+  eighth. `genAiTracer.ts` follows the runtime order.
+- **The approval pause is only visible on the HITL node.** It fails with `GraphInterrupt` (which
+  carries the gated tool names), while the run itself ends normally. A resumed run's input is the
+  `Command`, which is where the decision counts come from.
+- **`instrumentation.ts` must live in `src/`.** With an `src/app` layout, `next build` only looks
+  for it there; a root-level file still runs under `pnpm dev`, but the production (standalone)
+  build silently leaves it out, so production would never trace. Its Node-only half is
+  `src/instrumentation.node.ts`, imported only on the Node runtime so the Edge build never sees it.
+- **Model `fetch` spans are not children of the `chat` span.** Next.js creates them in the route's
+  context; a callback handler can open spans but can't make them the active context for code it
+  doesn't call.
+- Unit tests (`genAiTracer.test.ts`) drive the handler with hand-fed callbacks against an
+  in-memory exporter — free and offline like the rest of `pnpm test`.
