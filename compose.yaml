@@ -2,13 +2,15 @@
 #
 #   docker compose up -d                 DEV dependencies: Postgres `mydb_dev` (5544) + MinIO
 #                                        (9100/9101), app on the host. Disposable by design.
-#   docker compose --profile full up     PRODUCTION: the whole app on its OWN Postgres (5546) and
-#                                        its OWN MinIO (9102/9103). This is the database holding
-#                                        real financial records.
+#   docker compose --profile tracing up -d
+#                                        ...plus the DEV trace backend, Phoenix (6006).
+#   docker compose --profile full up     PRODUCTION: the whole app on its OWN Postgres (5546), its
+#                                        OWN MinIO (9102/9103) and its OWN Phoenix (6016). This is
+#                                        the stack holding real financial records — and their traces.
 #
-# The split is physical, not by convention: `db-prod` and `minio-prod` use their own named volumes,
-# so `docker compose down -v` (which deletes volumes) on the default profile CANNOT reach
-# production data. Removing production data takes naming that stack explicitly.
+# The split is physical, not by convention: `db-prod`, `minio-prod` and `phoenix-prod` use their
+# own named volumes, so `docker compose down -v` (which deletes volumes) on the default profile
+# CANNOT reach production data. Removing production data takes naming that stack explicitly.
 #
 #   docker compose down                             stop dev, keep data
 #   docker compose down -v                          stop dev, DESTROY dev data (safe: dev only)
@@ -74,6 +76,21 @@ services:
       exit 0;
       "
 
+  # Dev trace backend, `--profile tracing` only. Point the host app at it with
+  # OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:6006 (see docs/OBSERVABILITY.md).
+  phoenix:
+    profiles: [tracing]
+    image: arizephoenix/phoenix:version-20.23.0-nonroot
+    container_name: cameron-ai-phoenix
+    environment:
+      PHOENIX_TELEMETRY_ENABLED: "false"
+    ports:
+      # Loopback only: Phoenix has no login, and traces describe your finances.
+      - "127.0.0.1:${PHOENIX_PORT:-6006}:6006"
+    volumes:
+      # The nonroot image can only write under its own home, so the volume mounts there.
+      - phoenix_data:/home/nonroot
+
   # ── `--profile full` only: PRODUCTION. Real financial data. ────────────────────────────────────
 
   # Separate service and separate volume from `db` above — that separation is the whole point, so
@@ -135,6 +152,19 @@ services:
       exit 0;
       "
 
+  # Production traces: the same split as the database, so a dev teardown cannot reach them.
+  phoenix-prod:
+    profiles: [full]
+    image: arizephoenix/phoenix:version-20.23.0-nonroot
+    container_name: cameron-ai-phoenix-prod
+    environment:
+      PHOENIX_TELEMETRY_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${PHOENIX_PROD_PORT:-6016}:6006"
+    volumes:
+      - prod_phoenix_data:/home/nonroot
+    restart: unless-stopped
+
   # Applies pending migrations, then exits. Its own service (and its own build stage) because
   # drizzle-kit is a devDependency that the runtime image deliberately does not carry.
   migrate:
@@ -183,16 +213,20 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
 
-      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-false}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
-      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://cloud.langfuse.com}
+      # Traces go to this stack's own Phoenix, metadata only. PROD_-prefixed so a host-dev value in
+      # .env (e.g. localhost:6006) never redirects production traces. See docs/OBSERVABILITY.md.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${PROD_OTEL_EXPORTER_OTLP_ENDPOINT:-http://phoenix-prod:6006}
+      OTEL_EXPORTER_OTLP_HEADERS: ${PROD_OTEL_EXPORTER_OTLP_HEADERS:-}
+      OTEL_SDK_DISABLED: ${PROD_OTEL_SDK_DISABLED:-false}
+      OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: ${PROD_OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT:-false}
     restart: unless-stopped
 
 volumes:
   # Dev — disposable.
   db_data:
   minio_data:
-  # Production — real financial records. Only a `--profile full down -v` removes these.
+  phoenix_data:
+  # Production — real financial records and their traces. Only a `--profile full down -v` removes these.
   prod_db_data:
   prod_minio_data:
+  prod_phoenix_data:

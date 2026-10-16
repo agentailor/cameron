@@ -42,12 +42,13 @@ pnpm db:studio                # Database UI
 `compose.yaml` defines **two stacks that share no data**. The separation is physical — separate
 services, separate named volumes — not a naming convention.
 
-|          | Default (`up -d`)            | `--profile full`                  |
-| -------- | ---------------------------- | --------------------------------- |
-| Postgres | `db` → `mydb_dev`, port 5544 | `db-prod` → `mydb`, port **5546** |
-| MinIO    | `minio`, 9100/9101           | `minio-prod`, **9102/9103**       |
-| Volumes  | `db_data`, `minio_data`      | `prod_db_data`, `prod_minio_data` |
-| Contents | seed/scratch data            | **real financial records**        |
+|          | Default (`up -d`)                               | `--profile full`                                       |
+| -------- | ----------------------------------------------- | ------------------------------------------------------ |
+| Postgres | `db` → `mydb_dev`, port 5544                    | `db-prod` → `mydb`, port **5546**                      |
+| MinIO    | `minio`, 9100/9101                              | `minio-prod`, **9102/9103**                            |
+| Phoenix  | `phoenix`, 6006 (only with `--profile tracing`) | `phoenix-prod`, **6016**                               |
+| Volumes  | `db_data`, `minio_data`, `phoenix_data`         | `prod_db_data`, `prod_minio_data`, `prod_phoenix_data` |
+| Contents | seed/scratch data                               | **real financial records and their traces**            |
 
 **`docker compose down -v` deletes named volumes.** Because the volume sets are disjoint, a `-v`
 teardown of the dev stack cannot reach production. Removing production data requires naming that
@@ -578,14 +579,25 @@ how this repo's code gets written. Tool conventions here follow
 npx skills add agentailor/skills --skill tool-design
 ```
 
-## Langfuse Observability
+## Tracing (OpenTelemetry)
 
-LLM tracing is implemented via two mechanisms — see [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) for full setup instructions.
+Agent runs are traced as OTel GenAI spans and exported over OTLP to a backend the owner runs —
+Phoenix by default. Full detail in [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
 
-- **`instrumentation.ts`** (project root): Next.js calls `register()` once before any route; initializes the OTel SDK with `LangfuseSpanProcessor` when `LANGFUSE_ENABLED=true`
-- **`src/services/agentService.ts`**: Conditionally attaches `CallbackHandler` to each `agent.stream()` call for LangGraph-specific traces (LLM calls, tool invocations, token counts)
-- Toggle tracing: set `LANGFUSE_ENABLED=true/false` in `.env` — no code changes needed
-- Works with Langfuse Cloud or a self-hosted Docker instance
+- **Off unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set** (`src/lib/tracing/config.ts`). There is no
+  default destination in code; the production compose stack points at its own `phoenix-prod`.
+- **Content capture is a separate opt-in** (`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`).
+  Off, no prompt, message, tool argument, tool result or error message leaves the process — only
+  names, counts, timings and token usage.
+- **`GenAiTracer`** (`src/lib/tracing/genAiTracer.ts`) is a LangChain callback attached per
+  request in `agentService.ts`. It spans the run (`invoke_agent`), each model call (`chat`) and
+  each tool call (`execute_tool`) — never graph nodes or middleware — and records the approval
+  gate as an event (tool names only) and the resume's approve/reject counts.
+- **`semconv.ts` is the only file naming `gen_ai.*` / `cameron.*` attributes.** The conventions are
+  still Development stability; isolate any rename there.
+- **`instrumentation.ts`** starts the Node SDK with the OTLP/proto exporter. Next.js adds its own
+  route and `fetch` spans to the same trace.
+- No vendor SDK: Langfuse, Jaeger or anything OTLP is an endpoint change, not a code change.
 
 ## OpenAPI / API Docs
 

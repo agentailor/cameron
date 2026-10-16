@@ -1,17 +1,18 @@
 export async function register() {
-  // Only initialize in the Node.js runtime — @opentelemetry/sdk-node uses
-  // Node.js-only APIs that are not available in the Edge runtime.
-  // Next.js may evaluate this file in both contexts.
-  if (process.env.NEXT_RUNTIME === "nodejs" && process.env.LANGFUSE_ENABLED === "true") {
-    // Dynamic imports are required here so Next.js doesn't attempt to bundle
-    // Node.js-only modules for the Edge runtime.
-    const { NodeSDK } = await import("@opentelemetry/sdk-node");
-    const { LangfuseSpanProcessor } = await import("@langfuse/otel");
+  // @opentelemetry/sdk-node is Node-only; Next.js also evaluates this file for the Edge runtime.
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
-    const sdk = new NodeSDK({
-      spanProcessors: [new LangfuseSpanProcessor()],
-    });
+  const { tracingEnabled } = await import("./src/lib/tracing/config");
+  if (!tracingEnabled()) return;
 
-    sdk.start();
-  }
+  const { NodeSDK } = await import("@opentelemetry/sdk-node");
+  const { OTLPTraceExporter } = await import("@opentelemetry/exporter-trace-otlp-proto");
+
+  // Endpoint and headers come from the standard OTEL_EXPORTER_OTLP_* variables.
+  const sdk = new NodeSDK({
+    serviceName: process.env.OTEL_SERVICE_NAME ?? "cameron",
+    traceExporter: new OTLPTraceExporter(),
+  });
+  sdk.start();
+  process.once("SIGTERM", () => void sdk.shutdown());
 }
