@@ -42,7 +42,7 @@ export function toSemconvInput(messages: BaseMessage[]): {
   const systemInstructions: Part[] = [];
   const out: SemconvMessage[] = [];
   for (const m of messages) {
-    const type = m.getType();
+    const type = m.type;
     if (type === "system") systemInstructions.push(...contentParts(m.content));
     else out.push({ role: ROLES[type] ?? type, parts: toParts(m) });
   }

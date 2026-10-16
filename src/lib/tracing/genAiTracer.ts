@@ -1,6 +1,6 @@
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { Serialized } from "@langchain/core/load/serializable";
-import { AIMessage, isBaseMessage, ToolMessage, type BaseMessage } from "@langchain/core/messages";
+import { AIMessage, BaseMessage, ToolMessage } from "@langchain/core/messages";
 import type { ChatGeneration, LLMResult } from "@langchain/core/outputs";
 import type { ChainValues } from "@langchain/core/utils/types";
 import { isGraphInterrupt } from "@langchain/langgraph";
@@ -277,7 +277,9 @@ function resumeAttributes(inputs: ChainValues): Attributes {
 }
 
 const messagesOf = (values: ChainValues | undefined): BaseMessage[] =>
-  Array.isArray(values?.messages) ? values.messages.filter(isBaseMessage) : [];
+  Array.isArray(values?.messages)
+    ? values.messages.filter((m: unknown) => BaseMessage.isInstance(m))
+    : [];
 
 // The turn's new messages; a resume carries a Command instead, so it has none.
 function runInputAttributes(inputs: ChainValues): Attributes {
