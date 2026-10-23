@@ -495,7 +495,8 @@ Unit tests only, via Vitest — see [docs/TESTING.md](docs/TESTING.md) for the f
   commit and cover every truncation / error / empty-result path — that's where agents get misled.
 - `pnpm test` stays unit-only and free regardless of what the eval layer grows into.
 - **CI** (`.github/workflows/`): `ci.yml` gates PRs on `pnpm test` + `tsc --noEmit`; `release.yml`
-  gates `v*` tags on the same before publishing the release.
+  gates `v*` tags on the same before publishing the release. If a release for the tag already
+  exists (written by hand), it skips creation and leaves that release untouched.
 
 ## Evals (`eval/`)
 
