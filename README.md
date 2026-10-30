@@ -99,11 +99,19 @@ See [docs/SKILLS.md](docs/SKILLS.md) for the validation rules, the failure polic
 
 ## Quick start
 
-### Run it (Docker only)
+### Prerequisites
 
-**Prerequisites:** Docker, and a model to talk to — an API key for Anthropic, OpenAI or Google, or
-any **OpenAI-compatible** endpoint (Ollama, vLLM, LM Studio, Groq, OpenRouter, DeepSeek). A local
-runtime needs no key at all; you point Cameron at its base URL in Settings.
+Install these before you start:
+
+- **[Git](https://git-scm.com/downloads)** and **[Docker](https://docs.docker.com/get-docker/)**
+  with Compose, for either way of running Cameron.
+- **A model to talk to**: an API key for Anthropic, OpenAI or Google, or any **OpenAI-compatible**
+  endpoint (Ollama, vLLM, LM Studio, Groq, OpenRouter, DeepSeek). A local runtime needs no key at
+  all; you point Cameron at its base URL in Settings.
+- **[Node 20+](https://nodejs.org/) and [pnpm](https://pnpm.io/installation)**, only to run the app
+  on the host. This is also the path that can load sample data.
+
+### Run it (Docker only)
 
 You pick the provider and model **in the app**, not in the environment — with nothing chosen
 Cameron says it's unconfigured rather than guessing. `.env` only ever holds the keys.
@@ -116,8 +124,8 @@ cp .env.example .env              # add your model API key, if your provider nee
 docker compose --profile full up  # http://localhost:3100
 ```
 
-That builds the app, waits for Postgres, applies migrations, and starts everything. Nothing but
-Docker is needed on your machine.
+That builds the app, waits for Postgres, applies migrations, and starts everything. Nothing else
+is needed on your machine.
 
 > **Why `--branch v4`?** Tags are the stable points — each one matches a published article and has
 > passed CI before release. `main` is the working trunk and runs ahead of the latest tag between
@@ -132,13 +140,14 @@ to that command **deletes your financial data**.
 
 ### Work on it (app on the host)
 
-**Prerequisites:** the above, plus Node 20+ and pnpm.
+Use this path to change Cameron, or to try it on sample data. From your clone:
 
 ```bash
 pnpm install
 cp .env.example .env       # add your model API key, if your provider needs one
 docker compose up -d       # dev dependencies — Postgres :5544, MinIO :9100/:9101
 pnpm db:migrate
+pnpm db:seed               # optional: sample categories and about six weeks of transactions
 pnpm dev                   # http://localhost:3100
 ```
 
