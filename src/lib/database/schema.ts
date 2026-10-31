@@ -47,6 +47,8 @@ export const mcpServers = pgTable(
   {
     id: text("id").primaryKey().notNull(),
     name: text("name").notNull(),
+    // Owner-written; shown to the agent instead of the catalog's summary.
+    description: text("description"),
     type: mcpServerType("type").notNull(),
     enabled: boolean("enabled").notNull().default(true),
     // stdio servers
@@ -69,6 +71,23 @@ export const mcpServers = pgTable(
   },
   (table) => [uniqueIndex("mcp_server_name_key").using("btree", table.name.asc().nullsLast())],
 );
+
+// Cached `tools/list` per server, so the agent can describe a server without connecting to it.
+// See docs/mcp-progressive-disclosure.md.
+export const mcpServerCatalog = pgTable("mcp_server_catalog", {
+  serverId: text("server_id")
+    .primaryKey()
+    .notNull()
+    .references(() => mcpServers.id, { onDelete: "cascade" }),
+  toolsHash: text("tools_hash").notNull(),
+  tools: jsonb("tools").notNull(),
+  toolCount: integer("tool_count").notNull(),
+  schemaTokens: integer("schema_tokens").notNull(),
+  summary: text("summary").notNull(),
+  // 'instructions' | 'heuristic' | 'generated'
+  summarySource: text("summary_source").notNull(),
+  refreshedAt: timestamp("refreshed_at", { precision: 3, mode: "string" }).notNull(),
+});
 
 // --- Finance (v1) ---
 // Cameron's own store: `transaction` is the system of record. External sources (a bank

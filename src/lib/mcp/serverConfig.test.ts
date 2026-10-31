@@ -6,6 +6,7 @@ import { toServerConfig } from "./serverConfig";
 const makeServer = (overrides: Partial<MCPServer> = {}): MCPServer => ({
   id: "s1",
   name: "files",
+  description: null,
   type: MCPServerType.stdio,
   enabled: true,
   command: null,

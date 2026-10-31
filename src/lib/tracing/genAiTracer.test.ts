@@ -10,6 +10,7 @@ import {
   type ReadableSpan,
 } from "@opentelemetry/sdk-trace-base";
 import { GenAiTracer } from "./genAiTracer";
+import { toSemconvToolDefinitions } from "./messages";
 
 const SERIALIZED = {} as Serialized;
 const CONTENT_KEYS = [
@@ -18,6 +19,7 @@ const CONTENT_KEYS = [
   "gen_ai.system_instructions",
   "gen_ai.tool.call.arguments",
   "gen_ai.tool.call.result",
+  "gen_ai.tool.definitions",
 ];
 
 function setup(captureContent = false) {
@@ -45,7 +47,7 @@ function chat(t: GenAiTracer, runId: string, parent: string, reply = aiReply({ c
     [[new SystemMessage("You are Cameron."), new HumanMessage("What categories do I have?")]],
     runId,
     parent,
-    { invocation_params: { model: "claude-haiku-5-5" } },
+    { invocation_params: { model: "claude-haiku-5-5", tools: ANTHROPIC_TOOLS } },
     [],
     META,
   );
@@ -56,6 +58,47 @@ function tool(t: GenAiTracer, runId: string, parent: string, name: string, outpu
   t.handleToolStart(SERIALIZED, '{"amount":12.5}', runId, parent, [], {}, name, `call-${runId}`);
   t.handleToolEnd(output, runId);
 }
+
+const BALANCE_SCHEMA = {
+  type: "object",
+  properties: { accountId: { type: "string" } },
+  required: ["accountId"],
+};
+const BALANCE_DEFINITION = {
+  type: "function",
+  name: "bank__get_balance",
+  description: "Current balance of one account.",
+  parameters: BALANCE_SCHEMA,
+};
+// The shapes each provider's `invocation_params.tools` really has (captured from the SDKs).
+const ANTHROPIC_TOOLS = [
+  {
+    name: "bank__get_balance",
+    description: "Current balance of one account.",
+    input_schema: BALANCE_SCHEMA,
+  },
+];
+const OPENAI_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "bank__get_balance",
+      description: "Current balance of one account.",
+      parameters: BALANCE_SCHEMA,
+    },
+  },
+];
+const GEMINI_TOOLS = [
+  {
+    functionDeclarations: [
+      {
+        name: "bank__get_balance",
+        description: "Current balance of one account.",
+        parameters: BALANCE_SCHEMA,
+      },
+    ],
+  },
+];
 
 const QUESTION = new HumanMessage("What categories do I have?");
 const ANSWER = new AIMessage({
@@ -155,6 +198,40 @@ describe("GenAiTracer span tree", () => {
     expect(attrs).not.toHaveProperty("gen_ai.usage.output_tokens");
   });
 
+  it("records cache reads and writes when the provider reports them", () => {
+    const { tracer, byName } = setup();
+    startRoot(tracer);
+    chat(
+      tracer,
+      "chat-1",
+      "root",
+      aiReply({
+        content: "",
+        usage_metadata: {
+          input_tokens: 1000,
+          output_tokens: 10,
+          total_tokens: 1010,
+          input_token_details: { cache_read: 800, cache_creation: 150 },
+        },
+      }),
+    );
+    tracer.handleChainEnd({}, "root");
+
+    expect(byName("chat claude-haiku-5-5").attributes).toMatchObject({
+      "gen_ai.usage.cache_read.input_tokens": 800,
+      "gen_ai.usage.cache_creation.input_tokens": 150,
+    });
+  });
+
+  it("leaves cache attributes out when the provider reports no cache details", () => {
+    const { tracer, byName } = setup();
+    readRun(tracer);
+
+    const attrs = byName("chat claude-haiku-5-5").attributes;
+    expect(attrs).not.toHaveProperty("gen_ai.usage.cache_read.input_tokens");
+    expect(attrs).not.toHaveProperty("gen_ai.usage.cache_creation.input_tokens");
+  });
+
   it("maps LangChain's Google provider id to the semconv name", () => {
     const { tracer, spans } = setup();
     startRoot(tracer);
@@ -215,6 +292,9 @@ describe("GenAiTracer content capture", () => {
     const chatAttrs = byName("chat claude-haiku-5-5").attributes;
     expect(JSON.parse(chatAttrs["gen_ai.system_instructions"] as string)).toEqual([
       { type: "text", content: "You are Cameron." },
+    ]);
+    expect(JSON.parse(chatAttrs["gen_ai.tool.definitions"] as string)).toEqual([
+      BALANCE_DEFINITION,
     ]);
     expect(JSON.parse(chatAttrs["gen_ai.input.messages"] as string)).toEqual([
       { role: "user", parts: [{ type: "text", content: "What categories do I have?" }] },
@@ -401,5 +481,22 @@ describe("GenAiTracer errors", () => {
 
     expect(spans()).toHaveLength(2);
     expect(byName("execute_tool run_sql").attributes["cameron.span.unfinished"]).toBe(true);
+  });
+});
+
+describe("toSemconvToolDefinitions", () => {
+  it.each([
+    ["OpenAI and OpenAI-compatible", OPENAI_TOOLS],
+    ["Anthropic", ANTHROPIC_TOOLS],
+    ["Gemini", GEMINI_TOOLS],
+  ])("normalizes %s tools to the semconv shape", (_provider, tools) => {
+    expect(toSemconvToolDefinitions(tools)).toEqual([BALANCE_DEFINITION]);
+  });
+
+  it("skips entries it cannot name, and anything that is not a list", () => {
+    expect(toSemconvToolDefinitions([{ type: "web_search" }, ...OPENAI_TOOLS])).toEqual([
+      BALANCE_DEFINITION,
+    ]);
+    expect(toSemconvToolDefinitions(undefined)).toEqual([]);
   });
 });

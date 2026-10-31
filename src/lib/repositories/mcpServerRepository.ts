@@ -23,6 +23,7 @@ function toDomain(row: MCPServerRow): MCPServer {
   return {
     id: row.id,
     name: row.name,
+    description: row.description,
     type: row.type as MCPServerType,
     enabled: row.enabled,
     command: row.command,
@@ -46,6 +47,7 @@ function now(): string {
 
 export interface CreateMCPServerInput {
   name: string;
+  description?: string | null;
   type: MCPServerType;
   command?: string | null;
   args?: unknown;
@@ -56,6 +58,7 @@ export interface CreateMCPServerInput {
 
 export interface UpdateMCPServerPatch {
   name?: string;
+  description?: string | null;
   type?: MCPServerType;
   enabled?: boolean;
   command?: string | null;
@@ -99,6 +102,7 @@ export async function create(input: CreateMCPServerInput): Promise<MCPServer> {
       .values({
         id: crypto.randomUUID(),
         name: input.name,
+        description: input.description ?? null,
         type: input.type,
         command: input.command ?? null,
         args: input.args ?? null,
