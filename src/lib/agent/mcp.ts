@@ -1,82 +1,11 @@
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
-import * as mcpServerRepo from "@/lib/repositories/mcpServerRepository";
 import { ServerOAuthProvider } from "@/lib/mcp/oauth-provider";
 import { OAuthStatus } from "@/lib/mcp/oauth-status";
-import { toServerConfig, type MCPServerConfig } from "@/lib/mcp/serverConfig";
+import { toServerConfig } from "@/lib/mcp/serverConfig";
+import { CONNECT_TIMEOUT_MS } from "@/lib/mcp/connector";
 import type { MCPServer, MCPTool } from "@/types/mcp";
-import { sanitizeTool } from "./util";
 
 const oauthProvider = (server: MCPServer) => new ServerOAuthProvider(server.id, server.name);
-
-/**
- * Fetches enabled MCP servers from the database and formats them for MultiServerMCPClient
- */
-export async function getMCPServerConfigs(): Promise<Record<string, MCPServerConfig>> {
-  try {
-    const servers = await mcpServerRepo.listEnabled();
-
-    const configs: Record<string, MCPServerConfig> = {};
-    for (const server of servers) {
-      const config = toServerConfig(server, oauthProvider);
-      if (config) configs[server.name] = config;
-    }
-
-    return configs;
-  } catch (error) {
-    console.error("Failed to fetch MCP server configs:", error);
-    return {};
-  }
-}
-
-/**
- * Creates and initializes a MultiServerMCPClient with the current database configurations
- */
-export async function createMCPClient(): Promise<MultiServerMCPClient | null> {
-  try {
-    const mcpServers = await getMCPServerConfigs();
-
-    if (Object.keys(mcpServers).length === 0) {
-      return null;
-    }
-
-    const client = new MultiServerMCPClient({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mcpServers: mcpServers as any, // Complex MCP server config types require type assertion
-      throwOnLoadError: false, // Don't fail if some servers can't connect
-      prefixToolNameWithServerName: true, // Prevent tool name conflicts
-    });
-
-    return client;
-  } catch (error) {
-    console.error("Failed to create MCP client:", error);
-    return null;
-  }
-}
-
-/**
- * Gets tools from the MCP client if available.
- * Sanitizes tool schemas to be compatible with Google Gemini's function calling API.
- */
-export async function getMCPTools() {
-  try {
-    const client = await createMCPClient();
-    if (!client) {
-      return [];
-    }
-
-    const tools = await client.getTools();
-
-    // Sanitize tool schemas to remove unsupported JSON Schema keywords
-    // that would cause errors with Google Gemini
-    const sanitizedTools = tools.map((tool) => sanitizeTool(tool));
-
-    console.log(`Loaded ${sanitizedTools.length} tools from MCP servers`);
-    return sanitizedTools;
-  } catch (error) {
-    console.error("Failed to get MCP tools:", error);
-    return [];
-  }
-}
 
 export type ServerToolsError = "auth_required" | "invalid_config" | "timeout" | "connect_failed";
 
@@ -84,14 +13,14 @@ export type ServerToolsResult =
   | { ok: true; tools: MCPTool[] }
   | { ok: false; error: ServerToolsError; message: string };
 
-const PROBE_TIMEOUT_MS = 20_000;
+const PROBE_TIMEOUT_MS = CONNECT_TIMEOUT_MS;
 
 class ProbeTimeout extends Error {}
 
 /**
  * Connects to ONE server (enabled or not) and lists its tools, then closes the connection.
- * Unlike {@link getMCPTools}, a failure is reported rather than skipped: with a single server,
- * "no tools" and "could not connect" must not look the same.
+ * A failure is reported rather than skipped: with a single server, "no tools" and "could not
+ * connect" must not look the same.
  */
 export async function listServerTools(server: MCPServer): Promise<ServerToolsResult> {
   if (

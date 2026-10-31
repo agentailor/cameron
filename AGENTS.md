@@ -91,7 +91,9 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
 - **Agent Factory**: `src/lib/agent/index.ts` - Builds the agent with LangChain v1's `createAgent`
   (from the top-level `langchain` package), a prebuilt ReAct agent over LangGraph. `ensureAgent()`
   first initializes the Postgres checkpointer, then assembles the model, tools, and middleware.
-- **MCP Integration**: `src/lib/agent/mcp.ts` - Dynamically loads tools from MCP servers stored in Postgres
+- **MCP Integration**: MCP servers are stored in Postgres; the agent sees their tools through the
+  disclosure middleware and connects on demand (see "Progressive disclosure" below).
+  `src/lib/agent/mcp.ts` now holds only the Connections page's tool-listing probe.
 - **Persistent Memory**: Uses LangGraph's Postgres checkpointer for conversation history
 - **Built-in finance tools** (always registered server-side in `index.ts`, provider-agnostic Zod):
   - `src/lib/agent/tools/finance.ts` — `log_expense` (mutating), `query_transactions` (read-only,
@@ -159,8 +161,8 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
 - **Tool Approval**: Human-in-the-loop via `humanInTheLoopMiddleware`. Approval is gated **per-tool**
   through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
   `import_transactions_csv`, `create_category`, `set_config`, `update_transaction`,
-  `delete_transaction`); read tools (incl. `run_sql`) and MCP tools
-  auto-approve. **The gate cannot be switched off from the product**: no UI control, no query
+  `delete_transaction`); read tools (incl. `run_sql`), MCP tools and `load_tools` (which only changes
+  what the model sees) auto-approve. **The gate cannot be switched off from the product**: no UI control, no query
   param, and nothing on `MessageOptions` can disable it — `bypassApprovalForEval` omits the
   middleware for the eval harness alone, which calls the agent factory in-process and has no human
   to answer an interrupt (`approvalGate.test.ts` pins that boundary). Decisions: `allow`→approve,
@@ -264,7 +266,7 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   `drizzle.config.ts`.
 - **Repository seam**: application code NEVER imports Drizzle directly. All DB access goes through
   the `src/lib/repositories/` files (`threadRepository`, `mcpServerRepository`, `transactionRepository`,
-  `categoryRepository`, `analyticsRepository`, `configRepository`), which return **plain domain objects**
+  `categoryRepository`, `analyticsRepository`, `configRepository`, `mcpServerCatalogRepository`), which return **plain domain objects**
   (`ThreadRecord`, `MCPServer` in `src/types/mcp.ts`; `Transaction`, `Category` in
   `src/types/finance.ts`; `ConfigEntry` in `src/types/config.ts`), not Drizzle row types. This keeps the persistence layer swappable — replacing the ORM touches only these files.
   Add new DB access as repository functions, not inline queries.
@@ -353,10 +355,53 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   goes stale while looking current. Failures are typed (`auth_required`, `invalid_config`, `timeout`,
   `connect_failed`), never an empty list.
 - `toServerConfig()` (`src/lib/mcp/serverConfig.ts`) turns a row into a client config for BOTH the
-  agent (`getMCPTools`) and the probe, so the page connects exactly the way the agent will.
+  agent (`src/lib/mcp/connector.ts`) and the probe, so the page connects exactly the way the
+  agent will.
 - Tool names are prefixed `server__tool`; server names are restricted to `[A-Za-z0-9_-]` in the form
   because the prefix becomes part of a provider tool name.
 - HTTP servers may require OAuth authentication - see [docs/OAUTH.md](docs/OAUTH.md)
+- **Progressive disclosure** — full detail in [docs/MCP_DISCLOSURE.md](docs/MCP_DISCLOSURE.md).
+  The logic is the workspace package `packages/mcp-disclosure` (`@agentailor/mcp-disclosure`,
+  TS source via `transpilePackages`; it must not import app code **or the MCP client library**).
+  It reduces both context and connections, with **no mode and no per-server setting**: the model
+  always sees a short list of capabilities plus `load_tools`, and a tool's definition only once a
+  search has loaded it; **nothing connects until a tool is called**. `load_tools` searches the
+  cached catalog (BM25, `search.ts`) and adds the best matches to the `tools` parameter. Load state
+  lives in graph state, so it is per thread. With no server available, neither the tool nor the
+  list reaches the model.
+  - **Loaded tools are appended and never removed.** Changing the tool list costs a prompt-cache
+    miss, so there is no eviction and no unload; `activeTools` keeps load order so the array only
+    grows at its end. Schemas go in `tools`, not in tool results: results are re-sent too, cannot
+    be removed, and lose real tool names.
+  - **A server's line comes from the owner, else the catalog**: `mcp_server.description`, else the
+    summary (`generated` via `src/lib/mcp/summarize.ts` on the owner's model, else `instructions`,
+    else `heuristic`). No summary is generated when the owner wrote a description.
+  - **No MCP tool is registered with `createAgent`.** `wrapModelCall` adds stand-ins built from
+    the cached catalog; `wrapToolCall` swaps in the real tool from `resolveTool`, backed by a
+    process-wide `McpConnectionPool` (keyed by id + `updatedAt`, 5-minute idle close, invalidated
+    by the server routes). A call to a catalog tool that was not loaded still runs (and loads it).
+  - **Sign-in is checked from stored state, not by connecting.** An OAuth server that is
+    `REQUIRED`/`EXPIRED` (`needsAuth()` in `connector.ts`) is marked `sign-in required` in the
+    list, and `load_tools` never loads its tools: it answers `auth_required` with a "reconnect on
+    the Connections page" message; a call that hits an expired token gets the same message.
+  - **The `load_tools` behavior is model-dependent**, so it has eval cases
+    (`eval/cases/mcp.cases.mts`) on in-process mock servers (`eval/mcpMocks.mts`, opt in with
+    `mcp: true`): they test finding and using a capability, not MCP plumbing.
+  - **MCP schemas pass through unconverted**, for every provider: no sanitizer, no `$ref` inlining.
+    `sanitizeTool` is for built-in tools only. Stripping `anyOf` hid Notion's `parent` from the model.
+  - **`src/lib/mcp/connector.ts` is the ONLY agent-path file using `@langchain/mcp-adapters`**,
+    so the v2 adapter migration rewrites just that file. Keep it that way: the catalog stores
+    protocol data (`tools/list`), never adapter-converted schemas.
+  - **`load_tools` returns a plain string; the state change is applied in `wrapToolCall`.** The chat
+    UI streams a tool's raw return value, so a tool returning a `Command` showed up as a
+    serialized object. `planLoadTools` is the single source for both.
+  - **Catalog rows** (`mcp_server_catalog`) are refreshed via `after()` on create / enable /
+    connection edit / OAuth completion, on demand at `POST /api/mcp-servers/{id}/catalog`, and
+    when a pooled connection sees a different tool-list hash. A failed refresh keeps the old
+    row; a server with no row is left out of the catalog — never an error.
+  - The package must resolve the SAME `langchain` / `@langchain/langgraph` instances `langchain`
+    itself uses (its peers are ranges, so pnpm dedupes them). Pinning an exact version there can
+    split instances.
 
 ### Tool Approval Workflow
 
@@ -392,7 +437,8 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
 ### Agent Configuration
 
 - `ensureAgent()` ensures Postgres checkpointer is initialized before agent creation
-- MCP servers queried from database on each agent creation for dynamic tool loading
+- MCP servers and their cached catalog are read on each agent creation; a server is connected
+  only when one of its tools is called (pooled across requests)
 - **The owner picks the provider and model in the app; nothing is inferred.** Supported:
   `google`, `openai`, `anthropic`, `openai-compatible` (any OpenAI chat-completions endpoint —
   Ollama, vLLM, Groq, OpenRouter, DeepSeek). There is no default pair and no env var for the
@@ -589,7 +635,9 @@ Phoenix by default. Full detail in [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md
   default destination in code; the production compose stack points at its own `phoenix-prod`.
 - **Content capture is a separate opt-in** (`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`).
   Off, no prompt, message, tool argument, tool result or error message leaves the process — only
-  names, counts, timings and token usage.
+  names, counts, timings and token usage. On, each `chat` span also gets
+  `gen_ai.tool.definitions` (the tools offered on that call — they travel beside the prompt, so
+  the prompt alone never shows them), normalized per provider by `toSemconvToolDefinitions`.
 - **`GenAiTracer`** (`src/lib/tracing/genAiTracer.ts`) is a LangChain callback attached per
   request in `agentService.ts`. It spans the run (`invoke_agent`), each model call (`chat`) and
   each tool call (`execute_tool`) — never graph nodes or middleware — and records the approval

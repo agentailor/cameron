@@ -13,6 +13,7 @@ RUN corepack enable
 
 # Only the manifests, so this layer busts on a dependency change rather than on every edit.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/mcp-disclosure/package.json ./packages/mcp-disclosure/
 RUN pnpm install --frozen-lockfile
 
 # ── build ────────────────────────────────────────────────────────────────────────────────────────

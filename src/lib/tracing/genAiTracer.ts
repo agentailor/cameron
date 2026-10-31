@@ -16,7 +16,7 @@ import {
 } from "@opentelemetry/api";
 import { isMutatingTool } from "@/lib/agent/mutatingTools";
 import { captureContent } from "./config";
-import { toSemconvInput, toSemconvOutput } from "./messages";
+import { toSemconvInput, toSemconvOutput, toSemconvToolDefinitions } from "./messages";
 import { AGENT_NAME, CAMERON, ERROR_TYPE, GEN_AI, OPERATION, toProviderName } from "./semconv";
 
 type Metadata = Record<string, unknown>;
@@ -113,6 +113,9 @@ export class GenAiTracer extends BaseCallbackHandler {
         attributes[GEN_AI.SYSTEM_INSTRUCTIONS] = JSON.stringify(input.systemInstructions);
       }
       attributes[GEN_AI.INPUT_MESSAGES] = JSON.stringify(input.messages);
+      // The tools the model was offered this call — they travel beside the prompt, not in it.
+      const tools = toSemconvToolDefinitions(invocation.tools);
+      if (tools.length) attributes[GEN_AI.TOOL_DEFINITIONS] = JSON.stringify(tools);
     }
 
     const name = model ? `${OPERATION.CHAT} ${model}` : OPERATION.CHAT;
@@ -134,6 +137,14 @@ export class GenAiTracer extends BaseCallbackHandler {
     }
     if (typeof usage?.output_tokens === "number") {
       span.setAttribute(GEN_AI.USAGE_OUTPUT_TOKENS, usage.output_tokens);
+    }
+    // Absent when the provider reports nothing: unknown must not read as a cache miss.
+    const cache = usage?.input_token_details as Metadata | undefined;
+    if (typeof cache?.cache_read === "number") {
+      span.setAttribute(GEN_AI.USAGE_CACHE_READ_INPUT_TOKENS, cache.cache_read);
+    }
+    if (typeof cache?.cache_creation === "number") {
+      span.setAttribute(GEN_AI.USAGE_CACHE_CREATION_INPUT_TOKENS, cache.cache_creation);
     }
     if (responseModel) span.setAttribute(GEN_AI.RESPONSE_MODEL, responseModel);
     if (finishReason) span.setAttribute(GEN_AI.RESPONSE_FINISH_REASONS, [finishReason]);

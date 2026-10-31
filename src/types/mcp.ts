@@ -11,6 +11,7 @@ export enum MCPServerType {
 export interface MCPServer {
   id: string;
   name: string;
+  description: string | null;
   type: MCPServerType;
   enabled: boolean;
   command: string | null;

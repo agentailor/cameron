@@ -13,7 +13,7 @@ export default defineConfig({
     alias: { "@": resolve(rootDir, "src") },
   },
   test: {
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "packages/*/src/**/*.test.ts"],
     environment: "node",
     // No setupFiles and no env loading — a unit test that needs either belongs in eval/.
     reporters: ["default"],

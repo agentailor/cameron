@@ -131,7 +131,7 @@ async function buildAgent(cfg?: AgentConfigOptions) {
     systemPrompt: cfg?.systemPrompt || SYSTEM_PROMPT,
     checkpointer: postgresCheckpointer,
     middleware,
-  }).withConfig({ recursionLimit: 25 });
+  }).withConfig({ recursionLimit: 50 });
 }
 ```
 

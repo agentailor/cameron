@@ -5,6 +5,7 @@ import { toRequestBody, type ServerInput, type ServerTransport } from "@/lib/mcp
 export interface MCPServerView {
   id: string;
   name: string;
+  description: string | null;
   type: ServerTransport;
   enabled: boolean;
   command: string | null;
@@ -87,6 +88,7 @@ export const checkOAuth = (id: string) =>
 export function inputFromServer(server: MCPServerView): ServerInput {
   return {
     name: server.name,
+    description: server.description ?? "",
     type: server.type,
     command: server.command ?? "",
     args: Array.isArray(server.args) ? server.args.map(String) : [],

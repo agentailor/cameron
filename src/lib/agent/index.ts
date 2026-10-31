@@ -5,7 +5,6 @@ import { AgentConfigOptions, sanitizeTool } from "./util";
 import { createChatModel, needsSchemaSanitizing } from "./models";
 import { ModelNotConfiguredError, readModelSettings } from "./modelSettings";
 import type { DynamicStructuredTool } from "@langchain/core/tools";
-import { getMCPTools } from "./mcp";
 import { financeTools } from "./tools/finance";
 import { transactionEditTools } from "./tools/transactionEdits";
 import { csvImportTools } from "./tools/csvImport";
@@ -16,8 +15,16 @@ import { chartTools } from "./tools/charts";
 import { skillTools } from "./tools/skills";
 import { listSkills } from "@/lib/skills/registry";
 import { createAgent, humanInTheLoopMiddleware } from "langchain";
+import { mcpServerDisclosureMiddleware } from "@agentailor/mcp-disclosure";
+import { loadDisclosureServers } from "@/lib/mcp/catalog";
+import { createToolResolver } from "@/lib/mcp/pool";
 // Lives in ./capabilities so the page can read it without importing this file's deps.
 import { MUTATING_TOOL_NAMES } from "./capabilities";
+
+async function loadStoredMcp() {
+  const { servers, records, catalogs } = await loadDisclosureServers();
+  return { servers, resolveTool: createToolResolver(records, catalogs) };
+}
 
 /**
  * Create a new agent instance with the given configuration.
@@ -43,9 +50,10 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   const llm = createChatModel({ provider, model: modelName, temperature: 1, baseUrl });
 
   // Built-in finance tools are registered here (server-side) so they are always present and
-  // cannot be omitted by the client. MCP tools are loaded dynamically; per-request config tools
-  // are appended too. Approval is enforced per-tool by the HITL middleware below (mutations only).
-  const mcpTools = await getMCPTools();
+  // cannot be omitted by the client. MCP tools are NOT registered: the disclosure middleware shows
+  // them from the cached catalog and connects to a server only when one of its tools is called.
+  // Approval is enforced per-tool by the HITL middleware below (mutations only).
+  const mcp = cfg?.mcpForEval ?? (await loadStoredMcp());
   // Per-request tools supplied by the caller — not ./tools/config, which is `settingsTools`.
   const configTools = (cfg?.tools || []) as StructuredToolInterface[];
 
@@ -63,7 +71,7 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   const builtinTools = (needsSchemaSanitizing(provider)
     ? builtin.map((t) => sanitizeTool(t as unknown as DynamicStructuredTool))
     : builtin) as unknown as StructuredToolInterface[];
-  const allTools = [...builtinTools, ...configTools, ...mcpTools] as DynamicTool[];
+  const allTools = [...builtinTools, ...configTools] as DynamicTool[];
 
   // Human-in-the-loop approval: mutating tools pause for an approve/reject decision; everything
   // else (reads, MCP) auto-approves because it isn't listed in `interruptOn`.
@@ -77,7 +85,7 @@ async function buildAgent(cfg?: AgentConfigOptions) {
       { allowedDecisions: ["approve", "reject"] as ("approve" | "reject")[] },
     ]),
   );
-  const middleware = cfg?.bypassApprovalForEval
+  const approval = cfg?.bypassApprovalForEval
     ? []
     : [
         humanInTheLoopMiddleware({
@@ -85,6 +93,10 @@ async function buildAgent(cfg?: AgentConfigOptions) {
           descriptionPrefix: "This action needs your approval",
         }),
       ];
+  // Shows the model a list of capabilities and a tool once a search has loaded it, and runs a call
+  // on a pooled connection. load_tools is not gated: it only changes visibility.
+  const disclosure = mcpServerDisclosureMiddleware(mcp);
+  const middleware = [disclosure, ...approval];
 
   const agent = createAgent({
     model: llm,
@@ -92,8 +104,8 @@ async function buildAgent(cfg?: AgentConfigOptions) {
     systemPrompt: cfg?.systemPrompt || buildSystemPrompt(listSkills()),
     checkpointer: postgresCheckpointer,
     middleware,
-    // 25 comfortably covers the CSV inspect→propose→import handshake plus a few tool retries.
-  }).withConfig({ recursionLimit: 25 });
+    // Counts graph steps, not tool calls: each model → tool round takes several.
+  }).withConfig({ recursionLimit: 50 });
 
   return agent;
 }

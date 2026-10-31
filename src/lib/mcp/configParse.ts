@@ -9,6 +9,8 @@ export type ServerTransport = "stdio" | "http";
 /** A complete server definition. Fields for the other transport stay empty. */
 export interface ServerInput {
   name: string;
+  /** Tells the agent what this server is for. Empty lets Cameron generate one. */
+  description?: string;
   type: ServerTransport;
   command: string;
   args: string[];
@@ -25,6 +27,7 @@ export interface KeyValue {
 /** Form state: rows instead of records, so a half-typed or duplicate key is representable. */
 export interface ServerDraft {
   name: string;
+  description: string;
   type: ServerTransport;
   command: string;
   args: string[];
@@ -45,6 +48,7 @@ export const SERVER_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 export const emptyDraft = (): ServerDraft => ({
   name: "",
+  description: "",
   type: "stdio",
   command: "",
   args: [],
@@ -56,6 +60,7 @@ export const emptyDraft = (): ServerDraft => ({
 export function draftFromInput(input: ServerInput): ServerDraft {
   return {
     name: input.name,
+    description: input.description ?? "",
     type: input.type,
     command: input.command,
     args: [...input.args],
@@ -67,8 +72,10 @@ export function draftFromInput(input: ServerInput): ServerDraft {
 
 export function inputFromDraft(draft: ServerDraft): ServerInput {
   const stdio = draft.type === "stdio";
+  const description = draft.description.trim();
   return {
     name: draft.name.trim(),
+    ...(description ? { description } : {}),
     type: draft.type,
     command: stdio ? draft.command.trim() : "",
     args: stdio ? draft.args.map((a) => a.trim()).filter(Boolean) : [],
@@ -104,15 +111,17 @@ export function validateDraft(draft: ServerDraft, existingNames: string[] = []):
 
 /** The body POST/PATCH /api/mcp-servers expects. Empty collections clear stored values on edit. */
 export function toRequestBody(input: ServerInput) {
+  const description = input.description ?? "";
   return input.type === "stdio"
     ? {
         name: input.name,
+        description,
         type: input.type,
         command: input.command,
         args: input.args,
         env: input.env,
       }
-    : { name: input.name, type: input.type, url: input.url, headers: input.headers };
+    : { name: input.name, description, type: input.type, url: input.url, headers: input.headers };
 }
 
 /** Serializes to the `mcpServers` shape most MCP clients and READMEs use. */
@@ -120,6 +129,7 @@ export function serializeServers(inputs: ServerInput[]): string {
   const mcpServers: Record<string, Record<string, unknown>> = {};
   for (const input of inputs) {
     const entry: Record<string, unknown> = { type: input.type };
+    if (input.description) entry.description = input.description;
     if (input.type === "stdio") {
       entry.command = input.command;
       if (input.args.length) entry.args = input.args;
@@ -193,7 +203,18 @@ function readServer(name: string, raw: unknown): ParsedEntry {
   else if (typeof declared === "string" && HTTP_TRANSPORTS.has(declared)) type = "http";
   else return { name, error: `Unsupported transport ${JSON.stringify(declared)}.` };
 
-  const base: ServerInput = { name, type, command: "", args: [], env: {}, url: "", headers: {} };
+  const base: ServerInput = {
+    name,
+    ...(typeof raw.description === "string" && raw.description.trim()
+      ? { description: raw.description.trim() }
+      : {}),
+    type,
+    command: "",
+    args: [],
+    env: {},
+    url: "",
+    headers: {},
+  };
 
   if (type === "stdio") {
     if (typeof raw.command !== "string" || !raw.command.trim())

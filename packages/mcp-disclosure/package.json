@@ -1,0 +1,23 @@
+{
+  "name": "@agentailor/mcp-disclosure",
+  "version": "0.1.0",
+  "description": "Server-level progressive disclosure for MCP tools in a LangChain v1 agent.",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "@langchain/core": "^1.2.1",
+    "@langchain/langgraph": "^1.4.5",
+    "langchain": "^1.5.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@langchain/core": "^1.2.1",
+    "@langchain/langgraph": "^1.4.5",
+    "langchain": "^1.5.3",
+    "zod": "^4.4.3"
+  }
+}

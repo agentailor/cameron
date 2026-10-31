@@ -1,6 +1,8 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import * as mcpServerRepo from "@/lib/repositories/mcpServerRepository";
 import { ConflictError } from "@/lib/repositories/mcpServerRepository";
+import { refreshCatalogQuietly } from "@/lib/mcp/catalog";
+import { mcpPool } from "@/lib/mcp/pool";
 import { MCPServerType } from "@/types/mcp";
 import { UpdateMCPServerBody } from "./schema";
 
@@ -17,7 +19,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, type, command, args, env, url, headers } = body;
+    const { name, description, type, command, args, env, url, headers } = body;
 
     if (!name || !type) {
       return NextResponse.json({ error: "Name and type are required" }, { status: 400 });
@@ -33,6 +35,7 @@ export async function POST(request: Request) {
 
     const server = await mcpServerRepo.create({
       name,
+      description: description?.trim() || null,
       type: type as MCPServerType,
       command: type === "stdio" ? command : null,
       args: type === "stdio" ? args : null,
@@ -40,6 +43,9 @@ export async function POST(request: Request) {
       url: type === "http" ? url : null,
       headers: type === "http" ? headers : null,
     });
+
+    // Cache its tool list for the agent's server catalog, after the response is sent.
+    after(() => refreshCatalogQuietly(server.id));
 
     return NextResponse.json(server, { status: 201 });
   } catch (error) {
@@ -57,10 +63,11 @@ export async function PATCH(request: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: "ID is required" }, { status: 400 });
     }
-    const { id, name, type, command, args, env, url, headers, enabled } = parsed.data;
+    const { id, name, description, type, command, args, env, url, headers, enabled } = parsed.data;
 
     const patch: mcpServerRepo.UpdateMCPServerPatch = {};
     if (name !== undefined) patch.name = name;
+    if (description !== undefined) patch.description = description.trim() || null;
     if (type !== undefined) patch.type = type as MCPServerType;
     if (enabled !== undefined) patch.enabled = enabled;
 
@@ -83,6 +90,13 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Server not found" }, { status: 404 });
     }
 
+    // Enabling or editing can change the tool list; a rename alone cannot.
+    const reconfigured = [type, command, args, env, url, headers].some((v) => v !== undefined);
+    if (enabled === false || reconfigured) mcpPool.invalidate(id);
+    if (server.enabled && (enabled === true || reconfigured)) {
+      after(() => refreshCatalogQuietly(server.id));
+    }
+
     return NextResponse.json(server);
   } catch (error) {
     console.error("Error updating MCP server:", error);
@@ -103,6 +117,7 @@ export async function DELETE(request: Request) {
     }
 
     const deleted = await mcpServerRepo.remove(id);
+    mcpPool.invalidate(id);
     if (!deleted) {
       return NextResponse.json({ error: "Server not found" }, { status: 404 });
     }

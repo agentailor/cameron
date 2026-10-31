@@ -58,3 +58,41 @@ export function toSemconvOutput(message: BaseMessage, finishReason?: string): Se
     },
   ];
 }
+
+export interface SemconvToolDefinition {
+  type: "function";
+  name: string;
+  description?: string;
+  parameters?: unknown;
+}
+
+/**
+ * The tools a model call was given, from LangChain's `invocation_params.tools`, in the semconv
+ * shape. Each provider binds them differently: OpenAI `{ type, function: {...} }`, Anthropic
+ * `{ name, input_schema }`, Gemini `[{ functionDeclarations: [...] }]`. Anything else (a
+ * provider-native tool without a schema) is skipped rather than guessed at.
+ */
+export function toSemconvToolDefinitions(tools: unknown): SemconvToolDefinition[] {
+  if (!Array.isArray(tools)) return [];
+  const out: SemconvToolDefinition[] = [];
+  const push = (name: unknown, description: unknown, parameters: unknown) => {
+    if (typeof name !== "string") return;
+    out.push({
+      type: "function",
+      name,
+      ...(typeof description === "string" && description ? { description } : {}),
+      ...(parameters !== undefined ? { parameters } : {}),
+    });
+  };
+  for (const raw of tools) {
+    const t = (raw ?? {}) as Record<string, unknown>;
+    const fn = t.function as Record<string, unknown> | undefined;
+    if (fn) push(fn.name, fn.description, fn.parameters);
+    else if (Array.isArray(t.functionDeclarations)) {
+      for (const d of t.functionDeclarations as Record<string, unknown>[]) {
+        push(d?.name, d?.description, d?.parameters);
+      }
+    } else push(t.name, t.description, t.input_schema ?? t.parameters);
+  }
+  return out;
+}

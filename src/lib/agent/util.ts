@@ -1,4 +1,5 @@
 import { DynamicStructuredTool } from "@langchain/core/tools";
+import type { DisclosureServer, ResolveMcpTool } from "@agentailor/mcp-disclosure";
 
 export interface AgentConfigOptions {
   model?: string;
@@ -16,6 +17,11 @@ export interface AgentConfigOptions {
    * An approval-gate eval case must leave this unset — that is the behavior it grades.
    */
   bypassApprovalForEval?: boolean;
+  /**
+   * In-process mock MCP servers, used instead of the stored ones. FOR THE EVAL HARNESS ONLY: those
+   * cases test whether the model finds and uses capabilities, not MCP plumbing.
+   */
+  mcpForEval?: { servers: DisclosureServer[]; resolveTool: ResolveMcpTool };
 }
 
 /**

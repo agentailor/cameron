@@ -186,15 +186,16 @@ itself.
 
 The technical detail lives in [`docs/`](docs/) rather than here:
 
-| Doc                                       | What's in it                                                                                                                                            |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md)   | System overview, agent workflow, data flow, database schema, MCP integration, approval process, streaming, **project structure**, **available scripts** |
-| [SKILLS.md](docs/SKILLS.md)               | How skills load, the validation rules, and how they're packaged for production                                                                          |
-| [TESTING.md](docs/TESTING.md)             | Why the unit suite stays free and offline, and what belongs in evals instead                                                                            |
-| [API.md](docs/API.md)                     | The generated OpenAPI spec, served at `/api/openapi` and browsable at `/api-docs`                                                                       |
-| [OAUTH.md](docs/OAUTH.md)                 | OAuth for MCP servers that need it                                                                                                                      |
-| [OBSERVABILITY.md](docs/OBSERVABILITY.md) | OpenTelemetry tracing to a self-hosted backend (Phoenix by default), what a trace contains, and swapping backends                                       |
-| [eval/README.md](eval/README.md)          | The paid, non-deterministic eval suite — never in CI                                                                                                    |
+| Doc                                         | What's in it                                                                                                                                            |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md)     | System overview, agent workflow, data flow, database schema, MCP integration, approval process, streaming, **project structure**, **available scripts** |
+| [SKILLS.md](docs/SKILLS.md)                 | How skills load, the validation rules, and how they're packaged for production                                                                          |
+| [TESTING.md](docs/TESTING.md)               | Why the unit suite stays free and offline, and what belongs in evals instead                                                                            |
+| [API.md](docs/API.md)                       | The generated OpenAPI spec, served at `/api/openapi` and browsable at `/api-docs`                                                                       |
+| [OAUTH.md](docs/OAUTH.md)                   | OAuth for MCP servers that need it                                                                                                                      |
+| [MCP_DISCLOSURE.md](docs/MCP_DISCLOSURE.md) | Progressive disclosure: a server catalog instead of every MCP tool on every turn (POC)                                                                  |
+| [OBSERVABILITY.md](docs/OBSERVABILITY.md)   | OpenTelemetry tracing to a self-hosted backend (Phoenix by default), what a trace contains, and swapping backends                                       |
+| [eval/README.md](eval/README.md)            | The paid, non-deterministic eval suite — never in CI                                                                                                    |
 
 [AGENTS.md](AGENTS.md) carries the conventions a coding agent needs to work in this repo.
 
