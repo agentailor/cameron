@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MAX_SQL_ROWS } from "@/lib/finance/sqlGuard";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { INSUFFICIENT_PRIVILEGE, MAX_SQL_ROWS, QueryError } from "@/lib/finance/sqlGuard";
 import { callTool } from "./testing";
 
 /** Contract tests for the analytics tools — DB stubbed. Guard rules live in sqlGuard.test.ts. */
@@ -9,7 +11,7 @@ vi.mock("@/lib/repositories/analyticsRepository", () => ({
 }));
 
 const analyticsRepo = await import("@/lib/repositories/analyticsRepository");
-const { describeFinanceSchema, runSql } = await import("./analytics");
+const { describeFinanceSchema, runSql, TABLES } = await import("./analytics");
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -184,6 +186,29 @@ describe("run_sql", () => {
     expect(result.error).toEqual(expect.stringContaining("nope"));
   });
 
+  it("says a table outside the analytics role's grants is unavailable, not a SQL mistake", async () => {
+    vi.mocked(analyticsRepo.runReadOnlyQuery).mockRejectedValue(
+      new QueryError("permission denied for table mcp_server", INSUFFICIENT_PRIVILEGE),
+    );
+
+    const result = await callTool(runSql, { query: "SELECT auth_tokens FROM mcp_server" });
+
+    expect(result.error).toMatch(/isn't available to run_sql/);
+    expect(result.availableTables).toEqual(Object.keys(TABLES));
+    expect(result.detail).toContain("mcp_server");
+  });
+
+  it("does not treat other database errors as a permission denial", async () => {
+    vi.mocked(analyticsRepo.runReadOnlyQuery).mockRejectedValue(
+      new QueryError('relation "nope" does not exist', "42P01"),
+    );
+
+    const result = await callTool(runSql, { query: "SELECT * FROM nope" });
+
+    expect(result.error).toMatch(/^Query failed: .*nope/);
+    expect(result.availableTables).toBeUndefined();
+  });
+
   it("bounds an unbounded query before running it", async () => {
     vi.mocked(analyticsRepo.runReadOnlyQuery).mockResolvedValue({
       columns: [],
@@ -198,5 +223,27 @@ describe("run_sql", () => {
       expect.stringContaining(`LIMIT ${MAX_SQL_ROWS}`),
       MAX_SQL_ROWS,
     );
+  });
+});
+
+describe("cameron_analytics grants", () => {
+  // Reads the committed migrations, not a database: the grants decide what run_sql can see, and
+  // describe_finance_schema is what the agent is told it can see. The two must name the same tables.
+  const migrations = readdirSync(join(process.cwd(), "drizzle"))
+    .filter((f) => f.endsWith(".sql"))
+    .map((f) => readFileSync(join(process.cwd(), "drizzle", f), "utf8"))
+    .join("\n");
+
+  it("grants SELECT on exactly the tables describe_finance_schema documents", () => {
+    const granted = [...migrations.matchAll(/GRANT SELECT ON ([^;]+?) TO cameron_analytics/gi)]
+      .flatMap((m) => m[1].split(","))
+      .map((t) => t.trim().replace(/"/g, ""));
+
+    expect(granted.sort()).toEqual(Object.keys(TABLES).sort());
+  });
+
+  it("never grants more than SELECT, or a whole schema", () => {
+    expect(migrations).not.toMatch(/ON ALL TABLES[^;]*TO cameron_analytics/i);
+    expect(migrations).not.toMatch(/GRANT (?!SELECT|USAGE|EXECUTE)\w+[^;]*TO cameron_analytics/i);
   });
 });

@@ -1,9 +1,9 @@
 /**
  * Static validation for the agent's read-only SQL tool (`run_sql`). This is the FIRST line of
  * defense — it rejects anything that isn't a single read-only SELECT before the query ever reaches
- * Postgres. The REAL guard is the read-only transaction + statement_timeout in
- * `analyticsRepository.runReadOnlyQuery`; even if a clever payload slips past these regexes,
- * Postgres itself refuses to write inside a `READ ONLY` transaction. Defense in depth.
+ * Postgres. The REAL guards are in `analyticsRepository.runReadOnlyQuery`: a `READ ONLY`
+ * transaction (no writes) run as the `cameron_analytics` role (no tables beyond the finance ones).
+ * Even if a payload slips past these regexes, Postgres refuses it. Defense in depth.
  *
  * Pure and DB-free so it can be unit-tested in isolation.
  */
@@ -34,7 +34,7 @@ function stripCommentsAndStrings(sql: string): string {
 
 // The read-only transaction in analyticsRepository is the real write-guard; this list is
 // belt-and-suspenders and also covers read-side escape hatches a read-only tx does NOT block
-// (SET/RESET session state, COPY, volatile functions). A restricted DB role will supersede it later.
+// (SET/RESET session state, COPY, volatile functions). Which tables are readable is the role's job.
 // `select`/`with` are intentionally absent — those are the only allowed leading keywords.
 const FORBIDDEN_KEYWORDS = [
   "insert",
@@ -138,4 +138,18 @@ export function enforceLimit(sql: string, max: number = MAX_SQL_ROWS): string {
   const hasLimit = /\blimit\s+\d/i.test(scrubbed);
   if (hasLimit) return trimmed;
   return `${trimmed}\nLIMIT ${max}`;
+}
+
+/** SQLSTATE for "permission denied" — what the analytics role gets for anything outside its grants. */
+export const INSUFFICIENT_PRIVILEGE = "42501";
+
+/** A database failure from `run_sql`, keeping the SQLSTATE so callers can tell a denial apart. */
+export class QueryError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "QueryError";
+  }
 }

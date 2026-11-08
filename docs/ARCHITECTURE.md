@@ -355,6 +355,26 @@ model MCPServer {
 
 **Purpose**: Dynamic configuration of MCP servers. Supports both stdio (command-line) and HTTP-based servers with flexible JSON configuration.
 
+### What `run_sql` can read
+
+`run_sql` runs as the `cameron_analytics` role (`SET LOCAL ROLE` in `analyticsRepository`), which
+migration `0006_analytics_readonly_role.sql` grants SELECT on `transaction` and `category` only.
+Postgres refuses everything else, including `mcp_server`, whose OAuth tokens, env vars and headers
+are stored in plaintext.
+
+The same migration revokes `EXECUTE` on `pg_catalog.set_config` from `PUBLIC`. **Keep that.**
+`SET ROLE` changes only the current role, and `set_config('role', 'none', true)` is `SET ROLE` as a
+function call, which the guard's `SET` keyword check misses. Paired with a function that runs a
+query at run time, a single SELECT read `mcp_server` on the dev database:
+
+```sql
+SELECT set_config('role', 'none', true),
+       query_to_xml('select auth_tokens from mcp_server', true, false, '')
+```
+
+A `REVOKE` run by a non-owner only warns, so the migration checks the result and raises if the role
+can still call `set_config` or read `mcp_server`. Migrations must therefore run as a superuser.
+
 ## 🤖 Agent Workflow
 
 ### Graph Structure

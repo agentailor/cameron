@@ -108,10 +108,15 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     `src/lib/finance/sqlGuard.ts` (single statement, SELECT/WITH only, DML/DDL deny-list with
     comments+strings stripped), and the _real_ guard is `src/lib/repositories/analyticsRepository.ts`
     — the one sanctioned raw-SQL site — which runs every query inside a `BEGIN TRANSACTION READ ONLY`
-    - `statement_timeout`, always rolls back, and hard-caps returned rows. Both tools auto-approve.
+    - `statement_timeout`, **as the `cameron_analytics` role** (`SET LOCAL ROLE`), always rolls
+      back, and hard-caps returned rows. The role can SELECT only `transaction` and `category`, so
+      Postgres refuses `mcp_server` (plaintext OAuth tokens/env/headers), the checkpoints, `config`
+      and `thread`; a `42501` comes back as an "isn't available to `run_sql`" payload. Why
+      `set_config` is revoked from PUBLIC (it is `SET ROLE` as a function):
+      [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#what-run_sql-can-read). Both tools auto-approve.
       `run_sql` attaches a `note` when a result is **empty or an all-NULL aggregate row**: an
       aggregate over zero rows returns NULL, which is byte-identical whether the filtered name exists
-      or not, so the agent would otherwise guess ("you have no X spending _yet_" implies X exists).
+      or not, so the agent would otherwise guess ("you have no X spending \_yet\*" implies X exists).
       Same defect class as the truncation bug — a payload the agent predictably misreads.
   - `src/lib/agent/tools/categories.ts` — `list_categories` (read-only) and `create_category`
     (mutating/gated).
@@ -273,8 +278,13 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   Add new DB access as repository functions, not inline queries.
 - **Sanctioned raw-SQL exception**: `analyticsRepository.runReadOnlyQuery` runs agent-authored SQL for
   the `run_sql` tool. It is the ONE place raw SQL executes; it runs inside a Drizzle `db.transaction`
-  marked `SET TRANSACTION READ ONLY` + `statement_timeout`, always rolls back (throws an internal
-  sentinel after capturing rows), and caps rows. It goes through Drizzle (not a raw `pg` client) to
+  marked `SET TRANSACTION READ ONLY` + `statement_timeout` + `SET LOCAL ROLE cameron_analytics`,
+  always rolls back (throws an internal sentinel after capturing rows), and caps rows. Failures
+  throw `QueryError` (in `sqlGuard.ts`) carrying the SQLSTATE. **What `run_sql` can read is the
+  role's grants** (migration `0006_analytics_readonly_role.sql`), not a filter in code: a new
+  finance table needs both a `describe_finance_schema` entry and a `GRANT SELECT … TO
+cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. Migrations must
+  run as a superuser (the migration checks and raises otherwise). It goes through Drizzle (not a raw `pg` client) to
   keep the seam intact — a dedicated `pg` client can be reintroduced if finer control is needed. Do
   not run raw SQL from routes/tools directly.
 - **Atomic bulk import**: `transactionRepository.importWithCategories(rows)` resolves/creates
@@ -316,8 +326,9 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   (→ HTTP 409); a missing row returns `null`/`false` (→ HTTP 404). Routes check return values, not
   driver error codes.
 - **`config` is settings, not a secret store**: `(key, value, updated_at)` only — no `description`
-  column, because that varies per key, not per install, and no code would read it. Deliberately
-  absent from `describe_finance_schema` so `run_sql` doesn't surface it; don't put credentials there.
+  column, because that varies per key, not per install, and no code would read it. Absent from
+  `describe_finance_schema` and not granted to `cameron_analytics`, so `run_sql` cannot read it;
+  still, don't put credentials there.
 - **Tables**: `thread` (minimal metadata; actual history in LangGraph checkpoints) and `mcp_server`
   (stdio/http with conditional fields + OAuth token/state columns; JSON columns for flexible config).
   `id` columns are text (app-generated uuids); `updated_at` is app-managed (set on writes).

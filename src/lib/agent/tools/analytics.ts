@@ -1,7 +1,13 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { runReadOnlyQuery, type QueryResult } from "@/lib/repositories/analyticsRepository";
-import { validateSelect, enforceLimit, MAX_SQL_ROWS } from "@/lib/finance/sqlGuard";
+import {
+  validateSelect,
+  enforceLimit,
+  MAX_SQL_ROWS,
+  INSUFFICIENT_PRIVILEGE,
+  QueryError,
+} from "@/lib/finance/sqlGuard";
 
 /**
  * Analytics tools for open-ended aggregate questions the fixed queries can't answer. Both are
@@ -11,7 +17,8 @@ import { validateSelect, enforceLimit, MAX_SQL_ROWS } from "@/lib/finance/sqlGua
 
 // Curated (not introspected) so it can encode conventions information_schema can't (direction via
 // `type`). TODO(scale): derive column lists from Drizzle metadata when the schema
-// outgrows a hand-written doc.
+// outgrows a hand-written doc. These keys must match the `cameron_analytics` grants in `drizzle/`
+// (pinned by analytics.test.ts).
 interface ColumnDoc {
   name: string;
   type: string;
@@ -24,7 +31,7 @@ interface TableDoc {
   columns: ColumnDoc[];
 }
 
-const TABLES: Record<string, TableDoc> = {
+export const TABLES: Record<string, TableDoc> = {
   transaction: {
     table: "transaction",
     description: "The system of record — one row per transaction.",
@@ -160,8 +167,18 @@ export const runSql = tool(
         : emptyResultNote(result);
       return JSON.stringify({ ...result, ...(note ? { note } : {}) });
     } catch (err) {
-      // Surface the DB error text (e.g. unknown column) so the agent can fix its query.
       const message = err instanceof Error ? err.message : String(err);
+      // The analytics role's grants refused it — rewriting the SQL won't help, so say so.
+      if (err instanceof QueryError && err.code === INSUFFICIENT_PRIVILEGE) {
+        return JSON.stringify({
+          error:
+            "That table isn't available to run_sql. Only the finance tables can be queried — " +
+            "call `describe_finance_schema` for their columns.",
+          availableTables: Object.keys(TABLES),
+          detail: message,
+        });
+      }
+      // Surface the DB error text (e.g. unknown column) so the agent can fix its query.
       return JSON.stringify({ error: `Query failed: ${message}` });
     }
   },

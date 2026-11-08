@@ -43,6 +43,13 @@
       "when": 1793461826948,
       "tag": "0005_mcp_server_description",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794166697476,
+      "tag": "0006_analytics_readonly_role",
+      "breakpoints": true
     }
   ]
 }
