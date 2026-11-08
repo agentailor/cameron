@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import * as mcpServerRepo from "@/lib/repositories/mcpServerRepository";
 import { ServerOAuthProvider } from "@/lib/mcp/oauth-provider";
+import { refreshCatalogQuietly } from "@/lib/mcp/catalog";
+import { mcpPool } from "@/lib/mcp/pool";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { OAuthStatus } from "@/lib/mcp/oauth-detection";
 import { getAppUrl } from "@/lib/config/app-url";
@@ -58,6 +60,9 @@ export async function GET(
 
     // Update server status to connected (clears the transient code verifier)
     await mcpServerRepo.markConnected(serverId);
+    mcpPool.invalidate(serverId);
+    // Now reachable: cache its tool list for the agent's server catalog.
+    after(() => refreshCatalogQuietly(serverId));
 
     // Redirect back to app with success
     return NextResponse.redirect(

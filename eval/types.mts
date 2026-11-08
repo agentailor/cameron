@@ -188,6 +188,8 @@ export interface EvalCase {
    * A case about REUSING one needs the opposite, and this is how it says so.
    */
   config?: Record<string, string>;
+  /** Give the agent the mock MCP servers in `eval/mcpMocks.mts`. Other cases have none. */
+  mcp?: boolean;
   /** Reported as skipped, never executed. Keeps a known-red case (and its reason) on the books. */
   skip?: boolean;
   /** Free-form labels for filtering/grouping. Not used by the runner. */

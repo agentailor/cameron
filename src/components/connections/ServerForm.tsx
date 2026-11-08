@@ -305,6 +305,24 @@ export function ServerForm({
           </div>
 
           <div className="space-y-1.5">
+            <label htmlFor={`${uid}-description`} className={fieldLabel}>
+              DESCRIPTION
+            </label>
+            <input
+              id={`${uid}-description`}
+              value={draft.description}
+              onChange={(e) => update({ description: e.target.value })}
+              placeholder="Read and update the pages in my budget workspace"
+              autoComplete="off"
+              className={field}
+            />
+            <p className="text-muted-foreground text-xs">
+              Optional. Cameron decides whether to look for this server&apos;s tools from this line.
+              Leave it empty to have one generated from the tool list.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
             <span className={fieldLabel}>TRANSPORT</span>
             <div role="radiogroup" aria-label="Transport" className="grid gap-2 sm:grid-cols-2">
               {TRANSPORTS.map(({ id, label, hint, Icon }) => {

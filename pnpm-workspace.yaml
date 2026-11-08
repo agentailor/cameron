@@ -10,3 +10,6 @@ overrides:
   jws@<3.2.3: ">=3.2.3"
   mdast-util-to-hast@>=13.0.0 <13.2.1: ">=13.2.1"
   next@>=15.5.0-canary.0 <15.5.7: ">=15.5.7"
+
+packages:
+  - "packages/*"

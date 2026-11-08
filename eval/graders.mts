@@ -110,6 +110,23 @@ export function toolCallCountAtLeast(name: string, min: number): Grader {
   };
 }
 
+/** `load_tools` added at most `max` tools in total: over-loading costs tokens on every later step. */
+export function loadedToolsAtMost(max: number): Grader {
+  const id = `loadedToolsAtMost(${max})`;
+  return {
+    id,
+    grade: (c: RunCapture) => {
+      const n = c.toolResults
+        .filter((r) => r.name === "load_tools")
+        .reduce((sum, r) => {
+          const payload = JSON.parse(r.content) as { loaded?: unknown[] };
+          return sum + (payload.loaded?.length ?? 0);
+        }, 0);
+      return result(id, n <= max, n <= max ? undefined : `loaded ${n} tools (max ${max})`);
+    },
+  };
+}
+
 /** A SQL-bearing tool call whose query matches `pattern` (e.g. an aggregate). */
 export function sqlMatches(pattern: RegExp): Grader {
   const id = `sqlMatches(${pattern})`;

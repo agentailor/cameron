@@ -9,6 +9,7 @@ export const MCPServerResponse = z
   .object({
     id: z.string(),
     name: z.string(),
+    description: z.string().nullable().optional(),
     type: ServerType,
     enabled: z.boolean(),
     command: z.string().nullable().optional(),
@@ -29,6 +30,7 @@ export const CreateMCPServerBody = z
   .discriminatedUnion("type", [
     z.object({
       name: z.string(),
+      description: z.string().optional(),
       type: z.literal("stdio"),
       command: z.string(),
       args: z.array(z.string()).optional(),
@@ -36,6 +38,7 @@ export const CreateMCPServerBody = z
     }),
     z.object({
       name: z.string(),
+      description: z.string().optional(),
       type: z.literal("http"),
       url: z.string().url(),
       headers: z.record(z.string(), z.string()).optional(),
@@ -47,6 +50,7 @@ export const UpdateMCPServerBody = z
   .object({
     id: z.string(),
     name: z.string().optional(),
+    description: z.string().optional(),
     type: ServerType.optional(),
     enabled: z.boolean().optional(),
     command: z.string().optional(),

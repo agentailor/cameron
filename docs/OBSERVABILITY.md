@@ -99,8 +99,21 @@ When the approval gate pauses a run, the `invoke_agent` span gets a `cameron.app
 event listing the gated **tool names** — never their arguments. A pause is not an error.
 
 **With content capture on**, Cameron adds `gen_ai.system_instructions`, `gen_ai.input.messages`,
-`gen_ai.output.messages`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result`, the error
-message and the exception event. On `invoke_agent`, the input is the turn's new user message (a
+`gen_ai.output.messages`, `gen_ai.tool.definitions`, `gen_ai.tool.call.arguments`,
+`gen_ai.tool.call.result`, the error message and the exception event.
+
+`gen_ai.tool.definitions` (on `chat`) is the tool list the model was **offered** on that call —
+name, description and parameter schema, normalized from each provider's shape (OpenAI and
+compatible, Anthropic, Gemini). Tools travel beside the prompt, not in it, so without this a
+trace cannot explain which tools the model knew about. With MCP progressive disclosure it is
+also where you see the list change: a thread starts with the core tools and `load_tools`, and
+the list grows at its end after each `load_tools`.
+
+`gen_ai.usage.cache_read.input_tokens` and `gen_ai.usage.cache_creation.input_tokens` (on `chat`,
+content capture not needed) are set only when the provider reports them. Absent means unknown, not
+a cache miss. Compare them across a `load_tools` call to see what changing the tool list costs.
+
+On `invoke_agent`, the input is the turn's new user message (a
 resume has none — its input is a decision) and the output is the run's last assistant message. Image and file blocks are recorded by type only, never inlined.
 Turn this on to debug, not by default: the result of a `run_sql` or `query_transactions` call is
 your ledger.

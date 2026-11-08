@@ -29,6 +29,20 @@
       "when": 1791747858841,
       "tag": "0003_amount_in_major_units",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792755192317,
+      "tag": "0004_mcp_server_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793461826948,
+      "tag": "0005_mcp_server_description",
+      "breakpoints": true
     }
   ]
 }

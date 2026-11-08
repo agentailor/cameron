@@ -8,6 +8,7 @@ import {
   SIMULATOR_MODEL,
 } from "./config.mts";
 import { prepareDatabase, resetToFixture, seedConfig } from "./db.mts";
+import { mockResolveTool, mockServers } from "./mcpMocks.mts";
 import { seed } from "./seed.mts";
 import { runCase } from "./runner.mts";
 import { cases } from "./cases/index.mts";
@@ -163,6 +164,9 @@ async function main() {
           model: MODEL.name,
           baseUrl: MODEL.baseUrl,
           bypassApprovalForEval: !testCase.approval,
+          ...(testCase.mcp
+            ? { mcpForEval: { servers: mockServers, resolveTool: mockResolveTool } }
+            : {}),
         });
         const t0 = Date.now();
         const capture = await runCase(agent as never, testCase);
