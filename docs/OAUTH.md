@@ -138,8 +138,31 @@ The `NEXT_PUBLIC_APP_URL` is used to construct the OAuth redirect URI: `{NEXT_PU
 
 ### Token Storage Security
 
-- **Encrypt tokens at rest**: Currently tokens are stored as plain JSON in the database. Use encryption (e.g., AES-256-GCM) before storing `authTokens` and `clientInfo`
-- **Use a secrets manager**: Consider AWS Secrets Manager, HashiCorp Vault, or similar for sensitive OAuth credentials
+Credentials are **encrypted at rest**. `auth_tokens`, `client_info`, `env` and `headers` on
+`mcp_server` are sealed with AES-256-GCM (`src/lib/crypto/secretBox.ts`) under a key from
+`CAMERON_SECRET_KEY` (32 random bytes, base64 — `openssl rand -base64 32`). A `pg_dump`, a backup
+in `backups/` or an exposed Postgres port yields only ciphertext.
+
+- **Envelope**: each value is stored as `{ "enc": "aes-256-gcm", "v": 1, "iv", "tag", "data" }`
+  (base64), with a random 12-byte IV per write. `v` leaves room for key rotation later.
+- **Bound to its place**: the row id and column name are authenticated data, so an envelope copied
+  to another server or column fails to open instead of being used there.
+- **One seam**: encryption happens only in `mcpServerRepository`; every caller still gets plain
+  `MCPServer` objects.
+- **No key, no secrets — never plaintext**: the key is read on first use, not at startup, so an
+  install with no credentials runs without one (empty values — `null`, `{}` — are stored as is). Writing a credential without a key throws
+  (`SecretKeyError`), and so does reading an envelope. A wrong key or an altered value throws
+  `SecretDecryptError`. Nothing ever falls back to writing plaintext.
+- **Legacy rows**: values written before encryption existed are read as is, and re-sealed the next
+  time they are written. To seal them all now, run `pnpm db:encrypt-secrets` (idempotent; targets
+  `DATABASE_URL`). For the production stack, back it up first, then point `DATABASE_URL` at it
+  (`localhost:5546/mydb`) for that one command.
+- **Keep the key apart from the data**: it lives in env, never in the database or its dumps.
+  Losing it means re-entering those credentials (re-authorizing OAuth servers); there is no
+  recovery.
+- **Not covered**: `code_verifier` (PKCE, short-lived, cleared once the server connects) and
+  `oauth_status`. The key protects data at rest, not a compromised running app — the process holds
+  it in memory. A secrets manager (Vault, AWS Secrets Manager) is still an option if you need one.
 
 ### Additional Security Measures
 

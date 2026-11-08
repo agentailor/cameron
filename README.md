@@ -121,8 +121,13 @@ git clone --branch v4 https://github.com/agentailor/cameron
 cd cameron
 
 cp .env.example .env              # add your model API key, if your provider needs one
+                                  # and set CAMERON_SECRET_KEY (openssl rand -base64 32)
 docker compose --profile full up  # http://localhost:3100
 ```
+
+`CAMERON_SECRET_KEY` encrypts the credentials you give MCP servers (env vars, headers, OAuth
+tokens) before they reach the database. Without it, saving one fails rather than storing it in
+plaintext. Keep it out of your backups; lose it and you re-enter those credentials.
 
 That builds the app, waits for Postgres, applies migrations, and starts everything. Nothing else
 is needed on your machine.
@@ -144,7 +149,7 @@ Use this path to change Cameron, or to try it on sample data. From your clone:
 
 ```bash
 pnpm install
-cp .env.example .env       # add your model API key, if your provider needs one
+cp .env.example .env       # add your model API key and a CAMERON_SECRET_KEY
 docker compose up -d       # dev dependencies — Postgres :5544, MinIO :9100/:9101
 pnpm db:migrate
 pnpm db:seed               # optional: sample categories and about six weeks of transactions

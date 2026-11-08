@@ -438,7 +438,8 @@ export function ServerForm({
 
           {(draft.env.length > 0 || draft.headers.length > 0) && (
             <p className="text-muted-foreground text-xs">
-              Values are hidden on screen but stored unencrypted in your database.
+              Values are hidden on screen and encrypted in your database with your
+              CAMERON_SECRET_KEY.
             </p>
           )}
         </div>

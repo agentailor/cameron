@@ -31,6 +31,7 @@ pnpm db:migrate               # Apply pending migrations
 pnpm db:push                  # Push schema directly (dev convenience, no migration file)
 pnpm db:pull                  # Introspect an existing DB into schema
 pnpm db:studio                # Database UI
+pnpm db:encrypt-secrets       # Seal legacy plaintext MCP credentials (needs CAMERON_SECRET_KEY)
 
 # File Storage
 # MinIO Console: http://localhost:9101 (minioadmin/minioadmin)
@@ -325,6 +326,9 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
 - **Error translation** lives in the repositories: a duplicate name surfaces as `ConflictError`
   (→ HTTP 409); a missing row returns `null`/`false` (→ HTTP 404). Routes check return values, not
   driver error codes.
+- **Encrypted columns**: `mcp_server.env`, `headers`, `auth_tokens`, `client_info` hold
+  `secretBox` envelopes; the row id + column are bound as AAD (`secretContext()`), so a value
+  copied between rows won't decrypt. Never read or write them outside the repository.
 - **`config` is settings, not a secret store**: `(key, value, updated_at)` only — no `description`
   column, because that varies per key, not per install, and no code would read it. Absent from
   `describe_finance_schema` and not granted to `cameron_analytics`, so `run_sql` cannot read it;
@@ -359,8 +363,11 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   `type`/`transport` is absent, and judges each server separately. Switching JSON → form is refused
   while the JSON is invalid, so nothing is silently dropped. A paste holding several servers opens a
   checklist (`BatchReview`) and adds them one at a time with a per-server outcome.
-- **Env values and headers are masked on screen but stored in plaintext** — say so in the UI, never
-  imply they are encrypted.
+- **Env values, headers, OAuth tokens and client info are encrypted at rest** (AES-256-GCM,
+  `CAMERON_SECRET_KEY`), inside `mcpServerRepository` ONLY — see "Token Storage Security" in
+  [docs/OAUTH.md](docs/OAUTH.md). Legacy plaintext reads through; every write seals; a missing key
+  throws on the first secret write or envelope read, never writes plaintext.
+  `pnpm db:encrypt-secrets` seals legacy rows. `code_verifier` is deliberately not covered.
 - **Tools are listed on demand, one server at a time**: `GET /api/mcp-servers/{id}/tools` connects to
   that server only (enabled or not), then closes the client. Listing tools means connecting (for stdio,
   spawning a process), so nothing connects on page load and no tool count is stored — a stored count
