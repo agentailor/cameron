@@ -50,6 +50,14 @@ describe("createToolServerIndex", () => {
     expect(serverOf("bank__balance")?.name).toBe("bank");
   });
 
+  it("picks the server whose catalog lists the tool when the prefix is ambiguous", () => {
+    const gh = makeServer("gh", { toolNames: ["ent__search"] });
+    const ghEnt = makeServer("gh__ent", { toolNames: ["list"] });
+    const pick = createToolServerIndex([gh, ghEnt]);
+    expect(pick("gh__ent__search")?.name).toBe("gh");
+    expect(pick("gh__ent__list")?.name).toBe("gh__ent");
+  });
+
   it("returns null for tools that are not MCP tools", () => {
     expect(serverOf("log_expense")).toBeNull();
     expect(serverOf("bankbalance")).toBeNull();

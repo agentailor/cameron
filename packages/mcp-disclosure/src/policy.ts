@@ -26,13 +26,22 @@ export function renderCatalogBlock(servers: DisclosureServer[]): string | null {
 }
 
 /**
- * Maps a tool name (`server__tool`) back to its server. Longest name wins, so a server named
- * `a__b` is not mistaken for `a`. Returns null for a tool that is not an MCP tool.
+ * Maps a tool name (`server__tool`) back to its server. Names may contain `__`, so a prefix can
+ * fit several servers: the one whose catalog lists the rest wins, else the longest name. Returns
+ * null for a tool that is not an MCP tool.
  */
 export function createToolServerIndex(servers: DisclosureServer[]) {
   const ordered = [...servers].sort((a, b) => b.name.length - a.name.length);
-  return (toolName: string): DisclosureServer | null =>
-    ordered.find((s) => toolName.startsWith(`${s.name}${TOOL_NAME_SEPARATOR}`)) ?? null;
+  return (toolName: string): DisclosureServer | null => {
+    const candidates = ordered.filter((s) =>
+      toolName.startsWith(`${s.name}${TOOL_NAME_SEPARATOR}`),
+    );
+    const listing = candidates.find((s) => {
+      const rest = toolName.slice(s.name.length + TOOL_NAME_SEPARATOR.length);
+      return s.catalog?.tools.some((t) => t.name === rest);
+    });
+    return listing ?? candidates[0] ?? null;
+  };
 }
 
 /** Resolves a server the model named: the catalog name, or the id. */

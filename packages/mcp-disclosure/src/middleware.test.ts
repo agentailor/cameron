@@ -232,6 +232,14 @@ describe("disclosure", () => {
     }
   });
 
+  it("does not load another server's tool by exact name when scoped", async () => {
+    const { run, stateOf } = build([
+      { tools: [["load_tools", { query: "bank__get_balance", server: "notes" }]] },
+    ]);
+    await run("scoped-exact");
+    expect((await stateOf("scoped-exact")).activeTools).not.toContain("bank__get_balance");
+  });
+
   it("respects limit, caps it, and reports how many matched", async () => {
     const names = Array.from({ length: 15 }, (_, i) => `get_${String(i).padStart(2, "0")}`);
     const many = [makeServer("big", { toolNames: names })];

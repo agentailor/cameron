@@ -146,13 +146,16 @@ dev hot reload doesn't leak child processes):
   edit (or token write) reconnects on the next call instead of reusing stale settings.
 - **Shared first connection.** Parallel calls to a server that is still connecting wait for the
   same connection.
-- **Idle close** after `DEFAULT_IDLE_MS` (5 minutes, a code constant); each call restarts the
-  clock. The timer is `unref`'d so it never keeps the process alive.
+- **Idle close** after `DEFAULT_IDLE_MS` (5 minutes, a code constant) with no call running. A
+  call holds its session (`acquire` → `release`), so one longer than the timeout is not closed
+  under itself; the clock restarts when the last call finishes. The timer is `unref`'d so it never
+  keeps the process alive.
 - **Dropped** when a connection fails, when it closes on its own (a stdio process exits), and
   explicitly (`invalidate`) when a server is disabled, edited or deleted, or OAuth completes.
 
 When the pool opens a session it compares the live `tools/list` hash with the catalog's; if they
-differ, it rewrites the catalog row from that same session (no second connection).
+differ, it rewrites the catalog row from that same session (no second connection), through the
+same per-version de-duplication as every other refresh.
 
 Measured on the dev stack with three fake stdio servers, each logging its spawn:
 
@@ -197,7 +200,12 @@ instead of the summary, and no summary is generated while it is set.
 Rows hold protocol data only, never client-library output, so they survive a client migration.
 This line is all the model has to decide whether to search, so it is the catalog's most important
 field. The first refresh after adding a server now includes a model call, and a chat message waits
-at most `CATALOG_WAIT_MS` for it.
+at most `CATALOG_WAIT_MS` for it. When that refresh fails, chat messages stop retrying the same
+server version for `FAILED_RETRY_MS` (5 minutes), so a broken server is not reconnected, or its
+process respawned, on every message; an edit or the catalog POST retries at once.
+
+Changing or clearing the description also refreshes the row, so clearing it brings back a
+generated summary.
 
 **Refreshed** after the response (`after()`) when a server is created, enabled, or its
 connection settings are edited, and when OAuth completes — through a short-lived session, not the

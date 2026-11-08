@@ -90,10 +90,11 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Server not found" }, { status: 404 });
     }
 
-    // Enabling or editing can change the tool list; a rename alone cannot.
+    // Enabling or editing can change the tool list, and a description change decides whether the
+    // summary is generated; a rename alone changes neither.
     const reconfigured = [type, command, args, env, url, headers].some((v) => v !== undefined);
     if (enabled === false || reconfigured) mcpPool.invalidate(id);
-    if (server.enabled && (enabled === true || reconfigured)) {
+    if (server.enabled && (enabled === true || reconfigured || description !== undefined)) {
       after(() => refreshCatalogQuietly(server.id));
     }
 

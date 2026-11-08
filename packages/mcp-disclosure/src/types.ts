@@ -69,7 +69,8 @@ export interface McpSession {
 }
 
 export type ToolResolution =
-  | { ok: true; tool: StructuredToolInterface }
+  /** `release`, when given, is called once the call has finished (it holds the session open). */
+  | { ok: true; tool: StructuredToolInterface; release?: () => void }
   | { ok: false; error: string; message: string };
 
 /** Finds the runnable tool for a call, connecting to its server if needed. Never throws. */

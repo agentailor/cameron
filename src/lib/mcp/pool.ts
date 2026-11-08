@@ -6,7 +6,7 @@ import {
   type ServerCatalogEntry,
 } from "@agentailor/mcp-disclosure";
 import { ConnectError, openSession } from "@/lib/mcp/connector";
-import { refreshFromManifest } from "@/lib/mcp/catalog";
+import { refreshCatalogFromManifest } from "@/lib/mcp/catalog";
 import type { MCPServer } from "@/types/mcp";
 
 // On globalThis so dev hot reload reuses the pool instead of leaking connections (and processes).
@@ -27,21 +27,26 @@ export function createToolResolver(
     const server = byId.get(serverId);
     if (!server) return { ok: false, error: "not_found", message: "Server is not enabled." };
     try {
-      const session = await mcpPool.session(serverId, server.updatedAt.toISOString(), async () => {
-        console.log(`[mcp-disclosure] connecting to ${server.name}`);
-        const opened = await openSession(server);
-        void checkFreshness(server, opened, catalogs.get(serverId));
-        return opened;
-      });
+      const { session, release } = await mcpPool.acquire(
+        serverId,
+        server.updatedAt.toISOString(),
+        async () => {
+          console.log(`[mcp-disclosure] connecting to ${server.name}`);
+          const opened = await openSession(server);
+          void checkFreshness(server, opened, catalogs.get(serverId));
+          return opened;
+        },
+      );
       const tool = session.getTool(toolName);
       if (!tool) {
+        release();
         return {
           ok: false,
           error: "unknown_tool",
           message: `The server no longer has "${toolName}".`,
         };
       }
-      return { ok: true, tool };
+      return { ok: true, tool, release };
     } catch (error) {
       return {
         ok: false,
@@ -62,7 +67,7 @@ async function checkFreshness(
     const manifest = await session.manifest();
     if (cached && hashTools(normalizeTools(manifest.tools)) === cached.toolsHash) return;
     console.log(`[mcp-disclosure] ${server.name}: catalog is stale, refreshing`);
-    await refreshFromManifest(server, manifest);
+    await refreshCatalogFromManifest(server, manifest);
   } catch (error) {
     console.warn(`[mcp-disclosure] freshness check failed for ${server.name}:`, error);
   }

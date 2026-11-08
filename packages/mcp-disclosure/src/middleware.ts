@@ -78,10 +78,9 @@ function exactMatch(
   scope: DisclosureServer[],
 ): SearchableTool | undefined {
   const name = query.trim();
-  return (
-    index.tool(name) ??
-    scope.map((s) => index.tool(`${s.name}${TOOL_NAME_SEPARATOR}${name}`)).find(Boolean)
-  );
+  const direct = index.tool(name);
+  if (direct && scope.some((s) => s.id === direct.server.id)) return direct;
+  return scope.map((s) => index.tool(`${s.name}${TOOL_NAME_SEPARATOR}${name}`)).find(Boolean);
 }
 
 /**
@@ -247,7 +246,11 @@ export function mcpServerDisclosureMiddleware(config: DisclosureMiddlewareConfig
         message: `Could not reach ${server.name}: ${resolved.message}`,
       });
     }
-    return handler({ ...request, tool: resolved.tool });
+    try {
+      return await handler({ ...request, tool: resolved.tool });
+    } finally {
+      resolved.release?.();
+    }
   };
 
   return createMiddleware({

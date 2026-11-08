@@ -59,6 +59,27 @@ describe("McpConnectionPool", () => {
     expect(pool.openIds()).toEqual([]);
   });
 
+  it("keeps an acquired session open past idleMs until it is released", async () => {
+    const pool = new McpConnectionPool(1000);
+    const { session, release } = await pool.acquire("s", "v1", async () => fakeSession());
+    await vi.advanceTimersByTimeAsync(5000);
+    expect((session as ReturnType<typeof fakeSession>).closed).toBe(false);
+    release();
+    release(); // a second release is a no-op
+    await vi.advanceTimersByTimeAsync(1100);
+    expect((session as ReturnType<typeof fakeSession>).closed).toBe(true);
+  });
+
+  it("closeAll waits for every session to close", async () => {
+    const pool = new McpConnectionPool(1000);
+    const session = (await pool.session("s", "v1", async () => fakeSession())) as ReturnType<
+      typeof fakeSession
+    >;
+    await pool.closeAll();
+    expect(session.closed).toBe(true);
+    expect(pool.openIds()).toEqual([]);
+  });
+
   it("forgets a failed connection so the next call retries", async () => {
     const pool = new McpConnectionPool(1000);
     await expect(

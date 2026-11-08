@@ -25,8 +25,8 @@ async function fetchManifest(server: MCPServer): Promise<ServerManifest> {
   }
 }
 
-/** Writes a catalog row from a manifest already read — e.g. by a pooled session. */
-export async function refreshFromManifest(
+/** Writes a catalog row from a manifest already read. */
+async function writeCatalog(
   server: MCPServer,
   manifest: ServerManifest,
 ): Promise<ServerCatalogEntry> {
@@ -42,28 +42,51 @@ export async function refreshFromManifest(
 /** How long a chat message waits for a missing catalog row; the refresh itself keeps going. */
 export const CATALOG_WAIT_MS = 5_000;
 
-const inFlight = new Map<string, Promise<CatalogRefreshResult>>();
+/** After a failed refresh, chat messages stop retrying that server version for this long. */
+export const FAILED_RETRY_MS = 5 * 60_000;
 
-/** One refresh per server version at a time, so repeated messages don't spawn it repeatedly. */
-function refresh(server: MCPServer): Promise<CatalogRefreshResult> {
-  const key = `${server.id}:${server.updatedAt.toISOString()}`;
+const inFlight = new Map<string, Promise<CatalogRefreshResult>>();
+const lastFailure = new Map<string, number>();
+
+const versionKey = (server: MCPServer) => `${server.id}:${server.updatedAt.toISOString()}`;
+
+/**
+ * One refresh per server version at a time, so repeated messages don't spawn it repeatedly.
+ * `manifest` skips connecting when a session has already read it.
+ */
+function refresh(server: MCPServer, manifest?: ServerManifest): Promise<CatalogRefreshResult> {
+  const key = versionKey(server);
   const running = inFlight.get(key);
   if (running) return running;
-  const started = runRefresh(server).finally(() => inFlight.delete(key));
+  const started = runRefresh(server, manifest).finally(() => inFlight.delete(key));
   inFlight.set(key, started);
   return started;
 }
 
-async function runRefresh(server: MCPServer): Promise<CatalogRefreshResult> {
+async function runRefresh(
+  server: MCPServer,
+  manifest?: ServerManifest,
+): Promise<CatalogRefreshResult> {
+  const key = versionKey(server);
   try {
-    const entry = await refreshFromManifest(server, await fetchManifest(server));
+    const entry = await writeCatalog(server, manifest ?? (await fetchManifest(server)));
+    lastFailure.delete(key);
     return { ok: true, entry };
   } catch (error) {
+    lastFailure.set(key, Date.now());
     const message = error instanceof Error ? error.message : String(error);
     const code = error instanceof ConnectError ? error.code : "connect_failed";
     console.warn(`[mcp-disclosure] catalog refresh failed for ${server.name}: ${message}`);
     return { ok: false, error: code, message };
   }
+}
+
+/** Rewrites the catalog row from a manifest a pooled session already read. */
+export function refreshCatalogFromManifest(
+  server: MCPServer,
+  manifest: ServerManifest,
+): Promise<CatalogRefreshResult> {
+  return refresh(server, manifest);
 }
 
 /** Connects to the server and rewrites its catalog row. A failure keeps the previous row. */
@@ -90,6 +113,8 @@ export interface LoadedServers {
 
 /** A missing row's refresh, waited on for at most {@link CATALOG_WAIT_MS}. */
 async function refreshWithinWait(server: MCPServer): Promise<ServerCatalogEntry | null> {
+  const failedAt = lastFailure.get(versionKey(server));
+  if (failedAt !== undefined && Date.now() - failedAt < FAILED_RETRY_MS) return null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const result = await Promise.race([
     refresh(server),

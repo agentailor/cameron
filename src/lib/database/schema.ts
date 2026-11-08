@@ -73,7 +73,7 @@ export const mcpServers = pgTable(
 );
 
 // Cached `tools/list` per server, so the agent can describe a server without connecting to it.
-// See docs/mcp-progressive-disclosure.md.
+// See docs/MCP_DISCLOSURE.md.
 export const mcpServerCatalog = pgTable("mcp_server_catalog", {
   serverId: text("server_id")
     .primaryKey()

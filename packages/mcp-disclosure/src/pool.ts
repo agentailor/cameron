@@ -7,6 +7,8 @@ interface Entry {
   version: string;
   session: Promise<McpSession>;
   timer?: ReturnType<typeof setTimeout>;
+  /** Calls running on this session; the idle clock only runs at zero. */
+  busy: number;
 }
 
 /**
@@ -21,38 +23,45 @@ export class McpConnectionPool {
 
   /** The open session for a server, connecting with `open` if there is none (or it is stale). */
   async session(id: string, version: string, open: () => Promise<McpSession>): Promise<McpSession> {
-    const existing = this.entries.get(id);
-    if (existing && existing.version !== version) this.invalidate(id);
-
-    let entry = this.entries.get(id);
-    if (!entry) {
-      const session = open().then(
-        (s) => {
-          s.onClose?.(() => {
-            if (this.entries.get(id) === entry) this.drop(id);
-          });
-          return s;
-        },
-        (error) => {
-          if (this.entries.get(id) === entry) this.drop(id);
-          throw error;
-        },
-      );
-      entry = { version, session };
-      this.entries.set(id, entry);
-    }
+    const entry = this.entry(id, version, open);
     this.touch(id, entry);
     return entry.session;
   }
 
+  /**
+   * Like {@link session}, but holds the session open until `release` is called, so a call longer
+   * than the idle timeout is not closed under itself.
+   */
+  async acquire(
+    id: string,
+    version: string,
+    open: () => Promise<McpSession>,
+  ): Promise<{ session: McpSession; release: () => void }> {
+    const entry = this.entry(id, version, open);
+    entry.busy++;
+    clearTimeout(entry.timer);
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      entry.busy--;
+      if (entry.busy === 0 && this.entries.get(id) === entry) this.touch(id, entry);
+    };
+    try {
+      return { session: await entry.session, release };
+    } catch (error) {
+      release();
+      throw error;
+    }
+  }
+
   /** Closes and forgets a server's session (edited, disabled, deleted, re-authorized). */
   invalidate(id: string): void {
-    const entry = this.drop(id);
-    entry?.session.then((s) => s.close()).catch(() => {});
+    void this.close(this.drop(id));
   }
 
   async closeAll(): Promise<void> {
-    await Promise.all([...this.entries.keys()].map((id) => this.invalidate(id)));
+    await Promise.all([...this.entries.keys()].map((id) => this.close(this.drop(id))));
   }
 
   /** Ids with an open (or opening) session — for logs and tests. */
@@ -60,8 +69,41 @@ export class McpConnectionPool {
     return [...this.entries.keys()].sort();
   }
 
+  private entry(id: string, version: string, open: () => Promise<McpSession>): Entry {
+    const existing = this.entries.get(id);
+    if (existing && existing.version !== version) this.invalidate(id);
+
+    let entry = this.entries.get(id);
+    if (!entry) {
+      const created: Entry = {
+        version,
+        busy: 0,
+        session: open().then(
+          (s) => {
+            s.onClose?.(() => {
+              if (this.entries.get(id) === created) this.drop(id);
+            });
+            return s;
+          },
+          (error) => {
+            if (this.entries.get(id) === created) this.drop(id);
+            throw error;
+          },
+        ),
+      };
+      entry = created;
+      this.entries.set(id, entry);
+    }
+    return entry;
+  }
+
+  private async close(entry: Entry | undefined): Promise<void> {
+    await entry?.session.then((s) => s.close()).catch(() => {});
+  }
+
   private touch(id: string, entry: Entry) {
     clearTimeout(entry.timer);
+    if (entry.busy > 0) return;
     entry.timer = setTimeout(() => this.invalidate(id), this.idleMs);
     // Never keep the process alive just to close an idle connection.
     entry.timer.unref?.();
