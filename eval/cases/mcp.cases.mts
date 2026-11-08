@@ -80,7 +80,7 @@ export const cases: EvalCase[] = [
     mcp: true,
     graders: [
       toolCalled("load_tools"),
-      toolNotCalled(`${MCP_FIXTURE.driveServer}__list_files`),
+      toolNotCalled(`${MCP_FIXTURE.driveServer}_list_files`),
       statesAnyOf(["Connections"]),
     ],
     runs: RUN_POLICY.single,

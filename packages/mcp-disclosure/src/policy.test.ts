@@ -38,24 +38,24 @@ describe("renderCatalogBlock", () => {
 });
 
 describe("createToolServerIndex", () => {
-  const servers = [makeServer("bank"), makeServer("bank__eu"), makeServer("notes")];
+  const servers = [makeServer("bank"), makeServer("bank_eu"), makeServer("notes")];
   const serverOf = createToolServerIndex(servers);
 
   it("maps a prefixed tool name back to its server", () => {
-    expect(serverOf("notes__search")?.name).toBe("notes");
+    expect(serverOf("notes_search")?.name).toBe("notes");
   });
 
   it("prefers the longest matching name", () => {
-    expect(serverOf("bank__eu__balance")?.name).toBe("bank__eu");
-    expect(serverOf("bank__balance")?.name).toBe("bank");
+    expect(serverOf("bank_eu_balance")?.name).toBe("bank_eu");
+    expect(serverOf("bank_balance")?.name).toBe("bank");
   });
 
   it("picks the server whose catalog lists the tool when the prefix is ambiguous", () => {
-    const gh = makeServer("gh", { toolNames: ["ent__search"] });
-    const ghEnt = makeServer("gh__ent", { toolNames: ["list"] });
+    const gh = makeServer("gh", { toolNames: ["ent_search"] });
+    const ghEnt = makeServer("gh_ent", { toolNames: ["list"] });
     const pick = createToolServerIndex([gh, ghEnt]);
-    expect(pick("gh__ent__search")?.name).toBe("gh");
-    expect(pick("gh__ent__list")?.name).toBe("gh__ent");
+    expect(pick("gh_ent_search")?.name).toBe("gh");
+    expect(pick("gh_ent_list")?.name).toBe("gh_ent");
   });
 
   it("returns null for tools that are not MCP tools", () => {

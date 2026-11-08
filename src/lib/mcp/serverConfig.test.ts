@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import type { OAuthClientProvider } from "@modelcontextprotocol/client";
 import { MCPServerType, type MCPServer } from "@/types/mcp";
 import { toServerConfig } from "./serverConfig";
 
@@ -36,6 +36,7 @@ describe("toServerConfig", () => {
       command: "npx",
       args: ["-y", "pkg"],
       env: { TOKEN: "x" },
+      elicitation: false,
     });
   });
 
@@ -43,7 +44,12 @@ describe("toServerConfig", () => {
     const config = toServerConfig(
       makeServer({ type: MCPServerType.http, url: "https://x.dev/mcp", headers: { A: "b" } }),
     );
-    expect(config).toEqual({ transport: "http", url: "https://x.dev/mcp", headers: { A: "b" } });
+    expect(config).toEqual({
+      transport: "http",
+      url: "https://x.dev/mcp",
+      headers: { A: "b" },
+      elicitation: false,
+    });
   });
 
   it("returns null when the command or url is missing", () => {

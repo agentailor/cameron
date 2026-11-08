@@ -93,7 +93,8 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
   first initializes the Postgres checkpointer, then assembles the model, tools, and middleware.
 - **MCP Integration**: MCP servers are stored in Postgres; the agent sees their tools through the
   disclosure middleware and connects on demand (see "Progressive disclosure" below).
-  `src/lib/agent/mcp.ts` now holds only the Connections page's tool-listing probe.
+  `src/lib/agent/mcp.ts` now holds only the Connections page's tool-listing probe, which opens
+  its session through the connector.
 - **Persistent Memory**: Uses LangGraph's Postgres checkpointer for conversation history
 - **Built-in finance tools** (always registered server-side in `index.ts`, provider-agnostic Zod):
   - `src/lib/agent/tools/finance.ts` — `log_expense` (mutating), `query_transactions` (read-only,
@@ -354,17 +355,27 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   spawning a process), so nothing connects on page load and no tool count is stored — a stored count
   goes stale while looking current. Failures are typed (`auth_required`, `invalid_config`, `timeout`,
   `connect_failed`), never an empty list.
-- `toServerConfig()` (`src/lib/mcp/serverConfig.ts`) turns a row into a client config for BOTH the
-  agent (`src/lib/mcp/connector.ts`) and the probe, so the page connects exactly the way the
-  agent will.
-- Tool names are prefixed `server__tool`; server names are restricted to `[A-Za-z0-9_-]` in the form
+- `toServerConfig()` (`src/lib/mcp/serverConfig.ts`) turns a row into a client config, and
+  `openSession()` (`src/lib/mcp/connector.ts`) connects it for BOTH the agent and the probe, so
+  the page connects exactly the way the agent will.
+- **Adapter is `@langchain/mcp-adapters` 2.x on MCP SDK v2 (`@modelcontextprotocol/client`)**;
+  `@modelcontextprotocol/sdk` (v1) is gone, OAuth code included. Tool names are the adapter's
+  default `server_tool`, and the disclosure package builds the same names (`prefixedToolName()`),
+  so the connector renames nothing. The one default overridden is elicitation (`elicitation: false`
+  per server — its interrupt is one the approval flow cannot answer, so the thread would hang). v2 config is strict: unknown
+  keys throw at construction, and stdio `args` is required.
+- Tool names are prefixed `server_tool`; server names are restricted to `[A-Za-z0-9_-]` in the form
   because the prefix becomes part of a provider tool name.
-- HTTP servers may require OAuth authentication - see [docs/OAUTH.md](docs/OAUTH.md)
+- HTTP servers may require OAuth authentication - see [docs/OAUTH.md](docs/OAUTH.md). Saving an
+  HTTP server probes it and records its OAuth status before responding (the Connect button only
+  renders for `REQUIRED` / `EXPIRED` / `UNKNOWN`, so a NULL status hid sign-in entirely), and a
+  401 at connect time records `REQUIRED`/`EXPIRED` and returns `auth_required`. The check route
+  delegates to the SDK's `auth()` — never hardcode a scope in the client metadata.
 - **Progressive disclosure** ([docs/MCP_DISCLOSURE.md](docs/MCP_DISCLOSURE.md), read it before
   changing this code): the model sees a short list of capabilities plus `load_tools`, and a tool's
   definition only once a search has loaded it; nothing connects until a tool is called. The logic
   is the workspace package `packages/mcp-disclosure`, which must not import app code or the MCP
-  client library; `src/lib/mcp/connector.ts` is the only agent-path file using the adapters.
+  client library; `src/lib/mcp/connector.ts` is the only file using the adapters.
 
 ### Tool Approval Workflow
 

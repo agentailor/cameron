@@ -41,13 +41,13 @@ describe("tokenize", () => {
 
 describe("createToolSearchIndex", () => {
   it("finds a tool by a word in its name or description", () => {
-    expect(names("search")[0]).toBe("notionApi__API-post-search");
-    expect(names("what is my balance")[0]).toBe("bank__get_balance");
+    expect(names("search")[0]).toBe("notionApi_API-post-search");
+    expect(names("what is my balance")[0]).toBe("bank_get_balance");
   });
 
   it("matches argument names and descriptions nested in $defs and anyOf", () => {
-    expect(names("database_id")).toEqual(["notionApi__API-post-page"]);
-    expect(names("row")).toEqual(["notionApi__API-post-page"]);
+    expect(names("database_id")).toEqual(["notionApi_API-post-page"]);
+    expect(names("row")).toEqual(["notionApi_API-post-page"]);
   });
 
   it("weights the tool name above other fields", () => {
@@ -77,7 +77,7 @@ describe("createToolSearchIndex", () => {
         { name: "a", description: "same words" },
       ]),
     ]);
-    expect(tied.search("words").map((t) => t.name)).toEqual(["s__a", "s__b"]);
+    expect(tied.search("words").map((t) => t.name)).toEqual(["s_a", "s_b"]);
   });
 
   it("skips servers with no catalog row", () => {

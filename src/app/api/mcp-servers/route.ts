@@ -2,6 +2,7 @@ import { after, NextResponse } from "next/server";
 import * as mcpServerRepo from "@/lib/repositories/mcpServerRepository";
 import { ConflictError } from "@/lib/repositories/mcpServerRepository";
 import { refreshCatalogQuietly } from "@/lib/mcp/catalog";
+import { recordOAuthRequirement } from "@/lib/mcp/oauth-detection";
 import { mcpPool } from "@/lib/mcp/pool";
 import { MCPServerType } from "@/types/mcp";
 import { UpdateMCPServerBody } from "./schema";
@@ -44,6 +45,11 @@ export async function POST(request: Request) {
       headers: type === "http" ? headers : null,
     });
 
+    // Before responding, so the page shows Connect for a server that needs sign-in.
+    if (server.type === MCPServerType.http && server.url) {
+      server.oauthStatus = await recordOAuthRequirement(server.id, server.url);
+    }
+
     // Cache its tool list for the agent's server catalog, after the response is sent.
     after(() => refreshCatalogQuietly(server.id));
 
@@ -85,9 +91,15 @@ export async function PATCH(request: Request) {
       patch.env = null;
     }
 
+    const before = url !== undefined ? await mcpServerRepo.getById(id) : null;
     const server = await mcpServerRepo.update(id, patch);
     if (!server) {
       return NextResponse.json({ error: "Server not found" }, { status: 404 });
+    }
+
+    // A new URL is a different server: its sign-in need starts unknown again.
+    if (server.type === MCPServerType.http && server.url && before?.url !== server.url) {
+      server.oauthStatus = await recordOAuthRequirement(server.id, server.url);
     }
 
     // Enabling or editing can change the tool list, and a description change decides whether the

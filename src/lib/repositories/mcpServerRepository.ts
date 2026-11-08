@@ -206,3 +206,27 @@ export async function markConnected(id: string): Promise<void> {
     .set({ oauthStatus: "CONNECTED", requiresAuth: true, codeVerifier: null, updatedAt: now() })
     .where(eq(mcpServers.id, id));
 }
+
+export type OAuthCredentialScope = "all" | "client" | "tokens" | "verifier";
+
+/**
+ * Drops stored OAuth credentials the SDK reported as invalid. Losing tokens (or the client they
+ * were issued to) marks the server as needing re-authorization.
+ */
+export async function clearOAuthCredentials(
+  id: string,
+  scope: OAuthCredentialScope,
+): Promise<void> {
+  const all = scope === "all";
+  const client = all || scope === "client";
+  const tokens = client || scope === "tokens";
+  await db
+    .update(mcpServers)
+    .set({
+      ...(client ? { clientInfo: null } : {}),
+      ...(tokens ? { authTokens: null, oauthStatus: client ? "REQUIRED" : "EXPIRED" } : {}),
+      ...(all || scope === "verifier" ? { codeVerifier: null } : {}),
+      updatedAt: now(),
+    })
+    .where(eq(mcpServers.id, id));
+}

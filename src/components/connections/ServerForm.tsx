@@ -299,7 +299,7 @@ export function ServerForm({
             ) : (
               <p className="text-muted-foreground text-xs">
                 Cameron sees its tools as{" "}
-                <code className="font-mono">{draft.name.trim() || "name"}__tool</code>.
+                <code className="font-mono">{draft.name.trim() || "name"}_tool</code>.
               </p>
             )}
           </div>

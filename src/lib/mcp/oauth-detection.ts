@@ -6,9 +6,13 @@ import { OAuthStatus } from "./oauth-status";
 // server-side call sites that import it from oauth-detection.
 export { OAuthStatus };
 
+const DETECTION_TIMEOUT_MS = 5_000;
+
 export interface OAuthDetectionResult {
   requiresAuth: boolean;
   resourceMetadataUrl?: string;
+  /** The `scope` the server's challenge asked for, when it named one. */
+  scope?: string;
   error?: string;
 }
 
@@ -21,6 +25,7 @@ export async function detectOAuthRequirement(url: string): Promise<OAuthDetectio
     const response = await fetch(url, {
       method: "GET",
       headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(DETECTION_TIMEOUT_MS),
     });
 
     if (response.status === 401) {
@@ -30,6 +35,7 @@ export async function detectOAuthRequirement(url: string): Promise<OAuthDetectio
         return {
           requiresAuth: true,
           resourceMetadataUrl: extractResourceMetadataUrl(wwwAuth),
+          scope: wwwAuth.match(/scope="([^"]+)"/)?.[1],
         };
       }
       // 401 without Bearer header - still requires auth but unknown type
@@ -80,4 +86,20 @@ export function isTokenExpired(tokens: { expires_at?: number } | null | undefine
   }
   // Add 60 second buffer before actual expiry
   return Date.now() / 1000 > tokens.expires_at - 60;
+}
+
+/**
+ * Probes a just-saved HTTP server and records whether it needs OAuth, so the Connections page can
+ * offer Connect at once. An unreachable server is recorded as UNKNOWN ("Check auth"), not as
+ * NOT_REQUIRED. Returns the status written.
+ */
+export async function recordOAuthRequirement(serverId: string, url: string): Promise<OAuthStatus> {
+  const detection = await detectOAuthRequirement(url);
+  const status = detection.requiresAuth
+    ? OAuthStatus.REQUIRED
+    : detection.error
+      ? OAuthStatus.UNKNOWN
+      : OAuthStatus.NOT_REQUIRED;
+  await mcpServerRepo.setOAuthStatus(serverId, status);
+  return status;
 }

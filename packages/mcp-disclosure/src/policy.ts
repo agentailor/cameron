@@ -1,6 +1,12 @@
 import type { DisclosureServer } from "./types";
 
-export const TOOL_NAME_SEPARATOR = "__";
+/** The `{server}_{tool}` form `@langchain/mcp-adapters` 2.x gives tools by default. */
+export const TOOL_NAME_SEPARATOR = "_";
+
+/** The name the model sees for a server's tool; also the adapter's own name for it. */
+export function prefixedToolName(serverName: string, toolName: string): string {
+  return `${serverName}${TOOL_NAME_SEPARATOR}${toolName}`;
+}
 
 /** Servers the model can be told about: a server with no catalog row is unavailable. */
 export function catalogedServers(servers: DisclosureServer[]): DisclosureServer[] {
@@ -26,16 +32,14 @@ export function renderCatalogBlock(servers: DisclosureServer[]): string | null {
 }
 
 /**
- * Maps a tool name (`server__tool`) back to its server. Names may contain `__`, so a prefix can
+ * Maps a tool name (`server_tool`) back to its server. Names may contain `_`, so a prefix can
  * fit several servers: the one whose catalog lists the rest wins, else the longest name. Returns
  * null for a tool that is not an MCP tool.
  */
 export function createToolServerIndex(servers: DisclosureServer[]) {
   const ordered = [...servers].sort((a, b) => b.name.length - a.name.length);
   return (toolName: string): DisclosureServer | null => {
-    const candidates = ordered.filter((s) =>
-      toolName.startsWith(`${s.name}${TOOL_NAME_SEPARATOR}`),
-    );
+    const candidates = ordered.filter((s) => toolName.startsWith(prefixedToolName(s.name, "")));
     const listing = candidates.find((s) => {
       const rest = toolName.slice(s.name.length + TOOL_NAME_SEPARATOR.length);
       return s.catalog?.tools.some((t) => t.name === rest);

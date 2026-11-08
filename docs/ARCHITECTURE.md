@@ -142,34 +142,20 @@ async function buildAgent(cfg?: AgentConfigOptions) {
 - Model configuration (`createChatModel`) and system prompt
 - Checkpointer integration for persistence
 
-### 2. MCP Integration (`src/lib/agent/mcp.ts`)
+### 2. MCP Integration (`src/lib/mcp/connector.ts`)
 
-Manages dynamic tool loading from Model Context Protocol servers.
-
-```typescript
-export async function createMCPClient(): Promise<MultiServerMCPClient | null> {
-  const mcpServers = await getMCPServerConfigs(); // From database
-
-  if (Object.keys(mcpServers).length === 0) {
-    return null;
-  }
-
-  const client = new MultiServerMCPClient({
-    mcpServers: mcpServers,
-    throwOnLoadError: false,
-    prefixToolNameWithServerName: true, // Prevent conflicts
-  });
-
-  return client;
-}
-```
+MCP servers are disclosed progressively (see [MCP_DISCLOSURE.md](MCP_DISCLOSURE.md)): the model
+sees a capability list and `load_tools`, and a server connects only when one of its tools is
+called. `openSession()` in `connector.ts` is the one place that uses `@langchain/mcp-adapters`
+(2.x, on MCP SDK v2): it builds a single-server `MCPAdapter` from the stored row via
+`toServerConfig()`.
 
 **Key Features:**
 
 - Database-driven MCP server configuration
 - Support for stdio and HTTP transports
-- Tool name prefixing for conflict prevention
-- Graceful error handling for failed servers
+- Tool names prefixed `server_tool` (the adapter default) for conflict prevention
+- Typed connection failures (`auth_required`, `invalid_config`, `timeout`, `connect_failed`)
 
 ### 3. Streaming Service (`src/services/agentService.ts`)
 
@@ -443,7 +429,7 @@ client sends one decision per call id (`decisions={"<callId>":"allow"|"deny"}`),
 ### Server Configuration Flow
 
 ```
-Database MCPServer → getMCPServerConfigs() → MultiServerMCPClient → Agent Tools
+Database MCPServer → toServerConfig() → MCPAdapter (one per session) → Agent Tools
 ```
 
 ### Configuration Examples
@@ -477,7 +463,7 @@ Database MCPServer → getMCPServerConfigs() → MultiServerMCPClient → Agent 
 ### Tool Loading Process
 
 1. **Database Query**: Fetch enabled MCP servers
-2. **Client Creation**: Initialize MultiServerMCPClient
+2. **Client Creation**: Open a single-server `MCPAdapter` session on first tool call
 3. **Tool Discovery**: Get available tools from each server
 4. **Name Prefixing**: Add server name prefix to prevent conflicts
 5. **Agent Binding**: Bind tools to language model

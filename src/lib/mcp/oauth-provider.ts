@@ -1,20 +1,22 @@
-import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type {
   OAuthClientInformation,
   OAuthClientMetadata,
+  OAuthClientProvider,
   OAuthTokens,
-} from "@modelcontextprotocol/sdk/shared/auth.js";
+} from "@modelcontextprotocol/client";
 import * as mcpServerRepo from "@/lib/repositories/mcpServerRepository";
 import { OAuthStatus } from "./oauth-detection";
 import { getAppUrl } from "@/lib/config/app-url";
 
 /**
  * Server-side OAuth provider that implements the OAuthClientProvider interface
- * from @modelcontextprotocol/sdk. Stores OAuth data in the database.
+ * from @modelcontextprotocol/client. Stores OAuth data in the database.
  */
 export class ServerOAuthProvider implements OAuthClientProvider {
   private serverId: string;
   private serverName: string;
+  /** Set when the SDK asks to send the user to the authorization server. */
+  pendingAuthorizationUrl?: URL;
 
   constructor(serverId: string, serverName: string) {
     this.serverId = serverId;
@@ -33,7 +35,7 @@ export class ServerOAuthProvider implements OAuthClientProvider {
       redirect_uris: [this.redirectUrl],
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
-      scope: "read write",
+      // No scope here: the SDK takes it from the server's challenge or resource metadata.
       token_endpoint_auth_method: "none",
     };
   }
@@ -57,10 +59,8 @@ export class ServerOAuthProvider implements OAuthClientProvider {
   }
 
   async redirectToAuthorization(url: URL): Promise<void> {
-    // This method is called by the SDK when it needs to redirect to the auth server.
-    // In a server-side context, we can't redirect directly - we throw an error
-    // and handle the URL generation separately in the API route.
-    throw new Error(`REDIRECT_REQUIRED:${url.toString()}`);
+    // Server-side: nothing to redirect. The OAuth check route hands the URL to the browser.
+    this.pendingAuthorizationUrl = url;
   }
 
   async saveCodeVerifier(verifier: string): Promise<void> {
@@ -73,5 +73,13 @@ export class ServerOAuthProvider implements OAuthClientProvider {
       throw new Error("No code verifier stored");
     }
     return verifier;
+  }
+
+  async invalidateCredentials(
+    scope: "all" | "client" | "tokens" | "verifier" | "discovery",
+  ): Promise<void> {
+    // Discovery results are not cached here, so there is nothing to drop for that scope.
+    if (scope === "discovery") return;
+    await mcpServerRepo.clearOAuthCredentials(this.serverId, scope);
   }
 }

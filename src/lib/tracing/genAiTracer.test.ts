@@ -66,14 +66,14 @@ const BALANCE_SCHEMA = {
 };
 const BALANCE_DEFINITION = {
   type: "function",
-  name: "bank__get_balance",
+  name: "bank_get_balance",
   description: "Current balance of one account.",
   parameters: BALANCE_SCHEMA,
 };
 // The shapes each provider's `invocation_params.tools` really has (captured from the SDKs).
 const ANTHROPIC_TOOLS = [
   {
-    name: "bank__get_balance",
+    name: "bank_get_balance",
     description: "Current balance of one account.",
     input_schema: BALANCE_SCHEMA,
   },
@@ -82,7 +82,7 @@ const OPENAI_TOOLS = [
   {
     type: "function",
     function: {
-      name: "bank__get_balance",
+      name: "bank_get_balance",
       description: "Current balance of one account.",
       parameters: BALANCE_SCHEMA,
     },
@@ -92,7 +92,7 @@ const GEMINI_TOOLS = [
   {
     functionDeclarations: [
       {
-        name: "bank__get_balance",
+        name: "bank_get_balance",
         description: "Current balance of one account.",
         parameters: BALANCE_SCHEMA,
       },

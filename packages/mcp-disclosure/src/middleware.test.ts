@@ -74,8 +74,7 @@ const CORE = ["load_tools", "log_expense"];
 const connected: string[] = [];
 const fakeResolver: ResolveMcpTool = async (serverId, name) => {
   connected.push(serverId);
-  const server = servers.find((s) => s.id === serverId)!;
-  return { ok: true, tool: fakeTool(`${server.name}__${name}`) };
+  return { ok: true, tool: fakeTool(name) };
 };
 
 function build(
@@ -147,15 +146,15 @@ describe("disclosure", () => {
   it("loads only the tools that match, from the next step on", async () => {
     const { model, run, stateOf } = build([
       { tools: [["load_tools", { query: "transactions" }]] },
-      { tools: [["bank__list_transactions", {}]] },
+      { tools: [["bank_list_transactions", {}]] },
       { text: "Here they are" },
     ]);
     await run("t1", "show my last 5 transactions");
-    expect(model.seen[0].tools).not.toContain("bank__list_transactions");
-    expect(model.seen[1].tools).toContain("bank__list_transactions");
-    expect(model.seen[1].tools).not.toContain("bank__get_balance");
-    expect(calls).toEqual(["bank__list_transactions"]);
-    expect((await stateOf("t1")).activeTools).toEqual(["bank__list_transactions"]);
+    expect(model.seen[0].tools).not.toContain("bank_list_transactions");
+    expect(model.seen[1].tools).toContain("bank_list_transactions");
+    expect(model.seen[1].tools).not.toContain("bank_get_balance");
+    expect(calls).toEqual(["bank_list_transactions"]);
+    expect((await stateOf("t1")).activeTools).toEqual(["bank_list_transactions"]);
   });
 
   it("appends in load order, so the existing tools stay a stable prefix", async () => {
@@ -167,7 +166,7 @@ describe("disclosure", () => {
     const before = model.seen[1].tools;
     const after = model.seen[2].tools;
     expect(after.slice(0, before.length)).toEqual(before);
-    expect(after.slice(before.length)).toEqual(["notes__search_notes"]);
+    expect(after.slice(before.length)).toEqual(["notes_search_notes"]);
   });
 
   it("keeps loaded tools across turns of a thread, but not in a new thread", async () => {
@@ -175,7 +174,7 @@ describe("disclosure", () => {
     await run("t1");
     const before = model.seen.length;
     await run("t1");
-    expect(model.seen[before].tools).toContain("notes__search_notes");
+    expect(model.seen[before].tools).toContain("notes_search_notes");
     await run("t2");
     expect(model.seen.at(-1)!.tools.sort()).toEqual(CORE);
   });
@@ -187,7 +186,7 @@ describe("disclosure", () => {
     expect(typeof raw).toBe("string");
     expect(JSON.parse(raw as string)).toEqual({
       ok: true,
-      loaded: [{ name: "bank__get_balance", description: "fake get_balance" }],
+      loaded: [{ name: "bank_get_balance", description: "fake get_balance" }],
       alreadyLoaded: [],
       matched: 1,
     });
@@ -204,8 +203,8 @@ describe("disclosure", () => {
     ]);
     await run("t1");
     expect((await stateOf("t1")).activeTools.sort()).toEqual([
-      "bank__get_balance",
-      "notes__search_notes",
+      "bank_get_balance",
+      "notes_search_notes",
     ]);
   });
 
@@ -218,26 +217,26 @@ describe("disclosure", () => {
     const results = out.messages.filter((m) => m.getType() === "tool");
     expect(JSON.parse(String(results[1].content))).toMatchObject({
       loaded: [],
-      alreadyLoaded: ["bank__get_balance"],
+      alreadyLoaded: ["bank_get_balance"],
     });
-    expect((await stateOf("t1")).activeTools).toEqual(["bank__get_balance"]);
+    expect((await stateOf("t1")).activeTools).toEqual(["bank_get_balance"]);
   });
 
   it("loads only the named tool for an exact name, prefixed or not", async () => {
     const many = [makeServer("big", { toolNames: ["get_a", "get_b", "get_c"] })];
-    for (const query of ["big__get_b", "get_b"]) {
+    for (const query of ["big_get_b", "get_b"]) {
       const { run, stateOf } = build([{ tools: [["load_tools", { query }]] }], { using: many });
       await run(query);
-      expect((await stateOf(query)).activeTools).toEqual(["big__get_b"]);
+      expect((await stateOf(query)).activeTools).toEqual(["big_get_b"]);
     }
   });
 
   it("does not load another server's tool by exact name when scoped", async () => {
     const { run, stateOf } = build([
-      { tools: [["load_tools", { query: "bank__get_balance", server: "notes" }]] },
+      { tools: [["load_tools", { query: "bank_get_balance", server: "notes" }]] },
     ]);
     await run("scoped-exact");
-    expect((await stateOf("scoped-exact")).activeTools).not.toContain("bank__get_balance");
+    expect((await stateOf("scoped-exact")).activeTools).not.toContain("bank_get_balance");
   });
 
   it("respects limit, caps it, and reports how many matched", async () => {
@@ -291,21 +290,21 @@ describe("disclosure", () => {
   it("loads usable matches and names the server needing sign-in when both match", async () => {
     const { run, stateOf } = build([{ tools: [["load_tools", { query: "search" }]] }]);
     const result = toolResult(await run("t1"));
-    expect(result.loaded.map((t: { name: string }) => t.name)).toEqual(["notes__search_notes"]);
+    expect(result.loaded.map((t: { name: string }) => t.name)).toEqual(["notes_search_notes"]);
     expect(result.signInRequired[0].server).toBe("files");
-    expect((await stateOf("t1")).activeTools).toEqual(["notes__search_notes"]);
+    expect((await stateOf("t1")).activeTools).toEqual(["notes_search_notes"]);
   });
 
   it("auto-loads a catalog tool called before it was loaded", async () => {
-    const { model, run, stateOf } = build([{ tools: [["notes__search_notes", {}]] }]);
+    const { model, run, stateOf } = build([{ tools: [["notes_search_notes", {}]] }]);
     await run("t1");
-    expect(calls).toEqual(["notes__search_notes"]);
-    expect(model.seen[1].tools).toContain("notes__search_notes");
-    expect((await stateOf("t1")).activeTools).toEqual(["notes__search_notes"]);
+    expect(calls).toEqual(["notes_search_notes"]);
+    expect(model.seen[1].tools).toContain("notes_search_notes");
+    expect((await stateOf("t1")).activeTools).toEqual(["notes_search_notes"]);
   });
 
   it("refuses an unloaded tool when auto-load is off", async () => {
-    const { run } = build([{ tools: [["notes__search_notes", {}]] }], {
+    const { run } = build([{ tools: [["notes_search_notes", {}]] }], {
       options: { autoLoadOnCall: false },
     });
     const result = toolResult(await run("t1"));
@@ -332,11 +331,11 @@ describe("disclosure", () => {
     const input = { messages: [{ role: "user", content: "hi" }] };
     const first = new ScriptedModel([{ tools: [["load_tools", { query: "notes" }]] }]);
     await make(servers, first).invoke(input, config);
-    expect(first.seen.at(-1)!.tools).toContain("notes__search_notes");
+    expect(first.seen.at(-1)!.tools).toContain("notes_search_notes");
 
     const second = new ScriptedModel([]);
     await make([servers[0]], second).invoke(input, config);
-    expect(second.seen[0].tools).not.toContain("notes__search_notes");
+    expect(second.seen[0].tools).not.toContain("notes_search_notes");
   });
 });
 
@@ -354,11 +353,11 @@ describe("connecting on demand", () => {
           ["load_tools", { query: "notes" }],
         ],
       },
-      { tools: [["bank__list_transactions", {}]] },
+      { tools: [["bank_list_transactions", {}]] },
     ]);
     await run("t1");
     expect(connected).toEqual(["id-bank"]);
-    expect(calls).toEqual(["bank__list_transactions"]);
+    expect(calls).toEqual(["bank_list_transactions"]);
   });
 
   it("reports a connection failure as an error result and does not auto-load", async () => {
@@ -367,7 +366,7 @@ describe("connecting on demand", () => {
       error: "connect_failed",
       message: "spawn ENOENT",
     });
-    const { run, stateOf } = build([{ tools: [["notes__search_notes", {}]] }], {
+    const { run, stateOf } = build([{ tools: [["notes_search_notes", {}]] }], {
       resolveTool: failing,
     });
     expect(toolResult(await run("t1"))).toMatchObject({ ok: false, error: "connect_failed" });
@@ -380,14 +379,14 @@ describe("connecting on demand", () => {
       error: "auth_required",
       message: "Connect this server with OAuth first.",
     });
-    const { run } = build([{ tools: [["notes__search_notes", {}]] }], { resolveTool: expired });
+    const { run } = build([{ tools: [["notes_search_notes", {}]] }], { resolveTool: expired });
     const result = toolResult(await run("t1"));
     expect(result).toMatchObject({ ok: false, error: "auth_required" });
     expect(result.message).toContain("Connections page");
   });
 
   it("refuses a tool the catalog does not list, without connecting", async () => {
-    const { run } = build([{ tools: [["bank__drop_tables", {}]] }]);
+    const { run } = build([{ tools: [["bank_drop_tables", {}]] }]);
     expect(toolResult(await run("t1"))).toMatchObject({ error: "unknown_tool" });
     expect(connected).toEqual([]);
   });

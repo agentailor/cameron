@@ -9,6 +9,7 @@ import {
   catalogedServers,
   createToolServerIndex,
   findServer,
+  prefixedToolName,
   renderCatalogBlock,
   TOOL_NAME_SEPARATOR,
 } from "./policy";
@@ -80,7 +81,7 @@ function exactMatch(
   const name = query.trim();
   const direct = index.tool(name);
   if (direct && scope.some((s) => s.id === direct.server.id)) return direct;
-  return scope.map((s) => index.tool(`${s.name}${TOOL_NAME_SEPARATOR}${name}`)).find(Boolean);
+  return scope.map((s) => index.tool(prefixedToolName(s.name, name))).find(Boolean);
 }
 
 /**
@@ -235,7 +236,7 @@ export function mcpServerDisclosureMiddleware(config: DisclosureMiddlewareConfig
         message: `${server.name} has no tool named "${name}".`,
       });
     }
-    const resolved = await config.resolveTool(server.id, name);
+    const resolved = await config.resolveTool(server.id, request.toolCall.name);
     if (!resolved.ok) {
       log(`[mcp-disclosure] ${server.name}: ${resolved.error} — ${resolved.message}`);
       // A token can expire after the tool was loaded; same instruction as load_tools gives.

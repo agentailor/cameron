@@ -4,12 +4,17 @@ Some MCP HTTP servers require OAuth 2.0/2.1 authentication. This document explai
 
 ## Overview
 
-OAuth support is implemented using a **lazy detection** approach:
-
-1. When a user adds an HTTP MCP server, OAuth status is initially "UNKNOWN"
-2. The user clicks "Connect" to check if OAuth is required
+1. When an HTTP server is **saved** (added, or its URL changed), the app probes it before
+   responding and records `REQUIRED`, `NOT_REQUIRED`, or `UNKNOWN` if it could not be reached.
+   This is what makes the Connect button appear: it renders for `REQUIRED`, `EXPIRED` and
+   `UNKNOWN` only, so a server left with no status never offered sign-in.
+2. The user clicks "Connect" ("Check auth" for `UNKNOWN`)
 3. If required, the user is redirected to the authorization server
 4. Upon successful authorization, tokens are stored and the server becomes usable
+
+A connection that later fails with a 401 (an `UnauthorizedError` or HTTP 401 anywhere in the
+error's cause chain, `src/lib/mcp/authFailure.ts`) records `REQUIRED` — or `EXPIRED` for a server
+that was `CONNECTED` — and reports `auth_required`, so the page offers Connect again.
 
 ## OAuth Flow
 
@@ -41,7 +46,7 @@ OAuth support is implemented using a **lazy detection** approach:
 
 | Status         | Description                              | UI Indicator |
 | -------------- | ---------------------------------------- | ------------ |
-| `UNKNOWN`      | OAuth requirement not yet checked        | None         |
+| `UNKNOWN`      | Probe on save could not reach the server | "Check auth" |
 | `NOT_REQUIRED` | Server does not require OAuth            | None         |
 | `REQUIRED`     | OAuth required, user needs to connect    | Yellow badge |
 | `CONNECTED`    | Successfully authenticated               | Green badge  |
@@ -52,7 +57,7 @@ OAuth support is implemented using a **lazy detection** approach:
 | File                                             | Purpose                                     |
 | ------------------------------------------------ | ------------------------------------------- |
 | `src/lib/mcp/oauth-detection.ts`                 | Detects OAuth requirements via 401 response |
-| `src/lib/mcp/oauth-provider.ts`                  | Implements `OAuthClientProvider` interface  |
+| `src/lib/mcp/oauth-provider.ts`                  | Implements `OAuthClientProvider` (SDK v2)   |
 | `src/app/api/oauth/check/[serverId]/route.ts`    | Initiates OAuth flow, returns auth URL      |
 | `src/app/api/oauth/callback/[serverId]/route.ts` | Handles OAuth callback, exchanges tokens    |
 | `src/components/OAuthStatusBadge.tsx`            | Displays OAuth status in server list        |
@@ -62,47 +67,61 @@ OAuth support is implemented using a **lazy detection** approach:
 
 The `MCPServer` model includes these OAuth-related fields:
 
-```prisma
-model MCPServer {
-  // ... other fields
-  requiresAuth  Boolean?  @default(false)
-  authTokens    Json?     // { access_token, refresh_token, expires_at, ... }
-  clientInfo    Json?     // { client_id, client_secret, ... }
-  codeVerifier  String?   // PKCE code verifier for ongoing flow
-  oauthStatus   String?   @default("UNKNOWN")
-}
-```
+Columns on `mcp_server` (`src/lib/database/schema.ts`):
+
+| Column          | Holds                                                    |
+| --------------- | -------------------------------------------------------- |
+| `requires_auth` | Set true once OAuth completes                            |
+| `auth_tokens`   | `{ access_token, refresh_token, expires_at, issuer, … }` |
+| `client_info`   | The dynamically registered client (`client_id`, …)       |
+| `code_verifier` | PKCE verifier for the flow in progress                   |
+| `oauth_status`  | One of the statuses above; NULL until first probed       |
 
 ## How It Works
 
 ### 1. OAuth Detection
 
-When the user clicks "Connect", the app makes a request to the MCP server. If the server responds with:
+On save, and again when the user clicks "Connect", the app sends a GET to the MCP server
+(5s timeout). If the server responds with:
 
-- **401 Unauthorized** + `WWW-Authenticate: Bearer` header → OAuth is required
-- **200 OK** or other status → OAuth is not required
+- **401 Unauthorized** → OAuth is required; the `WWW-Authenticate` header's `resource_metadata`
+  and `scope` are kept for the next step
+- **any other status** → OAuth is not required
+- **no response** → `UNKNOWN`
 
-### 2. Client Registration
+### 2. Registration and authorization (the SDK's `auth()`)
 
-If OAuth is required and no client is registered:
+The check route calls `auth()` from `@modelcontextprotocol/client` rather than running the steps
+itself, so the authorization request is built exactly the way the callback's token exchange
+expects. It:
 
-1. Discover protected resource metadata from the server
-2. Discover authorization server metadata
-3. Dynamically register a client (if supported)
-4. Store `clientInfo` for future use
-
-### 3. Authorization
-
-1. Generate authorization URL with PKCE (`code_verifier` stored in database)
-2. Redirect user to authorization server
-3. User grants permission
+1. Discovers the protected resource and authorization server metadata
+2. Picks the **scope**: the challenge's `scope`, else the resource's `scopes_supported`, plus
+   `offline_access` when the server offers it. The client metadata carries no scope of its own —
+   a hardcoded `read write` made Keycloak's client-scope policy refuse registration (HTTP 403).
+3. Dynamically registers a client if none is stored, and stores `clientInfo`
+4. Uses a stored refresh token if one still works (the route then reports `CONNECTED`)
+5. Otherwise builds the authorization URL with PKCE and the RFC 8707 `resource` parameter. The
+   provider's `redirectToAuthorization` only records that URL; the route returns it and the
+   browser goes there.
 
 ### 4. Token Exchange
 
 1. Authorization server redirects to `/api/oauth/callback/[serverId]`
-2. Exchange authorization code for tokens
+2. Exchange the code for tokens with `transport.finishAuth(searchParams)` — all the callback
+   params, not just `code`, because the SDK checks the `iss` parameter (RFC 9207) when the
+   authorization server sends one
 3. Store tokens in database
 4. Update status to `CONNECTED`
+
+### 5. Invalidation
+
+When the SDK finds stored credentials rejected it calls `invalidateCredentials(scope)`. The
+provider clears the matching columns (`clearOAuthCredentials` in the repository): dropping tokens
+sets `EXPIRED`, dropping the client registration sets `REQUIRED`, so the agent stops connecting
+and the Connections page asks for sign-in again. `discovery` is a no-op — nothing is cached.
+
+All OAuth helpers and types come from `@modelcontextprotocol/client` (MCP SDK v2).
 
 ## Environment Variables
 

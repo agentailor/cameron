@@ -3,7 +3,7 @@ import * as mcpServerRepo from "@/lib/repositories/mcpServerRepository";
 import { ServerOAuthProvider } from "@/lib/mcp/oauth-provider";
 import { refreshCatalogQuietly } from "@/lib/mcp/catalog";
 import { mcpPool } from "@/lib/mcp/pool";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { OAuthStatus } from "@/lib/mcp/oauth-detection";
 import { getAppUrl } from "@/lib/config/app-url";
 
@@ -55,8 +55,9 @@ export async function GET(
       authProvider,
     });
 
-    // Exchange authorization code for tokens
-    await transport.finishAuth(code);
+    // The full params, not just the code: the SDK validates `iss` (RFC 9207) when the
+    // authorization server sends it.
+    await transport.finishAuth(searchParams);
 
     // Update server status to connected (clears the transient code verifier)
     await mcpServerRepo.markConnected(serverId);
