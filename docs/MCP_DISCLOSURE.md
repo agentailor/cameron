@@ -27,6 +27,57 @@ Moving to another MCP client (the v2 adapters) means rewriting `connector.ts`; t
 the pool and the middleware are unaffected. The Connections page's "list tools" probe
 (`listServerTools`) still uses the adapter directly and is left for that migration.
 
+## Overview
+
+The catalog is written and read on separate paths. Only a refresh (a server added or edited, or
+OAuth completed) connects outside a tool call; answering a message reads Postgres, and the pool
+connects only when a tool is actually called.
+
+```mermaid
+%%{init: {"themeVariables": {"fontSize": "18px"}}}%%
+flowchart TB
+  Conn["Connections page"]
+  Refresh["Catalog refresh"]
+  DB[("Postgres<br/>servers + catalog")]
+  Agent["Agent + core tools"]
+  MW["Disclosure middleware"]
+  CP[("Checkpointer<br/>activeTools")]
+  Pool["Connection pool"]
+  MCP["MCP servers"]
+
+  Conn -->|add · edit · OAuth| Refresh
+  Refresh -->|tools/list| MCP
+  Refresh -->|upsert| DB
+  DB -->|read per message| MW
+  Agent --- MW
+  MW <-->|per thread| CP
+  MW -->|tool call| Pool
+  Pool -->|first call only| MCP
+  Pool -.->|catalog stale| Refresh
+```
+
+One message: `load_tools` searches the cached catalog without connecting, and the first call to a
+loaded tool opens the server's pooled session.
+
+```mermaid
+%%{init: {"sequence": {"actorFontSize": 18, "messageFontSize": 17, "noteFontSize": 16}}}%%
+sequenceDiagram
+  participant A as Model
+  participant M as Middleware
+  participant P as Pool
+  participant S as MCP server
+
+  M->>A: tools + capability list
+  A->>M: load_tools("search pages")
+  M-->>A: matches loaded
+  Note over M: no connection yet
+  A->>M: notion__search(...)
+  M->>P: resolveTool
+  P->>S: connect (first call)
+  M->>S: run tool
+  S-->>A: result
+```
+
 ## Rules for changing this code
 
 - **Keep `connector.ts` the only agent-path adapter file.** The catalog stores protocol data
