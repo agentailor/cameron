@@ -1,12 +1,13 @@
-import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import type { OAuthClientProvider } from "@modelcontextprotocol/client";
 import type { MCPServer } from "@/types/mcp";
 import { OAuthStatus } from "./oauth-status";
 
 export interface StdioMCPServerConfig {
   transport: "stdio";
   command: string;
-  args?: string[];
+  args: string[];
   env?: Record<string, string>;
+  elicitation: false;
 }
 
 export interface HttpMCPServerConfig {
@@ -14,6 +15,7 @@ export interface HttpMCPServerConfig {
   url: string;
   headers?: Record<string, string>;
   authProvider?: OAuthClientProvider;
+  elicitation: false;
 }
 
 export type MCPServerConfig = StdioMCPServerConfig | HttpMCPServerConfig;
@@ -26,25 +28,29 @@ export function usesOAuth(server: MCPServer): boolean {
 }
 
 /**
- * Turns a stored row into a MultiServerMCPClient connection config, or null when the row is
- * missing its command/url. Shared by the agent and the per-server tools probe so both connect
- * the same way. `authProvider` is injected to keep this module free of the database.
+ * Turns a stored row into an MCPAdapter connection config, or null when the row is missing its
+ * command/url. Shared by the agent and the per-server tools probe so both connect the same way.
+ * `authProvider` is injected to keep this module free of the database.
+ * Elicitation is off: its interrupt is one the approval flow cannot answer.
  */
 export function toServerConfig(
   server: MCPServer,
   authProvider?: (server: MCPServer) => OAuthClientProvider,
 ): MCPServerConfig | null {
   if (server.type === "stdio" && server.command) {
-    const config: StdioMCPServerConfig = { transport: "stdio", command: server.command };
-    if (Array.isArray(server.args)) {
-      config.args = server.args.filter((arg): arg is string => typeof arg === "string");
-    }
+    const args = Array.isArray(server.args) ? server.args : [];
+    const config: StdioMCPServerConfig = {
+      transport: "stdio",
+      command: server.command,
+      args: args.filter((arg): arg is string => typeof arg === "string"),
+      elicitation: false,
+    };
     if (isRecord(server.env)) config.env = server.env as Record<string, string>;
     return config;
   }
 
   if (server.type === "http" && server.url) {
-    const config: HttpMCPServerConfig = { transport: "http", url: server.url };
+    const config: HttpMCPServerConfig = { transport: "http", url: server.url, elicitation: false };
     if (isRecord(server.headers)) config.headers = server.headers as Record<string, string>;
     if (authProvider && usesOAuth(server)) config.authProvider = authProvider(server);
     return config;

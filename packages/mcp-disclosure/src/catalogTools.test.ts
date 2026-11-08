@@ -10,7 +10,7 @@ describe("catalogTools", () => {
 
   it("builds prefixed stand-ins per cataloged server, without connecting", () => {
     const byServer = catalogTools(servers);
-    expect(byServer.get("id-bank")!.map((t) => t.name)).toEqual(["bank__balance", "bank__list"]);
+    expect(byServer.get("id-bank")!.map((t) => t.name)).toEqual(["bank_balance", "bank_list"]);
     expect(byServer.has("id-gone")).toBe(false);
   });
 

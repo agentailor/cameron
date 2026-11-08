@@ -6,6 +6,8 @@ import type {
   ResolveMcpTool,
   ToolResolution,
 } from "@agentailor/mcp-disclosure";
+// By path: the package's named value exports don't survive this tree's CJS interop.
+import { prefixedToolName } from "../packages/mcp-disclosure/src/policy.ts";
 
 /**
  * In-process mock MCP servers: catalog rows and canned results, with no connection. These cases
@@ -18,8 +20,8 @@ import type {
 
 export const MCP_FIXTURE = {
   balance: 4217.35,
-  balanceTool: "bank__get_account_balance",
-  noteSearchTool: "notes__search_notes",
+  balanceTool: "bank_get_account_balance",
+  noteSearchTool: "notes_search_notes",
   landlordNote: "Landlord raises rent to 1150 in March",
   driveServer: "drive",
 } as const;
@@ -127,10 +129,10 @@ export const mockServers: DisclosureServer[] = MOCKS.map((m) => ({
 
 export const mockResolveTool: ResolveMcpTool = async (serverId, toolName) => {
   const server = MOCKS.find((m) => `mock-${m.name}` === serverId);
-  const mock = server?.tools.find((t) => t.name === toolName);
+  const mock = server?.tools.find((t) => prefixedToolName(server.name, t.name) === toolName);
   if (!server || !mock) return { ok: false, error: "connect_failed", message: "no such mock" };
   const real = tool(async () => JSON.stringify(mock.result), {
-    name: `${server.name}__${toolName}`,
+    name: toolName,
     description: mock.description ?? "",
     schema: z.object({}).passthrough(),
   });

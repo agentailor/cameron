@@ -5,6 +5,7 @@ import {
   deleteServer,
   fetchServers,
   fetchServerTools,
+  ServerToolsError,
   setServerEnabled,
   updateServer,
   type MCPServerView,
@@ -71,9 +72,20 @@ export function useMCPServers() {
 
 /** Connects to one server only once `enabled` (the list is opened), then keeps the result. */
 export function useServerTools(id: string, enabled: boolean) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: toolsKey(id),
-    queryFn: () => fetchServerTools(id),
+    queryFn: async () => {
+      try {
+        return await fetchServerTools(id);
+      } catch (error) {
+        // The server recorded that it needs sign-in: reload the list so Connect appears.
+        if (error instanceof ServerToolsError && error.code === "auth_required") {
+          void queryClient.invalidateQueries({ queryKey: SERVERS_KEY });
+        }
+        throw error;
+      }
+    },
     enabled,
     staleTime: Infinity,
     retry: false,

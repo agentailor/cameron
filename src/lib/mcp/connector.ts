@@ -1,11 +1,9 @@
-import { MultiServerMCPClient } from "@langchain/mcp-adapters";
+import { MCPAdapter } from "@langchain/mcp-adapters";
 import type { StructuredToolInterface } from "@langchain/core/tools";
-import {
-  TOOL_NAME_SEPARATOR,
-  type McpSession,
-  type ServerManifest,
-} from "@agentailor/mcp-disclosure";
+import type { McpSession, ServerManifest } from "@agentailor/mcp-disclosure";
+import { isAuthFailure } from "@/lib/mcp/authFailure";
 import { ServerOAuthProvider } from "@/lib/mcp/oauth-provider";
+import * as mcpServerRepo from "@/lib/repositories/mcpServerRepository";
 import { OAuthStatus } from "@/lib/mcp/oauth-status";
 import { toServerConfig } from "@/lib/mcp/serverConfig";
 import type { ServerToolsError } from "@/lib/agent/mcp";
@@ -64,23 +62,19 @@ export async function openSession(server: MCPServer): Promise<McpSession> {
     );
   }
 
-  const client = new MultiServerMCPClient({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    mcpServers: { [server.name]: config } as any,
+  // The adapter's default `server_tool` names are the ones the model is shown: no renaming.
+  const client = new MCPAdapter({
+    servers: { [server.name]: config },
     onConnectionError: "throw",
     throwOnLoadError: true,
-    prefixToolNameWithServerName: true,
   });
 
   try {
-    const loaded = await withTimeout(client.getTools());
+    const loaded = await withTimeout(client.listTools());
     const sdk = await client.getClient(server.name);
     if (!sdk) throw new ConnectError("connect_failed", "Server did not connect.");
 
-    const prefix = `${server.name}${TOOL_NAME_SEPARATOR}`;
-    const tools = new Map<string, StructuredToolInterface>(
-      loaded.map((t) => [t.name.startsWith(prefix) ? t.name.slice(prefix.length) : t.name, t]),
-    );
+    const tools = new Map<string, StructuredToolInterface>(loaded.map((t) => [t.name, t]));
     const closeListeners: (() => void)[] = [];
     const previousOnClose = sdk.onclose;
     sdk.onclose = () => {
@@ -106,6 +100,14 @@ export async function openSession(server: MCPServer): Promise<McpSession> {
   } catch (error) {
     await client.close().catch(() => {});
     if (error instanceof ConnectError) throw error;
+    if (server.type === "http" && isAuthFailure(error)) {
+      // Record what the server said, so the Connections page offers Connect.
+      const lost = server.oauthStatus === OAuthStatus.CONNECTED;
+      await mcpServerRepo
+        .setOAuthStatus(server.id, lost ? OAuthStatus.EXPIRED : OAuthStatus.REQUIRED)
+        .catch(() => {});
+      throw new ConnectError("auth_required", "This server needs sign-in: use Connect first.");
+    }
     throw new ConnectError(
       "connect_failed",
       error instanceof Error ? error.message : String(error),

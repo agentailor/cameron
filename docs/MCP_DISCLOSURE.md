@@ -16,16 +16,29 @@ The logic lives in the workspace package [`packages/mcp-disclosure`](../packages
 (`@agentailor/mcp-disclosure`). It imports nothing from the app and **nothing from the MCP client
 library** — only MCP protocol shapes (`tools/list`) and LangChain tool types. The app supplies:
 
-| App file                   | Role                                                                  |
-| -------------------------- | --------------------------------------------------------------------- |
-| `src/lib/mcp/connector.ts` | The only agent-path file using `@langchain/mcp-adapters`: one session |
-| `src/lib/mcp/pool.ts`      | The process-wide pool singleton and the middleware's `resolveTool`    |
-| `src/lib/mcp/catalog.ts`   | Catalog refresh and loading, through the connector                    |
-| `src/lib/agent/index.ts`   | Registers core tools only, plus the middleware                        |
+| App file                   | Role                                                               |
+| -------------------------- | ------------------------------------------------------------------ |
+| `src/lib/mcp/connector.ts` | The only file using `@langchain/mcp-adapters`: one session         |
+| `src/lib/mcp/pool.ts`      | The process-wide pool singleton and the middleware's `resolveTool` |
+| `src/lib/mcp/catalog.ts`   | Catalog refresh and loading, through the connector                 |
+| `src/lib/agent/index.ts`   | Registers core tools only, plus the middleware                     |
 
-Moving to another MCP client (the v2 adapters) means rewriting `connector.ts`; the catalog rows,
-the pool and the middleware are unaffected. The Connections page's "list tools" probe
-(`listServerTools`) still uses the adapter directly and is left for that migration.
+Moving to another MCP client means rewriting `connector.ts`; the catalog rows, the pool and the
+middleware are unaffected. The Connections page's "list tools" probe (`listServerTools`) opens a
+session through the connector too, so it connects exactly as the agent does.
+
+The connector runs on `@langchain/mcp-adapters` 2.x (MCP TypeScript SDK v2,
+`@modelcontextprotocol/client`), and the package is built to be a pass-through over it:
+
+- **Tool names are the adapter's own.** v2 names tools `{server}_{tool}` by default, and
+  `prefixedToolName()` in `policy.ts` builds the same name for the catalog's stand-ins, the search
+  index and `activeTools`. The tool the model is shown and the tool that runs carry one name, so
+  the connector keys its tools by the adapter's name and `getTool` / `resolveTool` take the name
+  as the model called it. A server name may itself contain `_`; `createToolServerIndex` resolves
+  that by preferring the server whose catalog lists the remainder.
+- **Elicitation is the one default overridden.** v2 raises a server's elicitation request as a LangGraph interrupt. The approval
+  flow only answers `humanInTheLoopMiddleware` interrupts, so such a pause would hang the thread.
+  `toServerConfig` sets `elicitation: false` on every server until it is supported (Deferred).
 
 ## Overview
 
@@ -71,7 +84,7 @@ sequenceDiagram
   A->>M: load_tools("search pages")
   M-->>A: matches loaded
   Note over M: no connection yet
-  A->>M: notion__search(...)
+  A->>M: notion_search(...)
   M->>P: resolveTool
   P->>S: connect (first call)
   M->>S: run tool
@@ -80,8 +93,10 @@ sequenceDiagram
 
 ## Rules for changing this code
 
-- **Keep `connector.ts` the only agent-path adapter file.** The catalog stores protocol data
+- **Keep `connector.ts` the only adapter file.** The catalog stores protocol data
   (`tools/list`), never adapter-converted schemas.
+- **Don't rename tools.** `prefixedToolName()` must match the adapter's default naming; if the
+  adapter ever changes it, change that one function, not the connector.
 - **`load_tools` returns a plain string; `wrapToolCall` applies the state change.** The chat UI
   streams a tool's raw return value, so a tool returning a `Command` showed up as a serialized
   object. `planLoadTools` is the single source for both.
@@ -171,7 +186,7 @@ interrupt carrying the authorization URL, with a Connect button in the chat) is 
 No MCP tool is registered with `createAgent`. Instead:
 
 1. **Stand-ins from the catalog.** `catalogTools()` builds one tool per cached entry
-   (`server__tool`, its description, and its `inputSchema` exactly as the server listed it). `wrapModelCall` adds the loaded stand-ins to `request.tools` —
+   (`server_tool`, its description, and its `inputSchema` exactly as the server listed it). `wrapModelCall` adds the loaded stand-ins to `request.tools` —
    LangChain accepts tools added there as long as a `wrapToolCall` runs them. A stand-in throws if it is ever run directly.
 2. **The real tool on call.** `wrapToolCall` asks `resolveTool(serverId, toolName)` for the real
    tool and passes it on as `request.tool`, which the tool node runs; result formatting stays the
@@ -229,7 +244,7 @@ Code defaults in `packages/mcp-disclosure/src/types.ts`; the pool's idle timeout
 
 ## State (per thread, via the checkpointer)
 
-`activeTools: string[]` holds `server__tool` names in load order, through an appending, de-duplicating
+`activeTools: string[]` holds `server_tool` names in load order, through an appending, de-duplicating
 reducer, so two `load_tools` calls in one step both apply. A tool whose server was disabled or
 removed is left out when the list is built; no state change is needed.
 
@@ -299,6 +314,6 @@ model was offered (see [OBSERVABILITY.md](OBSERVABILITY.md)).
 - Resuming a run after sign-in in place (an interrupt with the authorization URL), instead of
   asking the user to reconnect on the Connections page and ask again.
 - Provider-native tool search (`defer_loading`). The same tool could sit in front of it.
-- Moving the Connections page probe (`listServerTools`) behind the connector — with the v2
-  adapter migration.
+- MCP elicitation: answering a server's `mcp_elicitation` interrupt in the chat, beside the
+  approval card. Disabled per server until then.
 - Background refresh jobs.

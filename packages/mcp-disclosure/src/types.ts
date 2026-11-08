@@ -33,7 +33,7 @@ export interface ServerCatalogEntry {
 /** An enabled server as the middleware sees it. `catalog: null` means unavailable this request. */
 export interface DisclosureServer {
   id: string;
-  /** Unique; also the prefix of the server's tool names (`name__tool`). */
+  /** Unique; also the prefix of the server's tool names (`name_tool`). */
   name: string;
   /**
    * The server needs the user to (re)authorize it before it can be used — known from stored
@@ -61,7 +61,7 @@ export const DEFAULT_DISCLOSURE_OPTIONS: DisclosureOptions = {
 export interface McpSession {
   /** `tools/list` plus the server's `instructions`, read live. */
   manifest(): Promise<ServerManifest>;
-  /** A runnable tool by its MCP name (unprefixed), or undefined if the server has no such tool. */
+  /** A runnable tool by its prefixed name (`server_tool`), or undefined if there is none. */
   getTool(name: string): StructuredToolInterface | undefined;
   close(): Promise<void>;
   /** Called when the connection drops on its own (a stdio process exits, a stream closes). */
@@ -73,5 +73,8 @@ export type ToolResolution =
   | { ok: true; tool: StructuredToolInterface; release?: () => void }
   | { ok: false; error: string; message: string };
 
-/** Finds the runnable tool for a call, connecting to its server if needed. Never throws. */
+/**
+ * Finds the runnable tool for a call (`toolName` as the model called it, `server_tool`),
+ * connecting to its server if needed. Never throws.
+ */
 export type ResolveMcpTool = (serverId: string, toolName: string) => Promise<ToolResolution>;

@@ -1,4 +1,4 @@
-import { TOOL_NAME_SEPARATOR } from "./policy";
+import { prefixedToolName } from "./policy";
 import type { DisclosureServer, McpToolDefinition } from "./types";
 
 // Standard BM25 constants.
@@ -85,7 +85,7 @@ export interface ToolSearchIndex {
 export function createToolSearchIndex(servers: DisclosureServer[]): ToolSearchIndex {
   const tools: SearchableTool[] = servers.flatMap((server) =>
     (server.catalog?.tools ?? []).map((definition) => ({
-      name: `${server.name}${TOOL_NAME_SEPARATOR}${definition.name}`,
+      name: prefixedToolName(server.name, definition.name),
       server,
       definition,
     })),

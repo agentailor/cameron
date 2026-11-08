@@ -8,12 +8,7 @@ import {
 } from "@/lib/mcp/oauth-detection";
 import type { OAuthStatus as OAuthStatusType } from "@/lib/mcp/oauth-detection";
 import { ServerOAuthProvider } from "@/lib/mcp/oauth-provider";
-import {
-  discoverOAuthProtectedResourceMetadata,
-  discoverAuthorizationServerMetadata,
-  startAuthorization,
-  registerClient,
-} from "@modelcontextprotocol/sdk/client/auth.js";
+import { auth } from "@modelcontextprotocol/client";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -86,79 +81,32 @@ export async function GET(
     });
   }
 
-  // Server requires OAuth - generate authorization URL
   await updateServerOAuthStatus(serverId, OAuthStatus.REQUIRED);
 
   const authProvider = new ServerOAuthProvider(serverId, server.name);
 
   try {
-    // Step 1: Discover protected resource metadata to find the authorization server
-    const serverUrlObj = new URL(serverUrl);
-    const resourceMetadata = await discoverOAuthProtectedResourceMetadata(
-      serverUrlObj,
-      detection.resourceMetadataUrl
-        ? { resourceMetadataUrl: detection.resourceMetadataUrl }
-        : undefined,
-    );
-
-    if (!resourceMetadata?.authorization_servers?.length) {
-      return NextResponse.json({
-        serverId,
-        requiresAuth: true,
-        connected: false,
-        oauthStatus: OAuthStatus.REQUIRED,
-        error: "Could not find authorization server in resource metadata",
-      });
-    }
-
-    // Step 2: Get the authorization server URL and discover its metadata
-    const authServerUrl = resourceMetadata.authorization_servers[0];
-
-    const metadata = await discoverAuthorizationServerMetadata(authServerUrl);
-
-    if (!metadata) {
-      return NextResponse.json({
-        serverId,
-        requiresAuth: true,
-        connected: false,
-        oauthStatus: OAuthStatus.REQUIRED,
-        error: "Could not discover authorization server metadata",
-      });
-    }
-
-    // Get existing client info or register a new client
-    let clientInfo = await authProvider.clientInformation();
-
-    if (!clientInfo) {
-      // Register client dynamically if not already registered
-      if (metadata.registration_endpoint) {
-        clientInfo = await registerClient(authServerUrl, {
-          metadata,
-          clientMetadata: authProvider.clientMetadata,
-        });
-        // Save the client info for future use
-        await authProvider.saveClientInformation(clientInfo);
-      } else {
-        return NextResponse.json({
-          serverId,
-          requiresAuth: true,
-          connected: false,
-          oauthStatus: OAuthStatus.REQUIRED,
-          error: "Server does not support dynamic client registration",
-        });
-      }
-    }
-
-    // Start authorization and get the URL
-    const { authorizationUrl, codeVerifier } = await startAuthorization(authServerUrl, {
-      metadata,
-      clientInformation: clientInfo,
-      redirectUrl: authProvider.redirectUrl,
+    // The SDK runs discovery, scope selection, registration and PKCE, so the authorization
+    // request matches what its token exchange in the callback expects.
+    const result = await auth(authProvider, {
+      serverUrl,
+      scope: detection.scope,
+      resourceMetadataUrl: toUrl(detection.resourceMetadataUrl),
     });
 
-    // Save code verifier for the callback
-    await authProvider.saveCodeVerifier(codeVerifier);
+    if (result === "AUTHORIZED") {
+      // A stored refresh token was still good: no sign-in needed.
+      await mcpServerRepo.markConnected(serverId);
+      return NextResponse.json({
+        serverId,
+        requiresAuth: true,
+        connected: true,
+        oauthStatus: OAuthStatus.CONNECTED,
+      });
+    }
 
+    const authorizationUrl = authProvider.pendingAuthorizationUrl;
+    if (!authorizationUrl) throw new Error("The SDK did not produce an authorization URL.");
     return NextResponse.json({
       serverId,
       requiresAuth: true,
@@ -175,5 +123,14 @@ export async function GET(
       oauthStatus: OAuthStatus.REQUIRED,
       error: error instanceof Error ? error.message : "Failed to generate authorization URL",
     });
+  }
+}
+
+function toUrl(value: string | undefined): URL | undefined {
+  if (!value) return undefined;
+  try {
+    return new URL(value);
+  } catch {
+    return undefined;
   }
 }
