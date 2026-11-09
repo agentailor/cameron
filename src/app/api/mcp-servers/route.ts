@@ -6,6 +6,15 @@ import { recordOAuthRequirement } from "@/lib/mcp/oauth-detection";
 import { mcpPool } from "@/lib/mcp/pool";
 import { MCPServerType } from "@/types/mcp";
 import { UpdateMCPServerBody } from "./schema";
+import { SecretDecryptError, SecretKeyError } from "@/lib/crypto/secretBox";
+
+// A key problem is the owner's to fix, so say which one instead of a generic failure.
+function secretError(error: unknown): NextResponse | null {
+  if (error instanceof SecretKeyError || error instanceof SecretDecryptError) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return null;
+}
 
 export async function GET() {
   try {
@@ -13,7 +22,10 @@ export async function GET() {
     return NextResponse.json(servers);
   } catch (error) {
     console.error("Error fetching MCP servers:", error);
-    return NextResponse.json({ error: "Failed to fetch MCP servers" }, { status: 500 });
+    return (
+      secretError(error) ??
+      NextResponse.json({ error: "Failed to fetch MCP servers" }, { status: 500 })
+    );
   }
 }
 
@@ -59,7 +71,10 @@ export async function POST(request: Request) {
     if (error instanceof ConflictError) {
       return NextResponse.json({ error: "Server name already exists" }, { status: 409 });
     }
-    return NextResponse.json({ error: "Failed to create MCP server" }, { status: 500 });
+    return (
+      secretError(error) ??
+      NextResponse.json({ error: "Failed to create MCP server" }, { status: 500 })
+    );
   }
 }
 
@@ -116,7 +131,10 @@ export async function PATCH(request: Request) {
     if (error instanceof ConflictError) {
       return NextResponse.json({ error: "Server name already exists" }, { status: 409 });
     }
-    return NextResponse.json({ error: "Failed to update MCP server" }, { status: 500 });
+    return (
+      secretError(error) ??
+      NextResponse.json({ error: "Failed to update MCP server" }, { status: 500 })
+    );
   }
 }
 

@@ -359,8 +359,9 @@ model MCPServer {
 
 `run_sql` runs as the `cameron_analytics` role (`SET LOCAL ROLE` in `analyticsRepository`), which
 migration `0006_analytics_readonly_role.sql` grants SELECT on `transaction` and `category` only.
-Postgres refuses everything else, including `mcp_server`, whose OAuth tokens, env vars and headers
-are stored in plaintext.
+Postgres refuses everything else, including `mcp_server`. Its OAuth tokens, env vars and headers
+are encrypted at rest (see "Token Storage Security" in [OAUTH.md](OAUTH.md)), and the role keeps the
+agent from reading even the ciphertext.
 
 The same migration revokes `EXECUTE` on `pg_catalog.set_config` from `PUBLIC`. **Keep that.**
 `SET ROLE` changes only the current role, and `set_config('role', 'none', true)` is `SET ROLE` as a

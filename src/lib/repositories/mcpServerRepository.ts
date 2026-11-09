@@ -4,6 +4,7 @@ import { columnToDate } from "@/lib/database/timestamps";
 import { mcpServers } from "@/lib/database/schema";
 import { MCPServerType, type MCPServer } from "@/types/mcp";
 import { ConflictError, isUniqueViolation } from "@/lib/database/errors";
+import { openSecret, sealSecret } from "@/lib/crypto/secretBox";
 
 /**
  * Persistence for MCP server configs, including the OAuth token/state columns. This is
@@ -12,12 +13,30 @@ import { ConflictError, isUniqueViolation } from "@/lib/database/errors";
  *
  * Error translation (unique violation -> {@link ConflictError}) lives in
  * `@/lib/database/errors` and is shared with the other repositories.
+ *
+ * Credential columns (`env`, `headers`, `auth_tokens`, `client_info`) are encrypted here and
+ * nowhere else: writes always seal, reads open envelopes and pass legacy plaintext through.
  */
 
 // Re-export so existing callers can keep importing ConflictError from this module.
 export { ConflictError };
 
 type MCPServerRow = typeof mcpServers.$inferSelect;
+
+export type SecretColumn = "env" | "headers" | "auth_tokens" | "client_info";
+
+// Bound as associated data, so an envelope copied to another row or column will not open.
+function secretContext(id: string, column: SecretColumn): string {
+  return `mcp_server.${column}:${id}`;
+}
+
+function seal(id: string, column: SecretColumn, value: unknown): unknown {
+  return sealSecret(value, secretContext(id, column));
+}
+
+function open(id: string, column: SecretColumn, stored: unknown): unknown {
+  return openSecret(stored, secretContext(id, column));
+}
 
 function toDomain(row: MCPServerRow): MCPServer {
   return {
@@ -28,12 +47,12 @@ function toDomain(row: MCPServerRow): MCPServer {
     enabled: row.enabled,
     command: row.command,
     args: row.args,
-    env: row.env,
+    env: open(row.id, "env", row.env) as MCPServer["env"],
     url: row.url,
-    headers: row.headers,
+    headers: open(row.id, "headers", row.headers) as MCPServer["headers"],
     requiresAuth: row.requiresAuth,
-    authTokens: row.authTokens,
-    clientInfo: row.clientInfo,
+    authTokens: open(row.id, "auth_tokens", row.authTokens) as MCPServer["authTokens"],
+    clientInfo: open(row.id, "client_info", row.clientInfo) as MCPServer["clientInfo"],
     codeVerifier: row.codeVerifier,
     oauthStatus: row.oauthStatus,
     createdAt: columnToDate(row.createdAt),
@@ -96,19 +115,20 @@ export async function getHttpById(id: string): Promise<MCPServer | null> {
 /** Create a server. Throws {@link ConflictError} if the name is taken. */
 export async function create(input: CreateMCPServerInput): Promise<MCPServer> {
   const timestamp = now();
+  const id = crypto.randomUUID();
   try {
     const [row] = await db
       .insert(mcpServers)
       .values({
-        id: crypto.randomUUID(),
+        id,
         name: input.name,
         description: input.description ?? null,
         type: input.type,
         command: input.command ?? null,
         args: input.args ?? null,
-        env: input.env ?? null,
+        env: seal(id, "env", input.env ?? null),
         url: input.url ?? null,
-        headers: input.headers ?? null,
+        headers: seal(id, "headers", input.headers ?? null),
         createdAt: timestamp,
         updatedAt: timestamp,
       })
@@ -125,12 +145,11 @@ export async function create(input: CreateMCPServerInput): Promise<MCPServer> {
  * Throws {@link ConflictError} if renaming to a name that is taken.
  */
 export async function update(id: string, patch: UpdateMCPServerPatch): Promise<MCPServer | null> {
+  const values: Record<string, unknown> = { ...patch, updatedAt: now() };
+  if (patch.env !== undefined) values.env = seal(id, "env", patch.env);
+  if (patch.headers !== undefined) values.headers = seal(id, "headers", patch.headers);
   try {
-    const [row] = await db
-      .update(mcpServers)
-      .set({ ...patch, updatedAt: now() })
-      .where(eq(mcpServers.id, id))
-      .returning();
+    const [row] = await db.update(mcpServers).set(values).where(eq(mcpServers.id, id)).returning();
     return row ? toDomain(row) : null;
   } catch (err) {
     if (isUniqueViolation(err)) throw new ConflictError("MCP server name already exists");
@@ -155,11 +174,14 @@ export async function getClientInfo(id: string): Promise<unknown> {
     .from(mcpServers)
     .where(eq(mcpServers.id, id))
     .limit(1);
-  return rows[0]?.clientInfo;
+  return rows[0] ? open(id, "client_info", rows[0].clientInfo) : undefined;
 }
 
 export async function saveClientInfo(id: string, clientInfo: unknown): Promise<void> {
-  await db.update(mcpServers).set({ clientInfo, updatedAt: now() }).where(eq(mcpServers.id, id));
+  await db
+    .update(mcpServers)
+    .set({ clientInfo: seal(id, "client_info", clientInfo), updatedAt: now() })
+    .where(eq(mcpServers.id, id));
 }
 
 export async function getTokens(id: string): Promise<unknown> {
@@ -168,7 +190,7 @@ export async function getTokens(id: string): Promise<unknown> {
     .from(mcpServers)
     .where(eq(mcpServers.id, id))
     .limit(1);
-  return rows[0]?.authTokens;
+  return rows[0] ? open(id, "auth_tokens", rows[0].authTokens) : undefined;
 }
 
 export async function saveTokens(
@@ -178,7 +200,11 @@ export async function saveTokens(
 ): Promise<void> {
   await db
     .update(mcpServers)
-    .set({ authTokens, ...(oauthStatus ? { oauthStatus } : {}), updatedAt: now() })
+    .set({
+      authTokens: seal(id, "auth_tokens", authTokens),
+      ...(oauthStatus ? { oauthStatus } : {}),
+      updatedAt: now(),
+    })
     .where(eq(mcpServers.id, id));
 }
 
@@ -220,6 +246,7 @@ export async function clearOAuthCredentials(
   const all = scope === "all";
   const client = all || scope === "client";
   const tokens = client || scope === "tokens";
+  // Only ever writes null to the sealed columns; a non-null value here must go through seal().
   await db
     .update(mcpServers)
     .set({
