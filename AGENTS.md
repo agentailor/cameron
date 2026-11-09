@@ -111,7 +111,7 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     — the one sanctioned raw-SQL site — which runs every query inside a `BEGIN TRANSACTION READ ONLY`
     - `statement_timeout`, **as the `cameron_analytics` role** (`SET LOCAL ROLE`), always rolls
       back, and hard-caps returned rows. The role can SELECT only `transaction` and `category`, so
-      Postgres refuses `mcp_server` (plaintext OAuth tokens/env/headers), the checkpoints, `config`
+      Postgres refuses `mcp_server` (OAuth tokens/env/headers, encrypted but still not the agent's), the checkpoints, `config`
       and `thread`; a `42501` comes back as an "isn't available to `run_sql`" payload. Why
       `set_config` is revoked from PUBLIC (it is `SET ROLE` as a function):
       [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#what-run_sql-can-read). Both tools auto-approve.
