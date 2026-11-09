@@ -153,10 +153,9 @@ in `backups/` or an exposed Postgres port yields only ciphertext.
   install with no credentials runs without one (empty values — `null`, `{}` — are stored as is). Writing a credential without a key throws
   (`SecretKeyError`), and so does reading an envelope. A wrong key or an altered value throws
   `SecretDecryptError`. Nothing ever falls back to writing plaintext.
-- **Legacy rows**: values written before encryption existed are read as is, and re-sealed the next
-  time they are written. To seal them all now, run `pnpm db:encrypt-secrets` (idempotent; targets
-  `DATABASE_URL`). For the production stack, back it up first, then point `DATABASE_URL` at it
-  (`localhost:5546/mydb`) for that one command.
+- **Servers created before encryption**: recreate them. There is no migration script; until a
+  server is recreated its old plaintext values are still read as is (and a value is sealed the
+  next time it is written), so nothing breaks in the meantime.
 - **Keep the key apart from the data**: it lives in env, never in the database or its dumps.
   Losing it means re-entering those credentials (re-authorizing OAuth servers); there is no
   recovery.

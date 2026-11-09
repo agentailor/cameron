@@ -4,7 +4,7 @@ import { columnToDate } from "@/lib/database/timestamps";
 import { mcpServers } from "@/lib/database/schema";
 import { MCPServerType, type MCPServer } from "@/types/mcp";
 import { ConflictError, isUniqueViolation } from "@/lib/database/errors";
-import { needsSealing, openSecret, sealSecret } from "@/lib/crypto/secretBox";
+import { openSecret, sealSecret } from "@/lib/crypto/secretBox";
 
 /**
  * Persistence for MCP server configs, including the OAuth token/state columns. This is
@@ -256,41 +256,4 @@ export async function clearOAuthCredentials(
       updatedAt: now(),
     })
     .where(eq(mcpServers.id, id));
-}
-
-// --- At-rest migration (`pnpm db:encrypt-secrets`) ---
-
-/**
- * Seal any legacy plaintext credential column. Idempotent: rows already fully sealed are left
- * untouched; `updated_at` is not bumped, since nothing the owner sees changed.
- */
-export async function resealAllSecrets(): Promise<{ rows: number; migrated: number }> {
-  const rows = await db.select().from(mcpServers);
-  let migrated = 0;
-  for (const row of rows) {
-    const columns = {
-      env: row.env,
-      headers: row.headers,
-      auth_tokens: row.authTokens,
-      client_info: row.clientInfo,
-    } satisfies Record<SecretColumn, unknown>;
-    if (!Object.values(columns).some(needsSealing)) continue;
-    const sealed = Object.fromEntries(
-      (Object.entries(columns) as [SecretColumn, unknown][]).map(([column, stored]) => [
-        column,
-        seal(row.id, column, open(row.id, column, stored)),
-      ]),
-    );
-    await db
-      .update(mcpServers)
-      .set({
-        env: sealed.env,
-        headers: sealed.headers,
-        authTokens: sealed.auth_tokens,
-        clientInfo: sealed.client_info,
-      })
-      .where(eq(mcpServers.id, row.id));
-    migrated++;
-  }
-  return { rows: rows.length, migrated };
 }

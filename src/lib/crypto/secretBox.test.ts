@@ -5,7 +5,6 @@ import {
   SecretDecryptError,
   SecretKeyError,
   isEnvelope,
-  needsSealing,
   openSecret,
   openWith,
   parseKey,
@@ -74,15 +73,6 @@ describe("isEnvelope", () => {
     expect(isEnvelope({ ...env, extra: "x" })).toBe(false);
     expect(isEnvelope({ ...env, v: 2 })).toBe(false);
     expect(isEnvelope([env])).toBe(false);
-  });
-});
-
-describe("needsSealing", () => {
-  it("flags non-empty plaintext only", () => {
-    expect(needsSealing({ A: "x" })).toBe(true);
-    expect(needsSealing({})).toBe(false);
-    expect(needsSealing(null)).toBe(false);
-    expect(needsSealing(sealWith(key, tokens, ctx))).toBe(false);
   });
 });
 

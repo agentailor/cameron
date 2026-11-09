@@ -31,7 +31,6 @@ pnpm db:migrate               # Apply pending migrations
 pnpm db:push                  # Push schema directly (dev convenience, no migration file)
 pnpm db:pull                  # Introspect an existing DB into schema
 pnpm db:studio                # Database UI
-pnpm db:encrypt-secrets       # Seal legacy plaintext MCP credentials (needs CAMERON_SECRET_KEY)
 
 # File Storage
 # MinIO Console: http://localhost:9101 (minioadmin/minioadmin)
@@ -367,7 +366,7 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   `CAMERON_SECRET_KEY`), inside `mcpServerRepository` ONLY — see "Token Storage Security" in
   [docs/OAUTH.md](docs/OAUTH.md). Legacy plaintext reads through; every write seals; a missing key
   throws on the first secret write or envelope read, never writes plaintext.
-  `pnpm db:encrypt-secrets` seals legacy rows. `code_verifier` is deliberately not covered.
+  Servers created before encryption must be recreated. `code_verifier` is deliberately not covered.
 - **Tools are listed on demand, one server at a time**: `GET /api/mcp-servers/{id}/tools` connects to
   that server only (enabled or not), then closes the client. Listing tools means connecting (for stdio,
   spawning a process), so nothing connects on page load and no tool count is stored — a stored count

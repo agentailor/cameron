@@ -118,11 +118,6 @@ function isEmpty(value: unknown): boolean {
   );
 }
 
-/** True for a non-empty value not yet sealed — what `pnpm db:encrypt-secrets` migrates. */
-export function needsSealing(value: unknown): boolean {
-  return !isEmpty(value) && !isEnvelope(value);
-}
-
 /** Seal with the env key. Empty values are stored as they are. */
 export function sealSecret(value: unknown, context: string): unknown {
   if (isEmpty(value)) return value;
