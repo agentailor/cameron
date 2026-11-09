@@ -13,11 +13,14 @@ import type { DisclosureOptions, DisclosureServer, ResolveMcpTool } from "./type
 type State = { activeTools: string[] };
 type Step = { tools?: [string, Record<string, unknown>][]; text?: string };
 
+let modelSeq = 0;
+
 /** Plays a script of tool calls and records what each model call was shown. */
 class ScriptedModel extends BaseChatModel {
   seen: { tools: string[]; system: string }[] = [];
   private bound: string[] = [];
   private n = 0;
+  private seq = ++modelSeq;
 
   constructor(private script: Step[]) {
     super({});
@@ -37,7 +40,8 @@ class ScriptedModel extends BaseChatModel {
     const system = messages.find((m) => m.getType() === "system");
     this.seen.push({ tools: [...this.bound], system: system?.text ?? "" });
     const step = this.script.shift() ?? { text: "done" };
-    const id = `m${++this.n}`;
+    // Unique across models, so a second agent on the same thread appends rather than replaces.
+    const id = `s${this.seq}-m${++this.n}`;
     const message = new AIMessage({
       id,
       content: step.text ?? "",
@@ -312,9 +316,10 @@ describe("disclosure", () => {
     expect(result).toMatchObject({ ok: false, error: "tool_not_loaded" });
   });
 
-  it("drops a loaded tool whose server is no longer available", async () => {
-    const checkpointer = new MemorySaver();
-    const make = (using: DisclosureServer[], model: ScriptedModel) =>
+  describe("a loaded tool outlives its server", () => {
+    const config = { configurable: { thread_id: "t1" } };
+    const input = { messages: [{ role: "user", content: "hi" }] };
+    const make = (checkpointer: MemorySaver, using: DisclosureServer[], model: ScriptedModel) =>
       createAgent({
         model,
         tools: [fakeTool("log_expense")],
@@ -327,15 +332,85 @@ describe("disclosure", () => {
           }),
         ],
       });
-    const config = { configurable: { thread_id: "t1" } };
-    const input = { messages: [{ role: "user", content: "hi" }] };
-    const first = new ScriptedModel([{ tools: [["load_tools", { query: "notes" }]] }]);
-    await make(servers, first).invoke(input, config);
-    expect(first.seen.at(-1)!.tools).toContain("notes_search_notes");
+    const loadNotes = async (checkpointer: MemorySaver) => {
+      const first = new ScriptedModel([{ tools: [["load_tools", { query: "notes" }]] }]);
+      await make(checkpointer, servers, first).invoke(input, config);
+      expect(first.seen.at(-1)!.tools).toContain("notes_search_notes");
+    };
+    const lastToolResult = (out: { messages: BaseMessage[] }) =>
+      JSON.parse(String(out.messages.filter((m) => m.getType() === "tool").at(-1)!.content));
 
-    const second = new ScriptedModel([]);
-    await make([servers[0]], second).invoke(input, config);
-    expect(second.seen[0].tools).not.toContain("notes_search_notes");
+    it("keeps showing it after the server is removed, and saves its definition", async () => {
+      const checkpointer = new MemorySaver();
+      await loadNotes(checkpointer);
+      const state = (await make(checkpointer, servers, new ScriptedModel([])).getState(
+        config,
+      )) as unknown as { values: { toolDefinitions: Record<string, unknown> } };
+      expect(state.values.toolDefinitions.notes_search_notes).toEqual({
+        server: "notes",
+        tool: expect.objectContaining({ name: "search_notes", description: "fake search_notes" }),
+      });
+
+      // Removed (or turned off): the server is no longer in the list the agent is built with.
+      for (const using of [[servers[0]], []]) {
+        const next = new ScriptedModel([]);
+        await make(checkpointer, using, next).invoke(input, config);
+        expect(next.seen[0].tools).toContain("notes_search_notes");
+      }
+    });
+
+    it("answers a call to it with server_unavailable, without connecting", async () => {
+      const checkpointer = new MemorySaver();
+      await loadNotes(checkpointer);
+      connected.length = 0;
+      const next = new ScriptedModel([{ tools: [["notes_search_notes", {}]] }]);
+      const out = await make(checkpointer, [servers[0]], next).invoke(input, config);
+      expect(lastToolResult(out)).toMatchObject({
+        ok: false,
+        error: "server_unavailable",
+        server: "notes",
+      });
+      expect(connected).toEqual([]);
+    });
+
+    it("handles a thread saved before definitions were, by name only", async () => {
+      const checkpointer = new MemorySaver();
+      const agent = make(checkpointer, servers, new ScriptedModel([]));
+      await agent.invoke(input, config);
+      // The old state shape: a loaded name, no saved definition.
+      await (
+        agent as unknown as { updateState: (c: object, v: object) => Promise<unknown> }
+      ).updateState(config, { activeTools: ["notes_search_notes"] });
+
+      // Server still there: shown from the catalog, as before.
+      const present = new ScriptedModel([]);
+      await make(checkpointer, servers, present).invoke(input, config);
+      expect(present.seen[0].tools).toContain("notes_search_notes");
+
+      // Server gone: nothing to show it from, but a call still gets a clear answer.
+      const gone = new ScriptedModel([{ tools: [["notes_search_notes", {}]] }]);
+      const out = await make(checkpointer, [servers[0]], gone).invoke(input, config);
+      expect(gone.seen[0].tools).not.toContain("notes_search_notes");
+      expect(lastToolResult(out)).toMatchObject({
+        error: "server_unavailable",
+        tool: "notes_search_notes",
+      });
+    });
+
+    it("keeps the definition first saved, even if the catalog changes", async () => {
+      const checkpointer = new MemorySaver();
+      await loadNotes(checkpointer);
+      const changed = makeServer("notes", { toolNames: ["search_notes"] });
+      changed.catalog!.tools[0].description = "a newer description";
+      const next = new ScriptedModel([{ tools: [["load_tools", { query: "search_notes" }]] }]);
+      await make(checkpointer, [servers[0], changed], next).invoke(input, config);
+      const state = (await make(checkpointer, servers, new ScriptedModel([])).getState(
+        config,
+      )) as unknown as { values: { toolDefinitions: Record<string, { tool: object }> } };
+      expect(state.values.toolDefinitions.notes_search_notes.tool).toMatchObject({
+        description: "fake search_notes",
+      });
+    });
   });
 });
 

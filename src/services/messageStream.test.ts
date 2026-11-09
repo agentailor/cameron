@@ -235,3 +235,116 @@ describe("streamMessages artifacts", () => {
     expect(tool?.data).not.toHaveProperty("artifact");
   });
 });
+
+describe("streamMessages results a middleware returned itself", () => {
+  // Such a call never runs the tool node, so it is not on `run.toolCalls`: only in the state.
+  const answered = (callId: string) =>
+    new ToolMessage({
+      content: '{"ok":false,"error":"server_unavailable"}',
+      tool_call_id: callId,
+      name: "notes_list_notes",
+      status: "error",
+    });
+  const call: ToolCall = { id: "call-1", name: "notes_list_notes", args: {}, type: "tool_call" };
+
+  const pendingIds = (chunks: MessageResponse[]) =>
+    chunks.flatMap((c) => (c.data as { pendingToolCallIds?: string[] }).pendingToolCallIds ?? []);
+  const results = (chunks: MessageResponse[]) => chunks.filter((c) => c.type === "tool");
+
+  it("streams it from a state snapshot and never reports it pending", async () => {
+    const chunks = await collect({
+      messages: fromArray([aiMessage([""], [call])]),
+      toolCalls: fromArray([]),
+      // Released after the AI message is in, as in a real run.
+      values: (async function* () {
+        await new Promise((r) => setTimeout(r, 0));
+        yield { messages: [answered("call-1")] };
+      })(),
+      output: Promise.resolve({ messages: [answered("call-1")] }),
+    });
+    expect(results(chunks)).toHaveLength(1);
+    expect(results(chunks)[0].data).toMatchObject({
+      tool_call_id: "call-1",
+      name: "notes_list_notes",
+      status: "error",
+    });
+    expect(pendingIds(chunks)).toEqual([]);
+  });
+
+  it("finds it in the final state when no snapshot carried it", async () => {
+    const chunks = await collect({
+      messages: fromArray([aiMessage([""], [call])]),
+      toolCalls: fromArray([]),
+      values: fromArray([]),
+      output: Promise.resolve({ messages: [answered("call-1")] }),
+    });
+    expect(results(chunks)).toHaveLength(1);
+    expect(pendingIds(chunks)).toEqual([]);
+  });
+
+  it("sends a result once when both the execution stream and the state carry it", async () => {
+    const chunks = await collect({
+      messages: fromArray([aiMessage([""], [call])]),
+      toolCalls: fromArray([toolCall("notes_list_notes", "call-1")]),
+      values: fromArray([{ messages: [answered("call-1")] }]),
+      output: Promise.resolve({ messages: [answered("call-1")] }),
+    });
+    expect(results(chunks)).toHaveLength(1);
+  });
+
+  it("ignores earlier results in the thread, and still reports a paused call", async () => {
+    const chunks = await collect({
+      messages: fromArray([aiMessage([""], [call])]),
+      toolCalls: fromArray([]),
+      values: fromArray([{ messages: [answered("call-from-an-earlier-turn")] }]),
+      output: Promise.resolve({ messages: [answered("call-from-an-earlier-turn")] }),
+    });
+    expect(results(chunks)).toEqual([]);
+    expect(pendingIds(chunks)).toEqual(["call-1"]);
+  });
+});
+
+describe("streamMessages malformed tool calls", () => {
+  it("also finds one carried only as a v1 content block", async () => {
+    const chunks = await collect({
+      messages: fromArray([
+        {
+          text: fromArray(["I'll pull all your notes now."]),
+          output: Promise.resolve({
+            invalid_tool_calls: [],
+            content: [
+              { type: "text", text: "I'll pull all your notes now." },
+              { type: "invalid_tool_call", id: "bad-1", name: "notes_list_notes", args: "" },
+            ],
+          }),
+        },
+      ]),
+      toolCalls: fromArray([]),
+      values: fromArray([]),
+      output: Promise.resolve({ messages: [] }),
+    });
+    const text = chunks
+      .map((c) => String((c.data as { content?: unknown }).content ?? ""))
+      .join("");
+    expect(text).toContain("The call to notes_list_notes had arguments that were not valid JSON");
+  });
+
+  it("shows a notice for a call whose arguments didn't parse, which never runs", async () => {
+    const chunks = await collect({
+      messages: fromArray([
+        {
+          text: fromArray(["I'll pull all your notes now."]),
+          output: Promise.resolve({ invalid_tool_calls: [{ name: "notes_list_notes" }] }),
+        },
+      ]),
+      toolCalls: fromArray([]),
+      values: fromArray([]),
+      output: Promise.resolve({ messages: [] }),
+    });
+    const text = chunks
+      .map((c) => String((c.data as { content?: unknown }).content ?? ""))
+      .join("");
+    expect(text).toContain("I'll pull all your notes now.");
+    expect(text).toContain("The call to notes_list_notes had arguments that were not valid JSON");
+  });
+});

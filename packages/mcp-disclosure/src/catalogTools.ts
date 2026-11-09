@@ -1,6 +1,6 @@
 import { DynamicStructuredTool, type StructuredToolInterface } from "@langchain/core/tools";
 import { prefixedToolName } from "./policy";
-import type { DisclosureServer } from "./types";
+import type { DisclosureServer, McpToolDefinition } from "./types";
 
 export class CatalogToolNotRunnable extends Error {}
 
@@ -16,20 +16,22 @@ export function catalogTools(servers: DisclosureServer[]): Map<string, Structure
     if (!server.catalog) continue;
     byServer.set(
       server.id,
-      server.catalog.tools.map((t) => {
-        const name = prefixedToolName(server.name, t.name);
-        return new DynamicStructuredTool({
-          name,
-          description: t.description ?? "",
-          schema: t.inputSchema as Record<string, unknown>,
-          func: async () => {
-            throw new CatalogToolNotRunnable(
-              `${name} is a catalog stand-in; it must be run through the disclosure middleware.`,
-            );
-          },
-        });
-      }),
+      server.catalog.tools.map((t) => standInTool(prefixedToolName(server.name, t.name), t)),
     );
   }
   return byServer;
+}
+
+/** One stand-in. The same definition always yields the same tool the model sees. */
+export function standInTool(name: string, definition: McpToolDefinition): StructuredToolInterface {
+  return new DynamicStructuredTool({
+    name,
+    description: definition.description ?? "",
+    schema: definition.inputSchema as Record<string, unknown>,
+    func: async () => {
+      throw new CatalogToolNotRunnable(
+        `${name} is a catalog stand-in; it must be run through the disclosure middleware.`,
+      );
+    },
+  });
 }

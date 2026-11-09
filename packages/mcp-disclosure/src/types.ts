@@ -8,6 +8,16 @@ export interface McpToolDefinition {
   annotations?: unknown;
 }
 
+/**
+ * A loaded tool as the thread saved it. The model keeps being shown this definition even after
+ * its server is removed or turned off, so the tool list never shrinks.
+ */
+export interface SavedToolDefinition {
+  /** The server's name when the tool was loaded; a call is routed by it. */
+  server: string;
+  tool: McpToolDefinition;
+}
+
 /** What a catalog refresh reads from a live server. */
 export interface ServerManifest {
   tools: McpToolDefinition[];

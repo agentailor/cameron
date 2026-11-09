@@ -390,7 +390,9 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   delegates to the SDK's `auth()` — never hardcode a scope in the client metadata.
 - **Progressive disclosure** ([docs/MCP_DISCLOSURE.md](docs/MCP_DISCLOSURE.md), read it before
   changing this code): the model sees a short list of capabilities plus `load_tools`, and a tool's
-  definition only once a search has loaded it; nothing connects until a tool is called. The logic
+  definition only once a search has loaded it; nothing connects until a tool is called. A loaded
+  tool's definition is saved in the thread (`toolDefinitions`), so it stays offered after its
+  server is removed or turned off, and a call to it returns `server_unavailable`. The logic
   is the workspace package `packages/mcp-disclosure`, which must not import app code or the MCP
   client library; `src/lib/mcp/connector.ts` is the only file using the adapters.
 
@@ -466,6 +468,20 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   client-only artifact. Waiting whenever an artifact is merely absent is indistinguishable from
   waiting for one that will never come — it parked the pump on every ordinary tool and pushed all
   results to the end of the turn. `messageStream.test.ts` pins both this and the pending contract.
+- **A result a middleware returned itself is streamed from the state.** The disclosure middleware
+  answers some calls without running the tool node (`server_unavailable`, `auth_required`,
+  `unknown_tool`), so they never appear on `run.toolCalls`. `streamMessages` also takes results
+  from `run.values` snapshots and the final state, for calls this run requested, each sent once
+  (`pushResult`). Without it the result showed only after a reload, and the call was reported as
+  `pendingToolCallIds`, the approval signal.
+- **A malformed tool call is retried, never dropped silently.** Arguments that don't parse land in
+  `invalid_tool_calls` (or, in LangChain's v1 output format, only as `invalid_tool_call` content
+  blocks: read both, via `findInvalidCalls`). The agent never runs such a call, so with no valid
+  calls the turn just ended. `invalidToolCallMiddleware` (`src/lib/agent/invalidToolCalls.ts`,
+  installed just inside disclosure so it sees the full tool list) re-asks the model up to
+  `MAX_INVALID_CALL_RETRIES` times with a correction (`invalid_arguments`, or `unknown_tool` for a
+  tool not offered) that is never saved to the thread; after that the response ends with a
+  visible notice. The stream shows the same notice live for every malformed attempt.
 - **Dedup and React keys are `type:id`, not `id`.** Ids are unique only within a type (an AI
   message's synthetic id and a tool message's call id are different namespaces).
 
