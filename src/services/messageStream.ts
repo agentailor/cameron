@@ -1,6 +1,7 @@
 import { ToolMessage } from "@langchain/core/messages";
-import type { MessageResponse, ToolCall } from "@/types/message";
+import type { MessageResponse, ToolCall, ToolMessageData } from "@/types/message";
 import { producesArtifact } from "@/lib/agent/artifactTools";
+import { findInvalidCalls, invalidCallNotice } from "@/lib/agent/invalidCallNotice";
 
 /**
  * Turns a LangGraph run's independent projections into the ordered MessageResponse chunks the SSE
@@ -16,7 +17,12 @@ import { producesArtifact } from "@/lib/agent/artifactTools";
 export interface AgentRun {
   messages: AsyncIterable<{
     text: AsyncIterable<string>;
-    output: PromiseLike<{ id?: string; tool_calls?: ToolCall[] }>;
+    output: PromiseLike<{
+      id?: string;
+      tool_calls?: ToolCall[];
+      invalid_tool_calls?: unknown[];
+      content?: unknown;
+    }>;
   }>;
   toolCalls: AsyncIterable<{
     name: string;
@@ -49,6 +55,34 @@ export function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, v
   const requestedCalls = new Map<string, { id: string; name: string }>();
   const executedCallIds = new Set<string>();
 
+  // A result can reach us twice (execution stream and state), so each is sent once. Sending one
+  // also marks its call executed: it has an answer, so it is not awaiting approval.
+  const pushResult = (callId: string, data: ToolMessageData) => {
+    if (executedCallIds.has(callId)) return;
+    executedCallIds.add(callId);
+    push({ type: "tool", data });
+  };
+
+  /**
+   * Results a middleware returned itself (an MCP call to a removed server, say) never run the
+   * tool node, so they are not on `run.toolCalls`; they are only in the state. Only calls this
+   * run requested count — the snapshot also holds the thread's earlier results.
+   */
+  const pushResultsFrom = (snapshot: unknown) => {
+    for (const m of (snapshot as { messages?: unknown[] })?.messages ?? []) {
+      if (!ToolMessage.isInstance(m) || !m.tool_call_id) continue;
+      if (!requestedCalls.has(m.tool_call_id)) continue;
+      pushResult(m.tool_call_id, {
+        id: m.tool_call_id,
+        content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+        status: m.status ?? "success",
+        tool_call_id: m.tool_call_id,
+        name: m.name ?? requestedCalls.get(m.tool_call_id)!.name,
+        ...(m.artifact !== undefined ? { artifact: m.artifact } : {}),
+      });
+    }
+  };
+
   const pumpMessages = async () => {
     let counter = 0;
     for await (const msg of run.messages) {
@@ -60,6 +94,11 @@ export function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, v
       }
       // Surface tool calls after the text so the approval UI can render Allow/Deny.
       const assembled = await msg.output;
+      // A malformed call is never run; say so, or the turn can end with no visible reason.
+      const invalid = findInvalidCalls(assembled);
+      if (invalid.length > 0) {
+        push({ type: "ai", data: { id, content: `\n\n${invalidCallNotice(invalid)}` } });
+      }
       if (assembled?.tool_calls && assembled.tool_calls.length > 0) {
         for (const call of assembled.tool_calls) {
           if (call.id) requestedCalls.set(call.id, { id, name: call.name });
@@ -80,7 +119,10 @@ export function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, v
     }
   };
   const pumpValues = async () => {
-    for await (const snapshot of run.values) collectArtifacts(snapshot);
+    for await (const snapshot of run.values) {
+      collectArtifacts(snapshot);
+      pushResultsFrom(snapshot);
+    }
   };
 
   const pumpToolCalls = async () => {
@@ -96,18 +138,16 @@ export function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, v
         collectArtifacts(await run.output);
         artifact = artifacts.get(call.callId);
       }
-      if (call.callId) executedCallIds.add(call.callId);
-      push({
-        type: "tool",
-        data: {
-          id: call.callId || `tool-${Date.now()}`,
-          content,
-          status,
-          tool_call_id: call.callId,
-          name: call.name,
-          ...(artifact !== undefined ? { artifact } : {}),
-        },
-      });
+      const data = {
+        id: call.callId || `tool-${Date.now()}`,
+        content,
+        status,
+        tool_call_id: call.callId,
+        name: call.name,
+        ...(artifact !== undefined ? { artifact } : {}),
+      };
+      if (call.callId) pushResult(call.callId, data);
+      else push({ type: "tool", data });
     }
   };
 
@@ -126,6 +166,8 @@ export function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, v
   };
 
   const runPromise = Promise.all([pumpMessages(), pumpValues(), pumpToolCalls(), run.output])
+    // A snapshot can arrive before its call is known, so check the final state once more.
+    .then(([, , , output]) => pushResultsFrom(output))
     .then(pushPendingApprovals)
     .catch((e) => {
       failure = e;

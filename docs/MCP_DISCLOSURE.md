@@ -151,7 +151,8 @@ load_tools({ query: string; server?: string; limit?: number }); // limit default
 re-sent, and it can never be removed; it also loses real tool names and `tool_choice`.
 
 **Why nothing is removed.** Changing the tool list costs a prompt-cache miss, so loaded tools stay
-for the thread and `activeTools` keeps load order, leaving the existing array as a stable prefix.
+for the thread — even after their server is removed or turned off, since their definitions live in
+the thread, not the catalog (deleting a server cascade-deletes its catalog row) and `activeTools` keeps load order, leaving the existing array as a stable prefix.
 Each load still costs one miss on that prefix: measure it with the cache attributes in
 [OBSERVABILITY.md](OBSERVABILITY.md). A thread only grows by tools the model asked for.
 
@@ -185,13 +186,18 @@ interrupt carrying the authorization URL, with a Connect button in the chat) is 
 
 No MCP tool is registered with `createAgent`. Instead:
 
-1. **Stand-ins from the catalog.** `catalogTools()` builds one tool per cached entry
-   (`server_tool`, its description, and its `inputSchema` exactly as the server listed it). `wrapModelCall` adds the loaded stand-ins to `request.tools` —
-   LangChain accepts tools added there as long as a `wrapToolCall` runs them. A stand-in throws if it is ever run directly.
+1. **Stand-ins from the thread's saved definitions.** When `load_tools` loads a tool, its
+   definition (`server_tool`, its description, and its `inputSchema` exactly as the server listed
+   it) is saved in the thread's `toolDefinitions`. `wrapModelCall` builds a stand-in from each
+   (`standInTool()`) and adds them to `request.tools` — LangChain accepts tools added there as long
+   as a `wrapToolCall` runs them. A stand-in throws if it is ever run directly. A thread from
+   before definitions were saved has names only, and falls back to the catalog's stand-ins.
 2. **The real tool on call.** `wrapToolCall` asks `resolveTool(serverId, toolName)` for the real
    tool and passes it on as `request.tool`, which the tool node runs; result formatting stays the
    client library's. A tool the catalog does not list is refused (`unknown_tool`) without
-   connecting. A connection failure comes back as an error result (`connect_failed`,
+   connecting; with no catalog this request, the live server decides. A loaded tool whose server
+   was removed or turned off is answered with `server_unavailable` (naming the server and the
+   Connections page), never passed on to the tool node, which knows no MCP tools. A connection failure comes back as an error result (`connect_failed`,
    `auth_required`, `timeout`) and does not load the tool.
 3. **Auto-load.** A call to a catalog tool that was not loaded still runs it and loads it
    (`autoLoadOnCall`), which only happens when the model guesses a name.
@@ -245,8 +251,20 @@ Code defaults in `packages/mcp-disclosure/src/types.ts`; the pool's idle timeout
 ## State (per thread, via the checkpointer)
 
 `activeTools: string[]` holds `server_tool` names in load order, through an appending, de-duplicating
-reducer, so two `load_tools` calls in one step both apply. A tool whose server was disabled or
-removed is left out when the list is built; no state change is needed.
+reducer, so two `load_tools` calls in one step both apply.
+
+`toolDefinitions` maps each loaded name to `{ server, tool }`, the definition as it was loaded. Its
+reducer keeps the **first** definition saved for a name, so what the model is shown never changes,
+even if the server later lists a different schema (the real tool still validates the call against
+its current one). `load_tools` also back-fills a definition for a tool loaded before this field
+existed. Neither field is ever pruned.
+
+Why it is in the state and not the catalog: a tool removed from the model's list mid-thread is
+still in the conversation, so the model calls it from memory with no schema. That produced an
+unparseable call (an `invalid_tool_call`) which the agent does not run, ending the turn with no
+error shown. Such calls are now retried by the app's `invalidToolCallMiddleware` (see
+`AGENTS.md`, Streaming Architecture), which tells the model a tool it isn't offered is not
+available.
 
 ## The catalog (`mcp_server_catalog`)
 

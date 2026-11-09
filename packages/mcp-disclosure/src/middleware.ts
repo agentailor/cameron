@@ -4,7 +4,7 @@ import type { StructuredToolInterface } from "@langchain/core/tools";
 import { Command, ReducedValue, StateSchema, isCommand } from "@langchain/langgraph";
 import { z } from "zod";
 import { truncate } from "./catalog";
-import { catalogTools } from "./catalogTools";
+import { catalogTools, standInTool } from "./catalogTools";
 import {
   catalogedServers,
   createToolServerIndex,
@@ -19,6 +19,7 @@ import {
   type DisclosureOptions,
   type DisclosureServer,
   type ResolveMcpTool,
+  type SavedToolDefinition,
 } from "./types";
 
 export const LOAD_TOOLS_TOOL = "load_tools";
@@ -31,16 +32,51 @@ function appendNew(current: string[], next: string[]): string[] {
   return [...new Set([...current, ...next])];
 }
 
-/** Persisted per thread by the checkpointer. A reducer, so two loads in one step both apply. */
+type SavedDefinitions = Record<string, SavedToolDefinition>;
+
+/** The first definition saved for a name wins: what the model is shown never changes. */
+function keepFirst(current: SavedDefinitions, next: SavedDefinitions): SavedDefinitions {
+  return { ...next, ...current };
+}
+
+const savedDefinitionsSchema = z
+  .record(
+    z.string(),
+    z.object({
+      server: z.string(),
+      tool: z.object({
+        name: z.string(),
+        description: z.string().optional(),
+        inputSchema: z.unknown().optional(),
+        annotations: z.unknown().optional(),
+      }),
+    }),
+  )
+  .default(() => ({}));
+
+/** Persisted per thread by the checkpointer. Reducers, so two loads in one step both apply. */
 export const disclosureStateSchema = new StateSchema({
-  /** `server__tool` names available to the model, in the order they were loaded. */
+  /** `server_tool` names available to the model, in the order they were loaded. */
   activeTools: new ReducedValue(
     z.array(z.string()).default(() => []),
     { inputSchema: z.array(z.string()).default(() => []), reducer: appendNew },
   ),
+  /**
+   * Each loaded tool's definition, saved when it was loaded, so the tool stays in the list after
+   * its server is removed or turned off. Threads from before this field hold names only.
+   */
+  toolDefinitions: new ReducedValue(savedDefinitionsSchema, {
+    inputSchema: savedDefinitionsSchema,
+    reducer: keepFirst,
+  }),
 });
 
-type DisclosureState = { activeTools?: string[] };
+type DisclosureState = { activeTools?: string[]; toolDefinitions?: SavedDefinitions };
+
+const saved = (hit: SearchableTool): SavedToolDefinition => ({
+  server: hit.server.name,
+  tool: hit.definition,
+});
 
 export interface DisclosureMiddlewareConfig {
   /** Every enabled server, with its catalog entry (`null` = unavailable for this request). */
@@ -95,7 +131,7 @@ export function planLoadTools(
   servers: DisclosureServer[],
   index: ToolSearchIndex,
   state: DisclosureState,
-): { payload: Record<string, unknown>; add: string[] } {
+): { payload: Record<string, unknown>; add: string[]; definitions: SavedDefinitions } {
   const available = catalogedServers(servers);
   const query = typeof args.query === "string" ? args.query : "";
   const ref = typeof args.server === "string" ? args.server.trim() : "";
@@ -110,9 +146,10 @@ export function planLoadTools(
         availableServers: available.map((s) => s.name).sort(),
       },
       add: [],
+      definitions: {},
     };
   }
-  if (scoped?.authRequired) return { payload: authRequired(scoped), add: [] };
+  if (scoped?.authRequired) return { payload: authRequired(scoped), add: [], definitions: {} };
 
   const exact = exactMatch(query, index, scoped ? [scoped] : available);
   const hits = exact ? [exact] : index.search(query, scoped?.id);
@@ -133,12 +170,15 @@ export function planLoadTools(
         ),
       },
       add: [],
+      definitions: {},
     };
   }
 
   const usable = hits.filter((h) => !h.server.authRequired);
   const blocked = [...new Set(hits.filter((h) => h.server.authRequired).map((h) => h.server))];
-  if (usable.length === 0) return { payload: authRequired(blocked[0]), add: [] };
+  if (usable.length === 0) {
+    return { payload: authRequired(blocked[0]), add: [], definitions: {} };
+  }
 
   const active = new Set(state.activeTools ?? []);
   const top = usable.slice(0, asLimit(args.limit));
@@ -157,6 +197,10 @@ export function planLoadTools(
         : {}),
     },
     add: fresh.map((h) => h.name),
+    // Also back-fills a tool loaded before definitions were saved.
+    definitions: Object.fromEntries(
+      top.filter((h) => !state.toolDefinitions?.[h.name]).map((h) => [h.name, saved(h)]),
+    ),
   };
 }
 
@@ -189,6 +233,20 @@ function buildLoadToolsTool(servers: DisclosureServer[], index: ToolSearchIndex)
 
 type ToolCallLike = { toolCall: { id?: string; name: string } };
 
+/**
+ * What the model is told when a loaded tool's server was removed or turned off. A thread from
+ * before definitions were saved knows only the tool's name, not its server's.
+ */
+const serverUnavailable = (server: string | undefined, tool: string) => ({
+  ok: false,
+  error: "server_unavailable",
+  ...(server ? { server } : { tool }),
+  message:
+    `${server ?? `The server behind ${tool}`} is no longer available: it was removed or ` +
+    `turned off. Ask the user to add it back or turn it on in the Connections page, then try ` +
+    `again.`,
+});
+
 const errorMessage = (request: ToolCallLike, body: object) =>
   new ToolMessage({
     content: json(body),
@@ -204,7 +262,8 @@ const errorMessage = (request: ToolCallLike, body: object) =>
  * No MCP tool is registered with the agent and nothing connects up front: loaded tools are
  * stand-ins built from the cached catalog, and a call runs on the real tool from `resolveTool`,
  * which connects to that one server on demand. Loaded tools are never removed, because changing
- * the tool list costs a prompt-cache miss.
+ * the tool list costs a prompt-cache miss: their definitions are saved in the thread, so they
+ * outlive their server, and a call to one whose server is gone returns `server_unavailable`.
  */
 export function mcpServerDisclosureMiddleware(config: DisclosureMiddlewareConfig) {
   const options: DisclosureOptions = { ...DEFAULT_DISCLOSURE_OPTIONS, ...config.options };
@@ -218,6 +277,14 @@ export function mcpServerDisclosureMiddleware(config: DisclosureMiddlewareConfig
       .map((t): [string, StructuredToolInterface] => [t.name, t]),
   );
   const totalTools = standIns.size;
+  // Keyed by name and definition: a thread that saved an older schema keeps that one.
+  const savedStandIns = new Map<string, StructuredToolInterface>();
+  const standInFor = (name: string, definition: SavedToolDefinition) => {
+    const key = `${name}\u0000${JSON.stringify(definition.tool)}`;
+    let tool = savedStandIns.get(key);
+    if (!tool) savedStandIns.set(key, (tool = standInTool(name, definition.tool)));
+    return tool;
+  };
   const catalogBlock = renderCatalogBlock(servers);
 
   /** Runs an MCP tool call on the real tool, connecting to its server if needed. */
@@ -229,7 +296,8 @@ export function mcpServerDisclosureMiddleware(config: DisclosureMiddlewareConfig
     server: DisclosureServer,
   ): Promise<ToolMessage | Command> => {
     const name = request.toolCall.name.slice(server.name.length + TOOL_NAME_SEPARATOR.length);
-    if (!server.catalog?.tools.some((t) => t.name === name)) {
+    // With no catalog this request, the live server decides whether the tool exists.
+    if (server.catalog && !server.catalog.tools.some((t) => t.name === name)) {
       return errorMessage(request, {
         ok: false,
         error: "unknown_tool",
@@ -261,17 +329,24 @@ export function mcpServerDisclosureMiddleware(config: DisclosureMiddlewareConfig
     tools: catalogBlock ? [buildLoadToolsTool(servers, index)] : [],
 
     wrapModelCall: (request, handler) => {
-      // A tool whose server was disabled or removed since loading is simply left out.
-      const loaded = (request.state.activeTools ?? []).flatMap((name) => standIns.get(name) ?? []);
+      // From the thread's saved definition, so removing a server doesn't shrink the list. A
+      // thread from before definitions were saved falls back to the catalog.
+      const definitions = request.state.toolDefinitions ?? {};
+      const loaded = (request.state.activeTools ?? []).flatMap((name) => {
+        const definition = definitions[name];
+        return definition ? [standInFor(name, definition)] : (standIns.get(name) ?? []);
+      });
       log(
         `[mcp-disclosure] loaded=${loaded.length}/${totalTools} ` +
           `tools=${request.tools.length + loaded.length}`,
       );
-      if (!catalogBlock) return handler(request);
+      if (!catalogBlock && loaded.length === 0) return handler(request);
       return handler({
         ...request,
         tools: [...request.tools, ...loaded],
-        systemMessage: request.systemMessage.concat(`\n\n${catalogBlock}`),
+        ...(catalogBlock
+          ? { systemMessage: request.systemMessage.concat(`\n\n${catalogBlock}`) }
+          : {}),
       });
     },
 
@@ -279,13 +354,29 @@ export function mcpServerDisclosureMiddleware(config: DisclosureMiddlewareConfig
       const name = request.toolCall.name;
       if (name === LOAD_TOOLS_TOOL) {
         const result = await handler(request);
-        const { add } = planLoadTools(request.toolCall.args, servers, index, request.state);
-        if (add.length === 0 || isCommand(result)) return result;
-        return new Command({ update: { activeTools: add, messages: [result] } });
+        const { add, definitions } = planLoadTools(
+          request.toolCall.args,
+          servers,
+          index,
+          request.state,
+        );
+        if ((add.length === 0 && Object.keys(definitions).length === 0) || isCommand(result)) {
+          return result;
+        }
+        return new Command({
+          update: { activeTools: add, toolDefinitions: definitions, messages: [result] },
+        });
       }
 
       const server = serverOf(name);
-      if (!server) return handler(request);
+      if (!server) {
+        // A loaded tool whose server is gone: say so, rather than fall through to "unknown tool".
+        const definition = request.state.toolDefinitions?.[name];
+        if (definition || (request.state.activeTools ?? []).includes(name)) {
+          return errorMessage(request, serverUnavailable(definition?.server, name));
+        }
+        return handler(request);
+      }
 
       const loaded = (request.state.activeTools ?? []).includes(name);
       if (!loaded && !options.autoLoadOnCall) {
@@ -299,7 +390,14 @@ export function mcpServerDisclosureMiddleware(config: DisclosureMiddlewareConfig
       const result = await runMcpTool(request, handler, server);
       if (loaded || isCommand(result) || result.status === "error") return result;
       log(`[mcp-disclosure] auto-loaded ${name} on call`);
-      return new Command({ update: { activeTools: [name], messages: [result] } });
+      const hit = index.tool(name);
+      return new Command({
+        update: {
+          activeTools: [name],
+          toolDefinitions: hit ? { [name]: saved(hit) } : {},
+          messages: [result],
+        },
+      });
     },
   });
 }

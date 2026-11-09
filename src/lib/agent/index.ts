@@ -16,6 +16,7 @@ import { skillTools } from "./tools/skills";
 import { listSkills } from "@/lib/skills/registry";
 import { createAgent, humanInTheLoopMiddleware } from "langchain";
 import { mcpServerDisclosureMiddleware } from "@agentailor/mcp-disclosure";
+import { invalidToolCallMiddleware } from "./invalidToolCalls";
 import { loadDisclosureServers } from "@/lib/mcp/catalog";
 import { createToolResolver } from "@/lib/mcp/pool";
 // Lives in ./capabilities so the page can read it without importing this file's deps.
@@ -96,7 +97,8 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   // Shows the model a list of capabilities and a tool once a search has loaded it, and runs a call
   // on a pooled connection. load_tools is not gated: it only changes visibility.
   const disclosure = mcpServerDisclosureMiddleware(mcp);
-  const middleware = [disclosure, ...approval];
+  // Inside disclosure, so the retry sees the full tool list, loaded MCP tools included.
+  const middleware = [disclosure, invalidToolCallMiddleware(), ...approval];
 
   const agent = createAgent({
     model: llm,
