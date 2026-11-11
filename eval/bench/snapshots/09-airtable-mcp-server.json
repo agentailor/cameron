@@ -1,0 +1,568 @@
+{
+  "name": "airtable-mcp-server",
+  "summary": "It works with Airtable bases, tables, records, fields, comments and attachments to list, search, create, update and delete them.",
+  "tools": [
+    {
+      "name": "create_comment",
+      "description": "Create a comment on a record",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId",
+          "tableId",
+          "recordId",
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The comment text"
+          },
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "tableId": {
+            "type": "string",
+            "description": "The ID or name of the table"
+          },
+          "recordId": {
+            "type": "string",
+            "description": "The ID of the record"
+          },
+          "parentCommentId": {
+            "type": "string",
+            "description": "Optional parent comment ID for threaded replies"
+          }
+        }
+      }
+    },
+    {
+      "name": "create_field",
+      "description": "Create a new field in a table",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId",
+          "tableId",
+          "nested"
+        ],
+        "properties": {
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "nested": {
+            "type": "object",
+            "required": [
+              "field"
+            ],
+            "properties": {
+              "field": {
+                "type": "object",
+                "description": "Field definition",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            }
+          },
+          "tableId": {
+            "type": "string",
+            "description": "The ID or name of the table"
+          }
+        }
+      }
+    },
+    {
+      "name": "create_record",
+      "description": "Create a new record in a table",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId",
+          "tableId",
+          "fields"
+        ],
+        "properties": {
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "fields": {
+            "type": "object",
+            "description": "The fields for the new record",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "tableId": {
+            "type": "string",
+            "description": "The ID or name of the table"
+          }
+        }
+      }
+    },
+    {
+      "name": "create_table",
+      "description": "Create a new table in a base",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId",
+          "name",
+          "fields"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the table"
+          },
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "description": "Array of field definitions"
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description for the table"
+          }
+        }
+      }
+    },
+    {
+      "name": "delete_records",
+      "description": "Delete records from a table",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId",
+          "tableId",
+          "recordIds"
+        ],
+        "properties": {
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "tableId": {
+            "type": "string",
+            "description": "The ID or name of the table"
+          },
+          "recordIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array of record IDs to delete"
+          }
+        }
+      }
+    },
+    {
+      "name": "describe_table",
+      "description": "Get detailed information about a specific table",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId",
+          "tableId"
+        ],
+        "properties": {
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "tableId": {
+            "type": "string",
+            "description": "The ID or name of the table"
+          },
+          "detailLevel": {
+            "enum": [
+              "tableIdentifiersOnly",
+              "identifiersOnly",
+              "full"
+            ],
+            "type": "string",
+            "default": "full",
+            "description": "Detail level for table information:\n- tableIdentifiersOnly: table IDs and names\n- identifiersOnly: table, field, and view IDs and names\n- full: complete details including field types, descriptions, and configurations\n\nNote for LLMs: To optimize context window usage, request the minimum detail level needed:\n- Use 'tableIdentifiersOnly' when you only need to list or reference tables\n- Use 'identifiersOnly' when you need to work with field or view references\n- Only use 'full' when you need field types, descriptions, or other detailed configuration\n\nIf you only need detailed information on a few tables in a base with many complex tables, it might be more efficient for you to use list_tables with tableIdentifiersOnly, then describe_table with full on the specific tables you want."
+          }
+        }
+      }
+    },
+    {
+      "name": "get_record",
+      "description": "Get a specific record by ID",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId",
+          "tableId",
+          "recordId"
+        ],
+        "properties": {
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "tableId": {
+            "type": "string",
+            "description": "The ID or name of the table"
+          },
+          "recordId": {
+            "type": "string",
+            "description": "The ID of the record"
+          }
+        }
+      }
+    },
+    {
+      "name": "list_bases",
+      "description": "List all accessible Airtable bases",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list_comments",
+      "description": "List comments on a record",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId",
+          "tableId",
+          "recordId"
+        ],
+        "properties": {
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "offset": {
+            "type": "string",
+            "description": "Offset for pagination"
+          },
+          "tableId": {
+            "type": "string",
+            "description": "The ID or name of the table"
+          },
+          "pageSize": {
+            "type": "number",
+            "description": "Number of comments to return (max 100, default 100)"
+          },
+          "recordId": {
+            "type": "string",
+            "description": "The ID of the record"
+          }
+        }
+      }
+    },
+    {
+      "name": "list_records",
+      "description": "List records from a table",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId",
+          "tableId"
+        ],
+        "properties": {
+          "sort": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "field"
+              ],
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "direction": {
+                  "enum": [
+                    "asc",
+                    "desc"
+                  ],
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A list of sort objects that specifies how the records will be ordered"
+          },
+          "view": {
+            "type": "string",
+            "description": "The name or ID of a view in the table"
+          },
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "An array of field names or IDs to include in the response. Omit this to return all fields, which is usually what you want. Only set it if the table has many fields and you don't need most of them, AND you already know the exact field names or IDs (e.g. from describe_table) - guessing them will silently return the wrong data."
+          },
+          "tableId": {
+            "type": "string",
+            "description": "The ID or name of the table"
+          },
+          "maxRecords": {
+            "type": "number",
+            "description": "The maximum total number of records that will be returned"
+          },
+          "filterByFormula": {
+            "type": "string",
+            "description": "A formula used to filter records"
+          }
+        }
+      }
+    },
+    {
+      "name": "list_tables",
+      "description": "List all tables in a specific base",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId"
+        ],
+        "properties": {
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "detailLevel": {
+            "enum": [
+              "tableIdentifiersOnly",
+              "identifiersOnly",
+              "full"
+            ],
+            "type": "string",
+            "default": "full",
+            "description": "Detail level for table information:\n- tableIdentifiersOnly: table IDs and names\n- identifiersOnly: table, field, and view IDs and names\n- full: complete details including field types, descriptions, and configurations\n\nNote for LLMs: To optimize context window usage, request the minimum detail level needed:\n- Use 'tableIdentifiersOnly' when you only need to list or reference tables\n- Use 'identifiersOnly' when you need to work with field or view references\n- Only use 'full' when you need field types, descriptions, or other detailed configuration\n\nIf you only need detailed information on a few tables in a base with many complex tables, it might be more efficient for you to use list_tables with tableIdentifiersOnly, then describe_table with full on the specific tables you want."
+          }
+        }
+      }
+    },
+    {
+      "name": "search_records",
+      "description": "Search for records containing specific text",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId",
+          "tableId",
+          "searchTerm"
+        ],
+        "properties": {
+          "view": {
+            "type": "string",
+            "description": "The name or ID of a view in the table"
+          },
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "tableId": {
+            "type": "string",
+            "description": "The ID or name of the table"
+          },
+          "fieldIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional array of field IDs to search in"
+          },
+          "maxRecords": {
+            "type": "number",
+            "description": "The maximum total number of records that will be returned"
+          },
+          "searchTerm": {
+            "type": "string",
+            "description": "The text to search for"
+          }
+        }
+      }
+    },
+    {
+      "name": "update_field",
+      "description": "Update a field's name or description",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId",
+          "tableId",
+          "fieldId"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "New name for the field"
+          },
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "fieldId": {
+            "type": "string",
+            "description": "The ID of the field"
+          },
+          "tableId": {
+            "type": "string",
+            "description": "The ID or name of the table"
+          },
+          "description": {
+            "type": "string",
+            "description": "New description for the field"
+          }
+        }
+      }
+    },
+    {
+      "name": "update_records",
+      "description": "Update up to 10 records in a table",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId",
+          "tableId",
+          "records"
+        ],
+        "properties": {
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "fields"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "fields": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            },
+            "description": "Array of records to update (max 10)"
+          },
+          "tableId": {
+            "type": "string",
+            "description": "The ID or name of the table"
+          }
+        }
+      }
+    },
+    {
+      "name": "update_table",
+      "description": "Update a table's name or description",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId",
+          "tableId"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "New name for the table"
+          },
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "tableId": {
+            "type": "string",
+            "description": "The ID or name of the table"
+          },
+          "description": {
+            "type": "string",
+            "description": "New description for the table"
+          }
+        }
+      }
+    },
+    {
+      "name": "upload_attachment",
+      "description": "Upload a file directly to an attachment field on an existing record using Airtable's upload API. Supports files up to 5 MB. For larger files, use create_record or update_records with a public URL. The record must already exist.",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "baseId",
+          "recordId",
+          "attachmentFieldIdOrName",
+          "file",
+          "filename",
+          "contentType"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "Raw base64-encoded file content (no data URL prefix)"
+          },
+          "baseId": {
+            "type": "string",
+            "description": "The ID of the base"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Filename for the attachment (e.g. \"image.jpg\")"
+          },
+          "recordId": {
+            "type": "string",
+            "description": "The ID of the existing record (e.g. recXXXXXXXXXXXXXX)"
+          },
+          "contentType": {
+            "type": "string",
+            "description": "MIME type of the file (e.g. \"image/jpeg\", \"image/png\", \"application/pdf\")"
+          },
+          "attachmentFieldIdOrName": {
+            "type": "string",
+            "description": "The ID or name of the attachment field (e.g. fldXXXXXXXXXXXXXX or \"Images\")"
+          }
+        }
+      }
+    }
+  ]
+}

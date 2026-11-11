@@ -1,0 +1,1272 @@
+{
+  "name": "google-workspace",
+  "summary": "Manages accounts, emails, calendars, contacts, docs, sheets, Drive, Meet, tasks and files.",
+  "tools": [
+    {
+      "name": "bulk_operations",
+      "description": "Do many things in one call, two ways. mode:'queue' (default) runs different operations in sequence, chaining results with $N.field — works for every tool. mode:'batch' does ONE operation across many resources in a single Google request — far fewer round trips, but only where Google publishes a batch method.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "enum": [
+              "queue",
+              "batch"
+            ],
+            "type": "string",
+            "description": "queue (default): N operations, N API calls, in order, with $N.field references between them. batch: ONE operation across many resources in a single API call — no $N references, because there is no 'between'."
+          },
+          "tool": {
+            "type": "string",
+            "description": "batch only — the tool to call, e.g. 'manage_contacts'."
+          },
+          "email": {
+            "type": "string",
+            "description": "batch only — the account to act as."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "object"
+              ]
+            },
+            "description": "batch only — one entry per resource. A bare id string is enough when that is all that differs, e.g. ['people/c1', 'people/c2']; use objects when items carry more, e.g. [{name: 'Ada Lovelace', contactEmail: 'ada@example.com'}]. Anything shared by the WHOLE batch — labels to add, a field mask — goes at the top level of this call, not in here."
+          },
+          "detail": {
+            "enum": [
+              "summary",
+              "full"
+            ],
+            "type": "string",
+            "description": "summary: one-line status per operation (default) | full: include complete output from each operation"
+          },
+          "operation": {
+            "type": "string",
+            "description": "batch only — the operation to apply to every item, e.g. 'delete'. Ask for one that cannot batch and the error names the ones that can."
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "tool",
+                "args"
+              ],
+              "properties": {
+                "args": {
+                  "type": "object",
+                  "description": "Arguments for the tool. Use $N.field to reference results from earlier operations."
+                },
+                "tool": {
+                  "enum": [
+                    "manage_accounts",
+                    "manage_workspace",
+                    "manage_scratchpad",
+                    "bulk_operations",
+                    "queue_operations",
+                    "manage_calendar",
+                    "manage_contacts",
+                    "manage_docs",
+                    "manage_drive",
+                    "manage_email",
+                    "manage_meet",
+                    "manage_sheets",
+                    "manage_tasks"
+                  ],
+                  "type": "string",
+                  "description": "Tool to call"
+                },
+                "onError": {
+                  "enum": [
+                    "bail",
+                    "continue"
+                  ],
+                  "type": "string",
+                  "description": "bail: stop on error (default) | continue: skip and proceed"
+                }
+              }
+            },
+            "maxItems": 10,
+            "description": "Operations to execute sequentially"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "manage_accounts",
+      "description": "Manage Google Workspace account lifecycle: list, authenticate, check status, refresh credentials, update scopes, or remove accounts.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "operation"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Required for remove, status, refresh, scopes"
+          },
+          "access": {
+            "enum": [
+              "read",
+              "readwrite"
+            ],
+            "type": "string",
+            "description": "How much this account may do. 'readwrite' (default) is full access. 'read' asks Google for read-only permissions instead, so the account can look things up but cannot send, edit or delete. Some services have no read-only option — you will be told which before the browser opens, and nothing is authorized until you confirm."
+          },
+          "category": {
+            "enum": [
+              "personal",
+              "work",
+              "other"
+            ],
+            "type": "string",
+            "description": "For authenticate (default: personal)"
+          },
+          "services": {
+            "type": "string",
+            "description": "For scopes — comma-separated service names (e.g. gmail,drive,calendar,sheets)"
+          },
+          "operation": {
+            "enum": [
+              "list",
+              "authenticate",
+              "remove",
+              "status",
+              "refresh",
+              "scopes",
+              "capabilities"
+            ],
+            "type": "string",
+            "description": "list: show all accounts | authenticate: add new account (opens browser) | remove: delete account and credentials | status: check token validity and scopes | refresh: renew credentials | scopes: re-auth with different services | capabilities: show available services, safety policies, and workspace status"
+          },
+          "description": {
+            "type": "string",
+            "description": "For authenticate — optional label"
+          },
+          "confirmWriteAccess": {
+            "type": "boolean",
+            "description": "Set true to go ahead when 'read' was asked for but some services can only be granted full access. Only needed after a first call has told you which ones."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "manage_calendar",
+      "description": "List events, view agenda, check availability, or manage calendar events.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "operation",
+          "email"
+        ],
+        "properties": {
+          "end": {
+            "type": "string",
+            "description": "End time (ISO 8601) — or, when allDay is true, a DATE (YYYY-MM-DD) that is the INCLUSIVE last day; the exclusive end date the Calendar API requires is computed for you. Optional for all-day events: a missing end (or one equal to start) makes a one-day event."
+          },
+          "days": {
+            "type": "number",
+            "description": "Number of days ahead to show (default: today only)"
+          },
+          "meet": {
+            "type": "boolean",
+            "description": "Add a Google Meet video conference link. On `update`, true adds a link and false REMOVES an existing one; omit it to leave the link as it is."
+          },
+          "text": {
+            "type": "string",
+            "description": "Natural language event description"
+          },
+          "week": {
+            "type": "boolean",
+            "description": "Show this week's events"
+          },
+          "email": {
+            "type": "string",
+            "description": "Account email address"
+          },
+          "query": {
+            "type": "string",
+            "description": "Free-text search terms to filter events"
+          },
+          "start": {
+            "type": "string",
+            "description": "Start time (ISO 8601) — or a DATE (YYYY-MM-DD) when allDay is true"
+          },
+          "allDay": {
+            "type": "boolean",
+            "description": "Whether the event is all-day. When true, start and end are DATES (YYYY-MM-DD — an ISO datetime's date part is used) and end, if given, is the INCLUSIVE last day; the exclusive end date the Calendar API requires is computed for you. Omit it (or pass false) for a timed event with start/end as dateTime — pass false with new datetimes to convert an all-day event back to a timed one. On `update`, converting TO all-day needs only one of start/end; the other is derived from the event on record. Converting FROM all-day needs both, because the missing one would need a time of day only you can choose."
+          },
+          "eventId": {
+            "type": "string",
+            "description": "Event ID"
+          },
+          "summary": {
+            "type": "string",
+            "description": "Event title"
+          },
+          "timeMax": {
+            "type": "string",
+            "description": "End of range (ISO 8601)"
+          },
+          "timeMin": {
+            "type": "string",
+            "description": "Start of range (ISO 8601). On `list`, defaults to today."
+          },
+          "location": {
+            "type": "string",
+            "description": "Event location"
+          },
+          "tomorrow": {
+            "type": "boolean",
+            "description": "Show tomorrow's events instead of today"
+          },
+          "attendees": {
+            "type": "string",
+            "description": "Comma-separated email addresses. On `update`, whatever you pass REPLACES the existing list — addresses you leave out are removed, and an empty string clears everyone. OMIT the parameter to leave the attendee list untouched while changing other fields. On `freebusy`, the addresses whose availability to check."
+          },
+          "operation": {
+            "enum": [
+              "list",
+              "agenda",
+              "get",
+              "create",
+              "quickAdd",
+              "update",
+              "delete",
+              "calendars",
+              "freebusy"
+            ],
+            "type": "string",
+            "description": "list: upcoming events — defaults to primary calendar, use calendarId to target a specific calendar (use 'calendars' operation to discover IDs) | agenda: today's schedule at a glance (all calendars). Returns calendarId per event for follow-up get calls. | get: full event details by ID. For shared calendar events, calendarId is required (use agenda or list to discover it). | create: create a new calendar event | quickAdd: create event from natural language (e.g. 'Lunch with Alice tomorrow at noon') | update: update an existing event (patch semantics — only changed fields needed) | delete: delete an event | calendars: list all calendars the user has access to | freebusy: check availability (free/busy) for a time range. Automatically includes own calendar; add attendees to check others."
+          },
+          "calendarId": {
+            "type": "string",
+            "description": "Calendar ID. Use the `calendars` operation to list available IDs; required for events on shared calendars. Defaults to 'primary' on the event operations (`list`, `get`, `create`, `quickAdd`, `update`, `delete`). On `agenda`, a calendar name or ID to filter to — OMIT it to span all calendars, and do not pass 'primary', which is an API alias rather than an id agenda matches on. On `freebusy`, a comma-separated list of calendar IDs to check IN ADDITION to your own."
+          },
+          "maxResults": {
+            "type": "number",
+            "description": "Max events (default: 10, max: 50)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Event description or notes"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "manage_contacts",
+      "description": "Search, read, create, update and delete Google Contacts: your saved contacts, the addresses you have corresponded with but never saved, and your organization's directory.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "operation",
+          "email"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Full name, e.g. `Ada Lovelace`. Split into given and family name on the way in; a single word becomes the given name."
+          },
+          "email": {
+            "type": "string",
+            "description": "Account email address"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Free-text note stored on the contact"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Phone number, in whatever form you have it — Google normalizes it. On `update` this REPLACES every number the contact has — pass an empty string to clear them."
+          },
+          "query": {
+            "type": "string",
+            "description": "Text to match against names, email addresses, nicknames and phone numbers. Matching is by PREFIX: `ann` finds Anna, `nna` finds nobody."
+          },
+          "company": {
+            "type": "string",
+            "description": "Organization name"
+          },
+          "jobTitle": {
+            "type": "string",
+            "description": "Job title within the organization"
+          },
+          "contactId": {
+            "type": "string",
+            "description": "Person id as `list` or `search` printed it (e.g. `people/c1234567890`). A bare id without the `people/` prefix is accepted."
+          },
+          "operation": {
+            "enum": [
+              "list",
+              "search",
+              "get",
+              "create",
+              "update",
+              "delete",
+              "listOther",
+              "searchOther",
+              "listDirectory",
+              "searchDirectory"
+            ],
+            "type": "string",
+            "description": "list: list your saved contacts | search: search your saved contacts by name, email, nickname or phone | get: get one person in full — addresses, birthday, notes, relations | create: create a new contact | update: change an existing contact (only the fields you pass; pass an empty string to clear one) | delete: delete a contact | listOther: list 'other contacts' — addresses you have corresponded with but never saved | searchOther: search 'other contacts' by name or email | listDirectory: list people in your organization's directory (Workspace accounts only) | searchDirectory: search your organization's directory by name or email (Workspace accounts only)"
+          },
+          "pageToken": {
+            "type": "string",
+            "description": "Continue from where a previous page stopped — pass the token that response printed"
+          },
+          "sortOrder": {
+            "enum": [
+              "firstName",
+              "lastName",
+              "lastModified"
+            ],
+            "type": "string",
+            "description": "Order for `list` — by first name, by last name, or most recently changed first"
+          },
+          "maxResults": {
+            "type": "number",
+            "description": "Max people to return (default 25). Capped per operation: 30 for `search` and `searchOther`, 100 for everything else."
+          },
+          "contactEmail": {
+            "type": "string",
+            "description": "The contact's email address. (`email` is the account making the call, not the person being saved.) On `update` this REPLACES every address the contact has — pass an empty string to clear them."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "manage_docs",
+      "description": "Read, write, insert, and find-replace text in Google Docs documents.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "operation",
+          "email"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Text to write (plain text) — appended to the end by write, inserted at `index` by insertText"
+          },
+          "email": {
+            "type": "string",
+            "description": "Account email address"
+          },
+          "index": {
+            "type": "number",
+            "description": "Character index to insert at (1 = start of the tab's body)"
+          },
+          "tabId": {
+            "type": "string",
+            "description": "Tab to act on — a tabId from a previous get's tabIndex. Scopes the read on get; targets the edit on write/insertText/replaceText, which act on the FIRST tab when it is omitted (replaceText spans every tab). Character indices are per-tab."
+          },
+          "title": {
+            "type": "string",
+            "description": "Document title (default: 'Untitled document')"
+          },
+          "findText": {
+            "type": "string",
+            "description": "Text to find"
+          },
+          "matchCase": {
+            "type": "boolean",
+            "description": "Case-sensitive match (default: true)"
+          },
+          "operation": {
+            "enum": [
+              "get",
+              "create",
+              "write",
+              "insertText",
+              "replaceText"
+            ],
+            "type": "string",
+            "description": "get: get document content and metadata | create: create a new document | write: append text to the end of a document | insertText: insert text at a specific position in a document | replaceText: find and replace text in a document"
+          },
+          "documentId": {
+            "type": "string",
+            "description": "Document ID"
+          },
+          "replaceWith": {
+            "type": "string",
+            "description": "Replacement text"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "manage_drive",
+      "description": "Search, upload, download, share, comment on, or manage files in Google Drive.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "operation",
+          "email"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "File name in Drive. On `upload`, defaults to the local file's name. On `copy`, the name for the copy — without it Drive names it 'Copy of <original>'. On `update`, the new name (a rename). On `createFolder`, the folder name."
+          },
+          "role": {
+            "enum": [
+              "reader",
+              "commenter",
+              "writer",
+              "organizer"
+            ],
+            "type": "string",
+            "description": "Permission level. On `share`, the level to grant — defaults to `reader`. On `setRole`, the new level, and it is REQUIRED there: with no default to fall back on, an omitted role would silently demote the collaborator, and setRole sends no notification."
+          },
+          "type": {
+            "enum": [
+              "user",
+              "group",
+              "domain",
+              "anyone"
+            ],
+            "type": "string",
+            "description": "Permission type (default: 'user'). Use 'group' for Google Groups, 'domain' to share with an entire G Suite domain, 'anyone' for public links."
+          },
+          "email": {
+            "type": "string",
+            "description": "Account email address"
+          },
+          "query": {
+            "type": "string",
+            "description": "Drive search query (e.g. \"name contains 'budget'\" or \"mimeType='application/pdf'\")"
+          },
+          "domain": {
+            "type": "string",
+            "description": "Domain name (required when type is 'domain')."
+          },
+          "fileId": {
+            "type": "string",
+            "description": "File ID"
+          },
+          "content": {
+            "type": "string",
+            "description": "Comment text. On `replyToComment`, the reply text."
+          },
+          "filePath": {
+            "type": "string",
+            "description": "Local file path to upload"
+          },
+          "folderId": {
+            "type": "string",
+            "description": "Folder ID (pass the id returned by createFolder or search)"
+          },
+          "maxDepth": {
+            "type": "number",
+            "description": "How many folder levels to descend (default 10). The tree is labelled partial when this limit stops the walk."
+          },
+          "mimeType": {
+            "type": "string",
+            "description": "Target format (e.g. application/pdf, text/csv, text/plain, application/vnd.openxmlformats-officedocument.wordprocessingml.document)"
+          },
+          "resolved": {
+            "type": "boolean",
+            "description": "true to resolve, false to reopen"
+          },
+          "commentId": {
+            "type": "string",
+            "description": "Comment ID"
+          },
+          "operation": {
+            "enum": [
+              "search",
+              "get",
+              "upload",
+              "viewImage",
+              "download",
+              "copy",
+              "update",
+              "delete",
+              "trash",
+              "export",
+              "createFolder",
+              "listFolder",
+              "tree",
+              "listPermissions",
+              "share",
+              "unshare",
+              "setRole",
+              "listComments",
+              "getComment",
+              "addComment",
+              "resolveComment",
+              "replyToComment"
+            ],
+            "type": "string",
+            "description": "search: find files by query | get: get file metadata | upload: upload a local file to Drive | viewImage: view an image file inline without saving to workspace (png, jpg, gif, webp). Use for quick preview — use download to save. | download: download file content to local path | copy: create a copy of a file (set name to rename the copy; parentFolderId to place it in a folder) | update: rename a file (set name) and/or move it between folders (addParents / removeParents — to move, set both) | delete: permanently delete a file (cannot be undone) | trash: move a file or folder to trash (recoverable for 30 days — use instead of delete when you only need to remove it) | export: export a Google Workspace document (Docs, Sheets, Slides) to a file format | createFolder: create a new folder (optionally nested under a parent folder) | listFolder: list the files and subfolders directly inside a folder | tree: print a recursive folder tree and count the files (subfolders excluded from the count) | listPermissions: list sharing permissions on a file | share: share a file with a user, group, domain, or anyone | unshare: remove sharing permission from a file | setRole: change an existing collaborator's role (no notification email is sent) | listComments: list comments on a file | getComment: get a specific comment by ID | addComment: add a comment to a file (optionally anchored to quoted text) | resolveComment: resolve or reopen a comment | replyToComment: reply to an existing comment"
+          },
+          "addParents": {
+            "type": "string",
+            "description": "Comma-separated folder ID(s) to add as parents (move into a folder)"
+          },
+          "maxResults": {
+            "type": "number",
+            "description": "Max results (default: 10, max: 50)"
+          },
+          "outputPath": {
+            "type": "string",
+            "description": "Local path to save the file"
+          },
+          "quotedText": {
+            "type": "string",
+            "description": "Text to anchor the comment to (optional — if provided, comment is anchored to first occurrence)"
+          },
+          "shareEmail": {
+            "type": "string",
+            "description": "Email address of the collaborator. On `share`, required when type is 'user' or 'group'; omit for 'domain' (use the `domain` param) or 'anyone'. On `setRole`, the existing collaborator whose role to change."
+          },
+          "permissionId": {
+            "type": "string",
+            "description": "Permission ID to remove (from listPermissions)"
+          },
+          "removeParents": {
+            "type": "string",
+            "description": "Comma-separated folder ID(s) to remove as parents (move out of a folder)"
+          },
+          "includeDeleted": {
+            "type": "boolean",
+            "description": "Include deleted comments (default: false)"
+          },
+          "parentFolderId": {
+            "type": "string",
+            "description": "Destination folder ID. On `upload`, places the file in this folder. On `copy`, defaults to the source file's folder. On `createFolder`, nests the new folder under this parent."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "manage_email",
+      "description": "Search, read, send, forward, or manage emails in a Google Workspace account. Supports Gmail search syntax.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "operation",
+          "email"
+        ],
+        "properties": {
+          "cc": {
+            "type": "string",
+            "description": "CC email(s), comma-separated. On `replyAll` these are ADDITIONAL — they do not replace the recipients already on the thread."
+          },
+          "to": {
+            "type": "string",
+            "description": "Recipient email(s), comma-separated"
+          },
+          "bcc": {
+            "type": "string",
+            "description": "BCC email(s), comma-separated"
+          },
+          "body": {
+            "type": "string",
+            "description": "Email body text. On `forward`, an optional note prepended ABOVE the forwarded message."
+          },
+          "from": {
+            "type": "string",
+            "description": "Sender email or RFC 2822 mailbox for a verified Gmail Send As alias"
+          },
+          "html": {
+            "type": "boolean",
+            "description": "Treat body as HTML content (default: plain text)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Label name, e.g. 'REC/Receipt'. Nested labels use a slash; create the parent first if Gmail shows nesting."
+          },
+          "draft": {
+            "type": "boolean",
+            "description": "Save as draft instead of sending (default: false, forced true when attachments present)"
+          },
+          "email": {
+            "type": "string",
+            "description": "Account email address"
+          },
+          "query": {
+            "type": "string",
+            "description": "Gmail search query (e.g. \"from:alice subject:meeting has:attachment\")"
+          },
+          "draftId": {
+            "type": "string",
+            "description": "Draft id as returned by listDrafts (an r… id, not the message id)"
+          },
+          "idsOnly": {
+            "type": "boolean",
+            "description": "On `search`: return only message ids, up to 500 per page, without fetching each message's headers. For counting a large result or collecting ids to pass to bulk_operations batch mode (e.g. modify)."
+          },
+          "matchTo": {
+            "type": "string",
+            "description": "Filter criterion: recipient, e.g. a list or alias address"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Email subject line"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Attachment filename, exactly as it appears in the `read` response (e.g. 'invoice_template.md')"
+          },
+          "filterId": {
+            "type": "string",
+            "description": "Filter id, as listed by `filters`. On previewFilter, the filter a change would replace; leave it out to preview a new filter."
+          },
+          "threadId": {
+            "type": "string",
+            "description": "Thread ID to retrieve"
+          },
+          "forwardTo": {
+            "type": "string",
+            "description": "Filter action: forward each match to this address. It must already be a verified forwarding address in Gmail settings."
+          },
+          "matchFrom": {
+            "type": "string",
+            "description": "Filter criterion: sender, e.g. billing@vendor.com or @vendor.com"
+          },
+          "matchSize": {
+            "type": "number",
+            "description": "Filter criterion: size in bytes; requires matchSizeComparison"
+          },
+          "messageId": {
+            "type": "string",
+            "description": "Email message ID"
+          },
+          "operation": {
+            "enum": [
+              "search",
+              "read",
+              "archive",
+              "send",
+              "reply",
+              "replyAll",
+              "forward",
+              "triage",
+              "trash",
+              "untrash",
+              "listDrafts",
+              "deleteDraft",
+              "getAttachment",
+              "viewAttachment",
+              "modify",
+              "previewModifyMatching",
+              "modifyMatching",
+              "labels",
+              "createLabel",
+              "filters",
+              "getFilter",
+              "previewFilter",
+              "createFilter",
+              "updateFilter",
+              "deleteFilter",
+              "threads",
+              "getThread"
+            ],
+            "type": "string",
+            "description": "search: find emails by query. Says when more results exist than the page shows; continue with pageToken, or pass idsOnly to collect up to 500 ids per page for bulk_operations. | read: get full email by ID. Pass bodyFormat: 'html' when the plain-text part is a stub (marketing email, invitations, booking confirmations) and the dates/codes you need only exist in the HTML — returned HTML is sanitized and wrapped in a Spotlighting block (ADR-305). | archive: save an email's headers and body to a markdown file in the workspace — a LOCAL archive, not Gmail's 'remove from inbox' (attachments are listed, not downloaded) | send: compose and send a new email (creates draft when attachments present, 35MB attachment limit via upload endpoint) | reply: reply to a message (thread-aware, creates draft when attachments present) | replyAll: reply-all to a message (thread-aware, includes all recipients, creates draft when attachments present) | forward: forward a message to new recipients (includes original attachments by default) | triage: unread inbox summary (sender, subject, date) | trash: move a message to trash | untrash: restore a message from trash | listDrafts: list saved drafts (unsent messages) with each draft's DRAFT id (the r… id), recipient, subject and date. Use that draft id with deleteDraft — a message id from search in:drafts will not work for deletion. | deleteDraft: permanently delete a draft (unsent message) by its draft id (the r… id returned by listDrafts). Irreversible — the draft is discarded, not moved to trash. | getAttachment: download an email attachment to workspace directory (use read first to see attachment list) | viewAttachment: view an image attachment inline without saving to workspace (png, jpg, gif, webp). Use for quick preview — use getAttachment to save. | modify: add or remove labels on a message (e.g. archive, mark read/unread) | previewModifyMatching: evaluate a label change over everything a query matches, without making it: the exact count (up to 10,000), a sample, and what the change does to each message. Holds the matched set and returns the previewToken modifyMatching needs. No ids are returned beyond the sample. | modifyMatching: apply a previewed label change (archive, mark read, label, trash) to exactly the messages previewModifyMatching counted, and report how many changed. Requires its previewToken from an earlier call, within 30 minutes; each preview applies once. | labels: list all labels in the mailbox | createLabel: create a label. A slash in the name makes it nested (e.g. 'REC/Receipt' under 'REC'). Fails if the name already exists. Use `labels` first to check, then pass the returned label ID to `modify`. | filters: list the account's filters: id, criteria and what each does. Gmail allows 1,000. | getFilter: one filter's criteria and actions in words, plus the parameters that recreate or edit it | previewFilter: evaluate a filter without creating it: how many messages it matches today and a sample, what each action does, and any duplicate or overlapping filter. Returns the previewToken createFilter needs; with filterId, previews replacing that filter and returns the token updateFilter needs. Criteria are the match* params; actions are addLabelIds, removeLabelIds and forwardTo. A good criterion is the query of a search that already found the mail. | createFilter: create a filter. Requires the previewToken from previewFilter called with the same parameters, in an earlier call, within 30 minutes. Acts on mail arriving from then on. | updateFilter: change a filter's criteria or actions. Gmail has no in-place update, so this creates the replacement and then deletes the original; the filter gets a new id. Requires the previewToken from previewFilter called with filterId and the same parameters. | deleteFilter: delete a filter. Returns what it was and the parameters to recreate it. | threads: list email threads by query | getThread: get all messages in a thread"
+          },
+          "pageToken": {
+            "type": "string",
+            "description": "Continue a list from where the previous page stopped: pass the pageToken its response gave. Absent from a response means that response was the last page."
+          },
+          "bodyFormat": {
+            "enum": [
+              "plain",
+              "html"
+            ],
+            "type": "string",
+            "description": "How to render the message body. 'plain' (default) returns text/plain or a crude HTML-strip fallback. 'html' returns the text/html part sanitized — useful when the plain-text part is empty/stub."
+          },
+          "matchQuery": {
+            "type": "string",
+            "description": "Filter criterion: any Gmail search query the message must match, same syntax as search"
+          },
+          "maxResults": {
+            "type": "number",
+            "description": "Max results per page (default 10, max 50). On `search` with idsOnly, default and max 500."
+          },
+          "outputPath": {
+            "type": "string",
+            "description": "Local path to save the markdown file (workspace-relative; defaults to a slug from the message date and subject)"
+          },
+          "addLabelIds": {
+            "type": "string",
+            "description": "Comma-separated label IDs to add (e.g. STARRED, IMPORTANT, Label_123). On modify, to this message; on the filter operations, to each matching message as it arrives; on the *ModifyMatching operations, to every message the preview counted."
+          },
+          "attachments": {
+            "type": "string",
+            "description": "Workspace filenames to attach, comma-separated (files must exist in workspace via manage_workspace). Creates draft when present."
+          },
+          "matchSubject": {
+            "type": "string",
+            "description": "Filter criterion: words in the subject"
+          },
+          "previewToken": {
+            "type": "string",
+            "description": "The token the preview returned for this exact change: previewFilter for createFilter and updateFilter, previewModifyMatching for modifyMatching. Required: the write runs only after its preview has been seen."
+          },
+          "removeLabelIds": {
+            "type": "string",
+            "description": "Comma-separated label IDs to remove (e.g. UNREAD to mark read, INBOX to archive). On modify, from this message; on the filter operations, from each matching message as it arrives; on the *ModifyMatching operations, from every message the preview counted."
+          },
+          "matchExcludeChats": {
+            "type": "boolean",
+            "description": "Filter criterion: leave chat messages out"
+          },
+          "matchNegatedQuery": {
+            "type": "string",
+            "description": "Filter criterion: a Gmail search query the message must NOT match"
+          },
+          "matchHasAttachment": {
+            "type": "boolean",
+            "description": "Filter criterion: only messages with an attachment"
+          },
+          "labelListVisibility": {
+            "enum": [
+              "labelShow",
+              "labelShowIfUnread",
+              "labelHide"
+            ],
+            "type": "string",
+            "description": "Whether the label appears in the label list: labelShow (default), labelShowIfUnread, or labelHide"
+          },
+          "matchSizeComparison": {
+            "enum": [
+              "larger",
+              "smaller"
+            ],
+            "type": "string",
+            "description": "Filter criterion: whether matches are larger or smaller than matchSize"
+          },
+          "messageListVisibility": {
+            "enum": [
+              "show",
+              "hide"
+            ],
+            "type": "string",
+            "description": "Whether the label appears on messages in the message list: show (default) or hide"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "manage_meet",
+      "description": "Browse past Google Meet conferences, participants, transcripts, recordings, and AI-generated smart notes. Requires Workspace Business Standard+ for transcripts/recordings.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "operation",
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Account email address"
+          },
+          "space": {
+            "type": "string",
+            "description": "Meeting code (the abc-mnop-xyz part of a Meet link) or a full spaces/... resource name"
+          },
+          "filter": {
+            "type": "string",
+            "description": "EBNF filter. On `listConferences`, e.g. 'space.meeting_code = \"abc-mnop-xyz\"' or 'start_time>=\"2026-01-01T00:00:00Z\"'. On `listParticipants`, e.g. 'latest_end_time IS NULL' for active participants."
+          },
+          "operation": {
+            "enum": [
+              "listConferences",
+              "getConference",
+              "listParticipants",
+              "listTranscripts",
+              "getTranscript",
+              "listTranscriptEntries",
+              "listRecordings",
+              "getRecording",
+              "getFullTranscript",
+              "listSmartNotes",
+              "getSmartNote",
+              "createSpace",
+              "activeConferences",
+              "getSpace",
+              "updateSpace",
+              "endActiveConference"
+            ],
+            "type": "string",
+            "description": "listConferences: list recent meeting conferences (default: descending by start time) | getConference: get details of a specific conference | listParticipants: list who attended a conference | listTranscripts: list transcripts for a conference (requires Workspace Business Standard+) | getTranscript: get transcript metadata including Google Docs destination | listTranscriptEntries: get structured transcript text — who said what, with timestamps | listRecordings: list recordings for a conference (saved as MP4 in Drive) | getRecording: get recording metadata including Drive file ID and playback link | getFullTranscript: get the full who-said-what transcript for a conference (chains transcripts + entries + participant names automatically). Use pageToken to continue reading. | listSmartNotes: list Gemini-generated smart notes for a conference | getSmartNote: get smart note metadata including Google Docs destination | createSpace: create a standalone Google Meet link (not attached to a calendar event) | activeConferences: list conferences happening RIGHT NOW across your meetings | getSpace: look up a meeting space by its meeting code or resource name | updateSpace: change who can join a meeting space, or turn host controls on or off | endActiveConference: end the call happening in a space right now, disconnecting everyone in it"
+          },
+          "pageToken": {
+            "type": "string",
+            "description": "Page token from a previous getFullTranscript call to continue reading"
+          },
+          "accessType": {
+            "enum": [
+              "OPEN",
+              "TRUSTED",
+              "RESTRICTED"
+            ],
+            "type": "string",
+            "description": "Who can join without knocking. OPEN: anyone with the link. TRUSTED (default): people in your organization, plus invited guests. RESTRICTED: invited guests only."
+          },
+          "maxResults": {
+            "type": "number",
+            "description": "Max results per page, as default/ceiling. Differs by operation: `listConferences` 25/100, `listParticipants` 100/250, `listTranscriptEntries` 100/100. (Google's own default for transcript entries is 10; this tool raises it.)"
+          },
+          "moderation": {
+            "type": "boolean",
+            "description": "Turn on host controls — the host admits guests and manages who can present or chat."
+          },
+          "conferenceId": {
+            "type": "string",
+            "description": "Conference record ID (from `listConferences`)"
+          },
+          "recordingName": {
+            "type": "string",
+            "description": "Recording resource name (from listRecordings)"
+          },
+          "smartNoteName": {
+            "type": "string",
+            "description": "Smart note resource name (from listSmartNotes)"
+          },
+          "transcriptName": {
+            "type": "string",
+            "description": "Transcript resource name (from `listTranscripts`, e.g. conferenceRecords/.../transcripts/...)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "manage_scratchpad",
+      "description": "Compose, edit, and deliver text content. Use for any multi-line content: emails, documents, descriptions. Compose in the scratchpad, edit by line or JSON path, attach files, then send to any target. For short one-liners, use the service tool directly instead.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "operation"
+        ],
+        "properties": {
+          "keep": {
+            "type": "boolean",
+            "description": "For send: keep scratchpad after successful send (default: true)"
+          },
+          "path": {
+            "type": "string",
+            "description": "For json_* ops: JSON path (e.g., $.config.name, $.items[0].value)"
+          },
+          "email": {
+            "type": "string",
+            "description": "For attach (drive source): account that can read the Drive file"
+          },
+          "label": {
+            "type": "string",
+            "description": "For create: optional human-readable label"
+          },
+          "refId": {
+            "type": "string",
+            "description": "For detach: attachment reference ID (att-1, att-2, etc.)"
+          },
+          "value": {
+            "description": "For json_set, json_insert: value to set or insert (any JSON type)"
+          },
+          "fileId": {
+            "type": "string",
+            "description": "For attach (drive source): Drive file ID. The file is downloaded into the workspace at attach time."
+          },
+          "format": {
+            "enum": [
+              "text",
+              "markdown",
+              "json",
+              "csv"
+            ],
+            "type": "string",
+            "description": "For create: content format (default: text). Controls validation and addressing mode."
+          },
+          "source": {
+            "type": "string",
+            "description": "For attach: file source (workspace or drive). For import: resource type (doc, email, sheet, drive_file)."
+          },
+          "target": {
+            "enum": [
+              "email",
+              "email_draft",
+              "doc_create",
+              "doc_write",
+              "workspace",
+              "sheet_write",
+              "calendar_event",
+              "task_create"
+            ],
+            "type": "string",
+            "description": "For send: delivery target"
+          },
+          "content": {
+            "type": "string",
+            "description": "Text content. For create (pre-fill), insert_lines, append_lines, replace_lines."
+          },
+          "endLine": {
+            "type": "number",
+            "description": "End of line range (inclusive). For replace_lines, remove_lines, copy_lines, view."
+          },
+          "filename": {
+            "type": "string",
+            "description": "For attach (workspace source): filename in workspace"
+          },
+          "afterLine": {
+            "type": "number",
+            "description": "Insert after this line number (0 = prepend). For insert_lines, copy_lines, attach."
+          },
+          "operation": {
+            "enum": [
+              "create",
+              "view",
+              "discard",
+              "list",
+              "insert_lines",
+              "append_lines",
+              "replace_lines",
+              "remove_lines",
+              "copy_lines",
+              "json_get",
+              "json_set",
+              "json_delete",
+              "json_insert",
+              "attach",
+              "detach",
+              "import",
+              "send"
+            ],
+            "type": "string",
+            "description": "create: new buffer | view: show content | discard: free buffer | list: show all | insert_lines/append_lines/replace_lines/remove_lines: line editing | copy_lines: copy from another scratchpad | json_get/json_set/json_delete/json_insert: path-addressed JSON editing | attach/detach: file references | import: load from Google Workspace resource | send: deliver to target"
+          },
+          "startLine": {
+            "type": "number",
+            "description": "Start of line range (1-based). For replace_lines, remove_lines, copy_lines, view."
+          },
+          "scratchpadId": {
+            "type": "string",
+            "description": "Scratchpad ID (sp-XXXX). Required for all operations except create and list."
+          },
+          "sourceParams": {
+            "type": "object",
+            "description": "For import: source-specific parameters (e.g., { documentId, mode } for doc, { messageId } for email)"
+          },
+          "targetParams": {
+            "type": "object",
+            "description": "For send: target-specific parameters (e.g., { email, to, subject } for email, { filename } for workspace)"
+          },
+          "fromScratchpadId": {
+            "type": "string",
+            "description": "For copy_lines: source scratchpad ID"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "manage_sheets",
+      "description": "Read, write, and manage Google Sheets spreadsheets.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "operation",
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Account email address"
+          },
+          "index": {
+            "type": "number",
+            "description": "Position among tabs (0-based). Appended at the end if omitted."
+          },
+          "range": {
+            "type": "string",
+            "description": "A1 notation range (e.g. 'Sheet1!A1:D10', or just 'Sheet1' for a whole tab). On `append`, the target tab — defaults to 'Sheet1'; use 'MyTab' or 'MyTab!A:Z' to append to a specific one."
+          },
+          "title": {
+            "type": "string",
+            "description": "On `create`, the spreadsheet title (defaults to 'Untitled spreadsheet'); on `renameSpreadsheet`, its new title. On `addSheet`, the name of the new TAB; on `renameSheet`, that tab's new title; on `duplicateSheet`, the name for the copy (defaults to 'Copy of <source>')."
+          },
+          "values": {
+            "type": "string",
+            "description": "Comma-separated values for a single row (e.g. 'Alice,100,true')"
+          },
+          "sheetId": {
+            "type": "number",
+            "description": "Sheet ID of the tab, from `manage_sheets get`. On `duplicateSheet` and `copySheetTo`, the SOURCE tab to copy."
+          },
+          "rowCount": {
+            "type": "number",
+            "description": "Initial row count (default 1000)"
+          },
+          "operation": {
+            "enum": [
+              "get",
+              "create",
+              "read",
+              "append",
+              "getValues",
+              "updateValues",
+              "clearValues",
+              "addSheet",
+              "renameSheet",
+              "deleteSheet",
+              "duplicateSheet",
+              "renameSpreadsheet",
+              "copySheetTo"
+            ],
+            "type": "string",
+            "description": "get: get spreadsheet metadata and sheet names | create: create a new spreadsheet (optionally with a title) | read: read cell values from a range; rendered rows are prefixed with their sheet row number (e.g. 'R3: …') since blank rows are otherwise invisible | append: append rows to a spreadsheet (rows land after the last row of existing data in the target range) | getValues: get values from a specific range (raw API); rendered rows are prefixed with their sheet row number (e.g. 'R3: …') | updateValues: write values to a specific range | clearValues: clear cell values from a range (structure preserved) | addSheet: add a new tab (sheet) to the spreadsheet | renameSheet: rename a tab (sheet) within a spreadsheet | deleteSheet: delete a tab (sheet) from the spreadsheet — irreversible | duplicateSheet: duplicate a tab within the same spreadsheet | renameSpreadsheet: rename the spreadsheet (the document title, not a tab) | copySheetTo: copy a tab from this spreadsheet into another spreadsheet"
+          },
+          "jsonValues": {
+            "type": "string",
+            "description": "JSON 2D array of rows (e.g. '[[\"a\",\"b\"],[\"c\",\"d\"]]'). Use for bulk and multi-row writes."
+          },
+          "columnCount": {
+            "type": "number",
+            "description": "Initial column count (default 26)"
+          },
+          "spreadsheetId": {
+            "type": "string",
+            "description": "Spreadsheet ID. On `copySheetTo`, the SOURCE spreadsheet."
+          },
+          "valueInputOption": {
+            "enum": [
+              "USER_ENTERED",
+              "RAW"
+            ],
+            "type": "string",
+            "description": "How input is interpreted: USER_ENTERED (default, parses formulas/types) or RAW"
+          },
+          "destinationSpreadsheetId": {
+            "type": "string",
+            "description": "Destination spreadsheet ID"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "manage_tasks",
+      "description": "Manage task lists and tasks in Google Tasks.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "operation",
+          "email"
+        ],
+        "properties": {
+          "due": {
+            "type": "string",
+            "description": "Due date (RFC 3339, e.g. 2026-07-20T00:00:00.000Z — Google stores the date, not the time)"
+          },
+          "email": {
+            "type": "string",
+            "description": "Account email address"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Task notes / details"
+          },
+          "title": {
+            "type": "string",
+            "description": "On `createTaskList`, the task list name. On `create` and `update`, the task title."
+          },
+          "status": {
+            "enum": [
+              "needsAction",
+              "completed"
+            ],
+            "type": "string",
+            "description": "Task status"
+          },
+          "taskId": {
+            "type": "string",
+            "description": "Task ID"
+          },
+          "operation": {
+            "enum": [
+              "listTaskLists",
+              "getTaskList",
+              "createTaskList",
+              "deleteTaskList",
+              "list",
+              "get",
+              "create",
+              "update",
+              "complete",
+              "delete"
+            ],
+            "type": "string",
+            "description": "listTaskLists: list all task lists | getTaskList: get a task list by ID | createTaskList: create a new task list | deleteTaskList: delete a task list and all its tasks | list: list tasks in a task list | get: get a specific task | create: create a new task | update: update a task (patch semantics — only the fields you pass are changed) | complete: mark a task as completed | delete: delete a task"
+          },
+          "maxResults": {
+            "type": "number",
+            "description": "Max tasks to return (default: 20, max: 100)"
+          },
+          "taskListId": {
+            "type": "string",
+            "description": "Task list ID (use `listTaskLists` to find)"
+          },
+          "showCompleted": {
+            "type": "boolean",
+            "description": "Include completed tasks (default: true)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "manage_workspace",
+      "description": "Manage files and directories in the workspace sandbox. Supports nested paths (e.g. \"reports/q1/summary.csv\"). The workspace is the exchange point for file operations (attachments, downloads, exports).",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "operation"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Directory path (for list: scope to subdirectory, for mkdir: directory to create)"
+          },
+          "source": {
+            "type": "string",
+            "description": "Source path (for move)"
+          },
+          "content": {
+            "type": "string",
+            "description": "File content to write (for write)"
+          },
+          "filename": {
+            "type": "string",
+            "description": "File path, may include directories (for read, write, delete, compress, decompress). E.g. \"reports/q1/summary.csv\""
+          },
+          "operation": {
+            "enum": [
+              "list",
+              "read",
+              "write",
+              "delete",
+              "move",
+              "mkdir",
+              "compress",
+              "decompress"
+            ],
+            "type": "string",
+            "description": "list: show files (recursive) | read: get file content | write: save content to file | delete: remove file or directory | move: move or rename a file/directory | mkdir: create a directory | compress: gzip a file | decompress: gunzip a file"
+          },
+          "destination": {
+            "type": "string",
+            "description": "Destination path (for move, compress, decompress). Defaults to filename.gz for compress, strips .gz for decompress."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "queue_operations",
+      "description": "RENAMED to `bulk_operations`, which does the same thing. This name still works and will be removed in a future release. Do many things in one call, two ways. mode:'queue' (default) runs different operations in sequence, chaining results with $N.field — works for every tool. mode:'batch' does ONE operation across many resources in a single Google request — far fewer round trips, but only where Google publishes a batch method.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "enum": [
+              "queue",
+              "batch"
+            ],
+            "type": "string",
+            "description": "queue (default): N operations, N API calls, in order, with $N.field references between them. batch: ONE operation across many resources in a single API call — no $N references, because there is no 'between'."
+          },
+          "tool": {
+            "type": "string",
+            "description": "batch only — the tool to call, e.g. 'manage_contacts'."
+          },
+          "email": {
+            "type": "string",
+            "description": "batch only — the account to act as."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "object"
+              ]
+            },
+            "description": "batch only — one entry per resource. A bare id string is enough when that is all that differs, e.g. ['people/c1', 'people/c2']; use objects when items carry more, e.g. [{name: 'Ada Lovelace', contactEmail: 'ada@example.com'}]. Anything shared by the WHOLE batch — labels to add, a field mask — goes at the top level of this call, not in here."
+          },
+          "detail": {
+            "enum": [
+              "summary",
+              "full"
+            ],
+            "type": "string",
+            "description": "summary: one-line status per operation (default) | full: include complete output from each operation"
+          },
+          "operation": {
+            "type": "string",
+            "description": "batch only — the operation to apply to every item, e.g. 'delete'. Ask for one that cannot batch and the error names the ones that can."
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "tool",
+                "args"
+              ],
+              "properties": {
+                "args": {
+                  "type": "object",
+                  "description": "Arguments for the tool. Use $N.field to reference results from earlier operations."
+                },
+                "tool": {
+                  "enum": [
+                    "manage_accounts",
+                    "manage_workspace",
+                    "manage_scratchpad",
+                    "bulk_operations",
+                    "queue_operations",
+                    "manage_calendar",
+                    "manage_contacts",
+                    "manage_docs",
+                    "manage_drive",
+                    "manage_email",
+                    "manage_meet",
+                    "manage_sheets",
+                    "manage_tasks"
+                  ],
+                  "type": "string",
+                  "description": "Tool to call"
+                },
+                "onError": {
+                  "enum": [
+                    "bail",
+                    "continue"
+                  ],
+                  "type": "string",
+                  "description": "bail: stop on error (default) | continue: skip and proceed"
+                }
+              }
+            },
+            "maxItems": 10,
+            "description": "Operations to execute sequentially"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  ]
+}

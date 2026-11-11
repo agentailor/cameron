@@ -1,0 +1,357 @@
+{
+  "name": "atlan",
+  "summary": "It searches, updates and queries assets, traces lineage, and manages glossaries, domains, products and quality rules.",
+  "tools": [
+    {
+      "name": "create_data_products",
+      "description": "Create Data Products in Atlan.\n\nIMPORTANT BUSINESS RULES & CONSTRAINTS:\n- Before creating a product, you may want to search for existing domains\n  to get the qualified_name for the domain relationship\n- Product names must be unique within the same domain\n- At least one asset GUID must be provided for each product",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "products"
+        ],
+        "properties": {
+          "products": {
+            "description": "Either a single product\nspecification (dict) or a list of product specifications."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_domains",
+      "description": "Create Data Domains or Sub Domains in Atlan.\n\nIMPORTANT BUSINESS RULES & CONSTRAINTS:\n- Before creating a domain/subdomain, you may want to search for existing\n  domains to avoid duplicates or to get the qualified_name for parent relationships\n- Domain names must be unique at the top level\n- Subdomain names must be unique within the same parent domain",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "domains"
+        ],
+        "properties": {
+          "domains": {
+            "description": "Either a single domain\nspecification (dict) or a list of domain specifications."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_dq_rules_tool",
+      "description": "Create one or multiple data quality rules in Atlan.\n\nSupports all rule types: column-level, table-level, and custom SQL rules.\nRules can be created individually or in bulk for efficient setup.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "rules"
+        ],
+        "properties": {
+          "rules": {
+            "description": "Either a single rule\nspecification or a list of rule specifications. Each specification\nmust include:\n- rule_type (str): Type of rule (see Supported Rule Types) [REQUIRED]\n- asset_qualified_name (str): Qualified name of the asset (Table, View, MaterialisedView, or SnowflakeDynamicTable) [REQUIRED]\n- asset_type (str): Type of asset - \"Table\" | \"View\" | \"MaterialisedView\" | \"SnowflakeDynamicTable\" [OPTIONAL, default: \"Table\"]\n- threshold_value (int/float): Threshold value for comparison [REQUIRED]\n- column_qualified_name (str): Column qualified name [REQUIRED for column-level rules, NOT for Row Count/Custom SQL]\n- threshold_compare_operator (str): Comparison operator (EQUAL, GREATER_THAN, etc.) [OPTIONAL, default varies by rule]\n- threshold_unit (str): Time unit for Freshness rules (DAYS, HOURS, MINUTES) [REQUIRED for Freshness, N/A for others]\n- alert_priority (str): Alert priority level (LOW, NORMAL, URGENT) [OPTIONAL, default: NORMAL]\n- row_scope_filtering_enabled (bool): Enable row-level filtering [OPTIONAL]\n- rule_conditions (List[Dict]): Conditions for String Length/Regex/Valid Values [REQUIRED for conditional rules]\n- custom_sql (str): SQL query [REQUIRED for Custom SQL rules]\n- rule_name (str): Name for the rule [REQUIRED for Custom SQL rules]\n- dimension (str): DQ dimension [REQUIRED for Custom SQL rules]\n- description (str): Rule description [OPTIONAL]"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_glossaries",
+      "description": "Create one or multiple AtlasGlossary assets in Atlan.\n\nIMPORTANT BUSINESS RULES & CONSTRAINTS:\n- Check for duplicate names within the same request and ask user to choose different names\n- Do NOT use search tool before creating glossaries - Atlan will handle existence validation\n- If user gives ambiguous instructions, ask clarifying questions",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "glossaries"
+        ],
+        "properties": {
+          "glossaries": {
+            "description": "Either a single glossary\nspecification (dict) or a list of glossary specifications. Each specification\ncan be a dictionary containing:\n- name (str): Name of the glossary (required)\n- user_description (str, optional): Detailed description of the glossary\n  proposed by the user\n- certificate_status (str, optional): Certification status\n  (\"VERIFIED\", \"DRAFT\", or \"DEPRECATED\")"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_glossary_categories",
+      "description": "Create one or multiple AtlasGlossaryCategory assets in Atlan.\n\nIMPORTANT BUSINESS RULES & CONSTRAINTS:\n- There cannot be two categories with the same name under the same glossary (at the same level)\n- Under a parent category, there cannot be subcategories with the same name (at the same level)\n- Categories with the same name can exist under different glossaries (this is allowed)\n- Cross-level naming is allowed: category \"a\" can have subcategory \"b\", and category \"b\" can have subcategory \"a\"\n- Example allowed structure: Glossary \"bui\" → category \"a\" → subcategory \"b\" AND category \"b\" → subcategory \"a\"\n- Always check for duplicate names at the same level and ask user to choose different names\n- Before creating a category, perform a single search to check if the glossary or categories with the same name already exist. Skip this step if you already have the required GUIDs.\n- Example call for searching glossary and categories before category creation(Query - create categories Locations and Characters under Marvel Cinematic Universe (MCU) glossary):\n    {\n        \"limit\": 10,\n        \"conditions\": {\n            \"type_name\": [\"AtlasGlossary\", \"AtlasGlossaryCategory\"],\n            \"name\": [\"Marvel Cinematic Universe (MCU)\", \"Characters\", \"Locations\"]\n        }\n    }\n- If user gives ambiguous instructions, ask clarifying questions",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "categories"
+        ],
+        "properties": {
+          "categories": {
+            "description": "Either a single category\nspecification (dict) or a list of category specifications. Each specification\ncan be a dictionary containing:\n- name (str): Name of the category (required)\n- glossary_guid (str): GUID of the glossary this category belongs to (required)\n- user_description (str, optional): Detailed description of the category\n  proposed by the user\n- certificate_status (str, optional): Certification status\n  (\"VERIFIED\", \"DRAFT\", or \"DEPRECATED\")\n- parent_category_guid (str, optional): GUID of the parent category if this\n  is a subcategory"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_glossary_terms",
+      "description": "Create one or multiple AtlasGlossaryTerm assets in Atlan.\n\nIMPORTANT BUSINESS RULES & CONSTRAINTS:\n- Within a glossary, a term (single GUID) can be associated with many categories\n- Two terms with the same name CANNOT exist within the same glossary (regardless of categories)\n- A term is always anchored to a glossary and may also be associated with one or more categories inside the same glossary\n- Before creating a term, perform a single search to check if the glossary, categories, or term with the same name already exist. Search for all relevant glossaries, categories, and terms in one call. Skip this step if you already have the required GUIDs.\n- Example call for searching glossary categories and terms before term creation(Query - create a term fighterz under category Characters and Locations under Marvel Cinematic Universe (MCU) glossary):\n    {\n        \"limit\": 10,\n        \"conditions\": {\n            \"type_name\": [\"AtlasGlossary\", \"AtlasGlossaryCategory\",\"AtlasGlossaryTerm\"],\n            \"name\": [\"Marvel Cinematic Universe (MCU)\", \"Characters\", \"Locations\",\"fighterz\"]\n        }\n    }",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "terms"
+        ],
+        "properties": {
+          "terms": {
+            "description": "Either a single term\nspecification (dict) or a list of term specifications. Each specification\ncan be a dictionary containing:\n- name (str): Name of the term (required)\n- glossary_guid (str): GUID of the glossary this term belongs to (required)\n- user_description (str, optional): Detailed description of the term\n  proposed by the user\n- certificate_status (str, optional): Certification status\n  (\"VERIFIED\", \"DRAFT\", or \"DEPRECATED\")\n- category_guids (List[str], optional): List of category GUIDs this term\n  belongs to."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "delete_dq_rules_tool",
+      "description": "Delete one or multiple data quality rules in Atlan.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "rule_guids"
+        ],
+        "properties": {
+          "rule_guids": {
+            "description": "Single rule GUID (string) or list of rule GUIDs to delete."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_assets_by_dsl_tool",
+      "description": "Execute the search with the given query\ndsl_query : Union[str, Dict[str, Any]] (required):\n    The DSL query used to search the index.\n\nExample:\ndsl_query = '''{\n\"query\": {\n    \"function_score\": {\n        \"boost_mode\": \"sum\",\n        \"functions\": [\n            {\"filter\": {\"match\": {\"starredBy\": \"john.doe\"}}, \"weight\": 10},\n            {\"filter\": {\"match\": {\"certificateStatus\": \"VERIFIED\"}}, \"weight\": 15},\n            {\"filter\": {\"match\": {\"certificateStatus\": \"DRAFT\"}}, \"weight\": 10},\n            {\"filter\": {\"bool\": {\"must_not\": [{\"exists\": {\"field\": \"certificateStatus\"}}]}}, \"weight\": 8},\n            {\"filter\": {\"bool\": {\"must_not\": [{\"terms\": {\"__typeName.keyword\": [\"Process\", \"DbtProcess\"]}}]}}, \"weight\": 20}\n        ],\n        \"query\": {\n            \"bool\": {\n                \"filter\": [\n                    {\n                        \"bool\": {\n                            \"minimum_should_match\": 1,\n                            \"must\": [\n                                {\"bool\": {\"should\": [{\"terms\": {\"certificateStatus\": [\"VERIFIED\"]}}]}},\n                                {\"term\": {\"__state\": \"ACTIVE\"}}\n                            ],\n                            \"must_not\": [\n                                {\"term\": {\"isPartial\": \"true\"}},\n                                {\"terms\": {\"__typeName.keyword\": [\"Procedure\", \"DbtColumnProcess\", \"BIProcess\", \"MatillionComponent\", \"SnowflakeTag\", \"DbtTag\", \"BigqueryTag\", \"AIApplication\", \"AIModel\"]}},\n                                {\"terms\": {\"__typeName.keyword\": [\"MCIncident\", \"AnomaloCheck\"]}}\n                            ],\n                            \"should\": [\n                                {\"terms\": {\"__typeName.keyword\": [\"Query\", \"Collection\", \"AtlasGlossary\", \"AtlasGlossaryCategory\", \"AtlasGlossaryTerm\", \"Connection\", \"File\"]}},\n                            ]\n                        }\n                    }\n                ]\n            },\n            \"score_mode\": \"sum\"\n        },\n        \"score_mode\": \"sum\"\n    }\n},\n\"post_filter\": {\n    \"bool\": {\n        \"filter\": [\n            {\n                \"bool\": {\n                    \"must\": [{\"terms\": {\"__typeName.keyword\": [\"Table\", \"Column\"]}}],\n                    \"must_not\": [{\"exists\": {\"field\": \"termType\"}}]\n                }\n            }\n        ]\n    },\n    \"sort\": [\n        {\"_score\": {\"order\": \"desc\"}},\n        {\"popularityScore\": {\"order\": \"desc\"}},\n        {\"starredCount\": {\"order\": \"desc\"}},\n        {\"name.keyword\": {\"order\": \"asc\"}}\n    ],\n    \"track_total_hits\": true,\n    \"size\": 10,\n    \"include_meta\": false\n}'''\nresponse = get_assets_by_dsl(dsl_query)",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "dsl_query"
+        ],
+        "properties": {
+          "dsl_query": {}
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "query_asset_tool",
+      "description": "Execute a SQL query on a table/view asset.\n\nThis tool enables querying table/view assets on the source similar to\nwhat's available in the insights table. It uses the Atlan query capabilities\nto execute SQL against connected data sources.\n\nCRITICAL: Use READ-ONLY queries to retrieve data. Write and modify queries are not supported by this tool.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "sql",
+          "connection_qualified_name"
+        ],
+        "properties": {
+          "sql": {
+            "type": "string",
+            "description": "The SQL query to execute (read-only queries allowed)"
+          },
+          "default_schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Default schema name to use for unqualified\nobjects in the SQL, in the form \"DB.SCHEMA\"\n(e.g., \"RAW.WIDEWORLDIMPORTERS_WAREHOUSE\")"
+          },
+          "connection_qualified_name": {
+            "type": "string",
+            "description": "Connection qualified name to use for the query.\nThis is the same parameter used in search_assets_tool.\nYou can find this value by searching for Table/View assets using search_assets_tool\nand extracting the first part of the 'qualifiedName' attribute.\nExample: from \"default/snowflake/1657275059/LANDING/FRONTEND_PROD/PAGES\"\nuse \"default/snowflake/1657275059\""
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "schedule_dq_rules_tool",
+      "description": "Schedule data quality rule execution for one or multiple assets.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "schedules"
+        ],
+        "properties": {
+          "schedules": {
+            "description": "Single schedule or list of schedules. Each schedule requires:\n- asset_type (str): \"Table\", \"View\", \"MaterialisedView\", or \"SnowflakeDynamicTable\"\n- asset_name (str): Name of the asset\n- asset_qualified_name (str): Qualified name of the asset\n- schedule_crontab (str): Cron expression (5 fields: min hour day month weekday)\n- schedule_time_zone (str): Timezone (e.g., \"UTC\", \"America/New_York\")"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "search_assets_tool",
+      "description": "Advanced asset search using FluentSearch with flexible conditions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "title": "Tags",
+            "default": null,
+            "description": "List of tags to filter by."
+          },
+          "guids": {
+            "title": "Guids",
+            "default": null,
+            "description": "List of asset GUIDs to filter by."
+          },
+          "limit": {
+            "title": "Limit",
+            "default": 10,
+            "description": "Maximum number of results to return. Defaults to 10."
+          },
+          "offset": {
+            "title": "Offset",
+            "default": 0,
+            "description": "Offset for pagination. Defaults to 0."
+          },
+          "sort_by": {
+            "title": "Sort By",
+            "default": null,
+            "description": "Attribute to sort by. Defaults to None."
+          },
+          "min_somes": {
+            "title": "Min Somes",
+            "default": 1,
+            "description": "Minimum number of some_conditions that must match. Defaults to 1."
+          },
+          "asset_type": {
+            "title": "Asset Type",
+            "default": null,
+            "description": "Type of asset to search for.\nEither a class (e.g., Table, Column) or a string type name (e.g., \"Table\", \"Column\")"
+          },
+          "conditions": {
+            "title": "Conditions",
+            "default": null,
+            "description": "Dictionary of attribute conditions to match.\nFormat: {\"attribute_name\": value} or {\"attribute_name\": {\"operator\": operator, \"value\": value}}"
+          },
+          "date_range": {
+            "title": "Date Range",
+            "default": null,
+            "description": "Date range filters.\nFormat: {\"attribute_name\": {\"gte\": start_timestamp, \"lte\": end_timestamp}}"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "default": "ASC",
+            "description": "Sort order, \"ASC\" or \"DESC\". Defaults to \"ASC\"."
+          },
+          "domain_guids": {
+            "title": "Domain Guids",
+            "default": null,
+            "description": "List of domain GUIDs to filter by."
+          },
+          "directly_tagged": {
+            "title": "Directly Tagged",
+            "default": true,
+            "description": "Whether to filter for directly tagged assets only. Defaults to True."
+          },
+          "some_conditions": {
+            "title": "Some Conditions",
+            "default": null,
+            "description": "Conditions for where_some() queries that require min_somes of them to match.\nFormat: {\"attribute_name\": value} or {\"attribute_name\": {\"operator\": operator, \"value\": value}}"
+          },
+          "include_archived": {
+            "title": "Include Archived",
+            "default": false,
+            "description": "Whether to include archived assets. Defaults to False."
+          },
+          "include_attributes": {
+            "title": "Include Attributes",
+            "default": null,
+            "description": "List of specific attributes to include in results.\nCan be string attribute names or AtlanField objects."
+          },
+          "negative_conditions": {
+            "title": "Negative Conditions",
+            "default": null,
+            "description": "Dictionary of attribute conditions to exclude.\nFormat: {\"attribute_name\": value} or {\"attribute_name\": {\"operator\": operator, \"value\": value}}"
+          },
+          "connection_qualified_name": {
+            "title": "Connection Qualified Name",
+            "default": null,
+            "description": "Connection qualified name to filter by. ex: default/snowflake/123456/abc"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "traverse_lineage_tool",
+      "description": "Traverse asset lineage in specified direction.\n\nBy default, essential attributes are included in results. Additional attributes can be\nspecified via include_attributes parameter for richer lineage information.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "guid",
+          "direction"
+        ],
+        "properties": {
+          "guid": {
+            "description": "GUID of the starting asset"
+          },
+          "size": {
+            "title": "Size",
+            "default": 10,
+            "description": "Maximum number of results to return. Defaults to 10."
+          },
+          "depth": {
+            "title": "Depth",
+            "default": 1000000,
+            "description": "Maximum depth to traverse. Defaults to 1000000."
+          },
+          "direction": {
+            "description": "Direction to traverse (\"UPSTREAM\" or \"DOWNSTREAM\")"
+          },
+          "include_attributes": {
+            "title": "Include Attributes",
+            "default": null,
+            "description": "List of additional attribute names to include in results.\nThese will be added to the default set."
+          },
+          "immediate_neighbors": {
+            "title": "Immediate Neighbors",
+            "default": true,
+            "description": "Only return immediate neighbors. Defaults to True."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "update_assets_tool",
+      "description": "Update one or multiple assets with different values for attributes or term operations.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "assets",
+          "attribute_name",
+          "attribute_values"
+        ],
+        "properties": {
+          "assets": {
+            "description": "Asset(s) to update.\nCan be a single UpdatableAsset or a list of UpdatableAsset objects.\nFor asset of type_name=AtlasGlossaryTerm or type_name=AtlasGlossaryCategory, each asset dictionary MUST include a \"glossary_guid\" key which is the GUID of the glossary that the term belongs to."
+          },
+          "attribute_name": {
+            "description": "Name of the attribute to update.\nSupports \"user_description\", \"certificate_status\", \"readme\", and \"term\"."
+          },
+          "attribute_values": {
+            "description": "List of values to set for the attribute.\nFor certificateStatus, only \"VERIFIED\", \"DRAFT\", or \"DEPRECATED\" are allowed.\nFor readme, the value must be a valid Markdown string.\nFor term, the value must be a dict with \"operation\" and \"term_guids\" keys."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "update_dq_rules_tool",
+      "description": "Update existing data quality rules in Atlan.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "rules"
+        ],
+        "properties": {
+          "rules": {
+            "description": "Single rule dict or list of rule dicts. Required fields:\n- qualified_name: Rule's qualified name\n- rule_type: Rule type (e.g., \"Null Count\", \"Row Count\", \"Custom SQL\")\n- asset_qualified_name: Table/view qualified name"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  ]
+}

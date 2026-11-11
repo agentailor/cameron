@@ -1,0 +1,479 @@
+{
+  "name": "astra-db",
+  "summary": "It manages database collections and records, creating, updating, deleting, searching, and counting them.",
+  "tools": [
+    {
+      "name": "BulkCreateRecords",
+      "description": "Create multiple records in a collection at once",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName",
+          "records"
+        ],
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Array of records to insert"
+          },
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection to create the records in"
+          }
+        }
+      }
+    },
+    {
+      "name": "BulkDeleteRecords",
+      "description": "Delete multiple records from a collection at once",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName",
+          "recordIds"
+        ],
+        "properties": {
+          "recordIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array of record IDs to delete"
+          },
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection containing the records"
+          }
+        }
+      }
+    },
+    {
+      "name": "BulkUpdateRecords",
+      "description": "Update multiple records in a collection at once",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName",
+          "records"
+        ],
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "record"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "ID of the record to update"
+                },
+                "record": {
+                  "type": "object",
+                  "description": "The updated record data"
+                }
+              }
+            },
+            "description": "Array of records to update with their IDs"
+          },
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection containing the records"
+          }
+        }
+      }
+    },
+    {
+      "name": "CreateCollection",
+      "description": "Create a new collection in the database",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName"
+        ],
+        "properties": {
+          "metric": {
+            "enum": [
+              "cosine",
+              "euclidean",
+              "dot_product"
+            ],
+            "type": "string",
+            "default": "cosine",
+            "description": "The similarity metric to use for vector search (cosine, euclidean, or dot_product)"
+          },
+          "vector": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether to create a vector collection"
+          },
+          "dimension": {
+            "type": "number",
+            "default": 1536,
+            "description": "The dimensions of the vector collection, if vector is true"
+          },
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection to create"
+          }
+        }
+      }
+    },
+    {
+      "name": "CreateRecord",
+      "description": "Create a new record in a collection",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName",
+          "record"
+        ],
+        "properties": {
+          "record": {
+            "type": "object",
+            "description": "The record data to insert"
+          },
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection to create the record in"
+          }
+        }
+      }
+    },
+    {
+      "name": "DeleteCollection",
+      "description": "Delete a collection from the database",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName"
+        ],
+        "properties": {
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection to delete"
+          }
+        }
+      }
+    },
+    {
+      "name": "DeleteRecord",
+      "description": "Delete a record from a collection",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName",
+          "recordId"
+        ],
+        "properties": {
+          "recordId": {
+            "type": "string",
+            "description": "ID of the record to delete"
+          },
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection containing the record"
+          }
+        }
+      }
+    },
+    {
+      "name": "EstimateDocumentCount",
+      "description": "Estimate the number of documents in a collection using a fast, approximate count method",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName"
+        ],
+        "properties": {
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection to estimate document count for"
+          }
+        }
+      }
+    },
+    {
+      "name": "FindDistinctValues",
+      "description": "Find distinct values for a field in a collection",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName",
+          "field"
+        ],
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Field name to find distinct values for"
+          },
+          "filter": {
+            "type": "object",
+            "description": "Optional filter to apply before finding distinct values"
+          },
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection to search in"
+          }
+        }
+      }
+    },
+    {
+      "name": "FindRecord",
+      "description": "Find records in a collection by field value",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName",
+          "field",
+          "value"
+        ],
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Field name to search by (e.g., 'title', '_id', or any property)"
+          },
+          "limit": {
+            "type": "number",
+            "default": 10,
+            "description": "Maximum number of records to return"
+          },
+          "value": {
+            "type": "string",
+            "description": "Value to search for in the specified field"
+          },
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection to search in"
+          }
+        }
+      }
+    },
+    {
+      "name": "GetCollections",
+      "description": "Get all collections in the Astra DB database",
+      "inputSchema": {
+        "type": "object",
+        "required": [],
+        "properties": {}
+      }
+    },
+    {
+      "name": "GetRecord",
+      "description": "Get a specific record from a collection by ID",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName",
+          "recordId"
+        ],
+        "properties": {
+          "recordId": {
+            "type": "string",
+            "description": "ID of the record to retrieve"
+          },
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection to get the record from"
+          }
+        }
+      }
+    },
+    {
+      "name": "HelpAddToClient",
+      "description": "Help the user add the Astra DB client to their MCP client",
+      "inputSchema": {
+        "type": "object",
+        "required": [],
+        "properties": {}
+      }
+    },
+    {
+      "name": "HybridSearch",
+      "description": "Search for records using both vector similarity and text matching",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName",
+          "queryVector",
+          "textQuery"
+        ],
+        "properties": {
+          "limit": {
+            "type": "number",
+            "default": 10,
+            "description": "Maximum number of records to return"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "*"
+            ],
+            "description": "Fields to search in for text matching"
+          },
+          "weights": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "number",
+                "default": 0.3,
+                "description": "Weight for text matching (0.0 to 1.0)"
+              },
+              "vector": {
+                "type": "number",
+                "default": 0.7,
+                "description": "Weight for vector similarity (0.0 to 1.0)"
+              }
+            },
+            "description": "Weights for vector and text components"
+          },
+          "textQuery": {
+            "type": "string",
+            "description": "The text query to search for"
+          },
+          "queryVector": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "The vector to search for similar vectors"
+          },
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection to search in"
+          }
+        }
+      }
+    },
+    {
+      "name": "ListRecords",
+      "description": "List records from a collection in the database",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName"
+        ],
+        "properties": {
+          "limit": {
+            "type": "number",
+            "default": 10,
+            "description": "Maximum number of records to return"
+          },
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection to list records from"
+          }
+        }
+      }
+    },
+    {
+      "name": "OpenBrowser",
+      "description": "Open a web browser to a specific URL",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The URL to open in the browser"
+          }
+        }
+      }
+    },
+    {
+      "name": "UpdateCollection",
+      "description": "Update an existing collection in the database",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName",
+          "newName"
+        ],
+        "properties": {
+          "newName": {
+            "type": "string",
+            "description": "New name for the collection"
+          },
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection to update"
+          }
+        }
+      }
+    },
+    {
+      "name": "UpdateRecord",
+      "description": "Update an existing record in a collection",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName",
+          "recordId",
+          "record"
+        ],
+        "properties": {
+          "record": {
+            "type": "object",
+            "description": "The updated record data"
+          },
+          "recordId": {
+            "type": "string",
+            "description": "ID of the record to update"
+          },
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection containing the record"
+          }
+        }
+      }
+    },
+    {
+      "name": "VectorSearch",
+      "description": "Search for records in a collection using vector similarity",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "collectionName",
+          "queryVector"
+        ],
+        "properties": {
+          "limit": {
+            "type": "number",
+            "default": 10,
+            "description": "Maximum number of records to return"
+          },
+          "filter": {
+            "type": "object",
+            "description": "Additional filter criteria for the search"
+          },
+          "minScore": {
+            "type": "number",
+            "default": 0,
+            "description": "Minimum similarity score (0.0 to 1.0)"
+          },
+          "queryVector": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "The vector to search for similar vectors"
+          },
+          "collectionName": {
+            "type": "string",
+            "description": "Name of the collection to search in"
+          }
+        }
+      }
+    }
+  ]
+}

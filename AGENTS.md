@@ -622,6 +622,28 @@ pnpm typecheck:eval                         # free — the root tsc misses this 
   something wrong in a conversation" is always a plain **failure** — widening this tier is how it
   turns into a place to hide them.
 
+### MCP disclosure benchmark (`eval/bench/`)
+
+Measures, gates nothing: the same tasks with every MCP tool bound up front (`bind-all`) and with
+progressive disclosure, as servers are added. Paid; separate from `pnpm eval`.
+
+```bash
+pnpm bench:mcp:export <server> [<server>…]   # dev catalog → eval/bench/snapshots (distractors)
+BENCH_SCALES=3,5 BENCH_REPEATS=1 pnpm bench:mcp [task id or group]   # needs EVAL_BASE_URL
+```
+
+- **Scale N = 3 core servers + the first N-3 snapshots** (filename order). Every task's answer is
+  in a core server (`servers.mts`) or the ledger, so a larger scale only adds distractors.
+  Snapshots are real servers' `tools/list`; a distractor answers "nothing found".
+- **`bind-all` needs no product code**: tools go in through `cfg.tools` with an empty
+  `mcpForEval`, so the middleware adds neither `load_tools` nor the capability list.
+- Records input, output and **cached** tokens per model call (`usage_metadata`), steps, tool
+  choice and answer. `BENCH_KEY_BIND_ALL` / `BENCH_KEY_DISCLOSURE` give each arm its own API key.
+- **`BENCH_COLD=1`** starts every conversation with a unique line at the top of the system prompt,
+  so no call is served from an earlier conversation's prompt cache. Calls inside one conversation
+  can still hit it. Without it, back-to-back repeats are the best case for `bind-all`.
+- Output: `eval/bench/results/latest.{json,csv}` (gitignored).
+
 ### Authoring skills (`.agents/`, not `skills/`)
 
 Two different things share the word "skill": `skills/` is Cameron's own, committed and shipped

@@ -12,6 +12,8 @@
     "test:watch": "vitest",
     "eval": "tsx --env-file=.env.eval eval/run.mts",
     "eval:render": "tsx eval/render.mts",
+    "bench:mcp": "tsx --env-file=.env.eval eval/bench/run.mts",
+    "bench:mcp:export": "tsx eval/bench/exportCatalog.mts",
     "typecheck:eval": "tsc --noEmit -p eval/tsconfig.json",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

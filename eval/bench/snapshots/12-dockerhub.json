@@ -1,0 +1,451 @@
+{
+  "name": "dockerhub",
+  "summary": "It manages Docker Hub repositories, tags, namespaces, and hardened images via listing, creating, updating, checking, and searching.",
+  "tools": [
+    {
+      "name": "checkRepository",
+      "description": "Check if a repository exists in the given namespace.",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "namespace",
+          "repository"
+        ],
+        "properties": {
+          "namespace": {
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "checkRepositoryTag",
+      "description": "Check if a tag exists in a repository",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "namespace",
+          "repository",
+          "tag"
+        ],
+        "properties": {
+          "tag": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "createRepository",
+      "description": "Create a new repository in the given namespace. You MUST ask the user for the repository name and if the repository has to be public or private. Can optionally pass a description.\nIMPORTANT: Before calling this tool, you must ensure you have:\n The repository name (name).",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "namespace"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "default": "",
+            "description": "The name of the repository (required). Must contain a combination of alphanumeric characters and may contain the special characters ., _, or -. Letters must be lowercase."
+          },
+          "registry": {
+            "type": "string",
+            "description": "The registry to create the repository in"
+          },
+          "namespace": {
+            "type": "string",
+            "description": "The namespace of the repository. Required."
+          },
+          "is_private": {
+            "type": "boolean",
+            "description": "Whether the repository is private"
+          },
+          "description": {
+            "type": "string",
+            "description": "The description of the repository"
+          },
+          "full_description": {
+            "type": "string",
+            "maxLength": 25000,
+            "description": "A detailed description of the repository"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "dockerHardenedImages",
+      "description": "This API is used to list Docker Hardened Images (DHIs) available in the user organisations. The tool takes the organisation name as input and returns the list of DHI images available in the organisation. It depends on the \"listNamespaces\" tool to be called first to get the list of organisations the user has access to.",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "organisation"
+        ],
+        "properties": {
+          "organisation": {
+            "type": "string",
+            "description": "The organisation for which the DHIs are listed for. If user does not explicitly ask for a specific organisation, the \"listNamespaces\" tool should be called first to get the list of organisations the user has access to."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "getPersonalNamespace",
+      "description": "Get the personal namespace name",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "getRepositoryInfo",
+      "description": "Get the details of a repository in the given namespace.",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "namespace",
+          "repository"
+        ],
+        "properties": {
+          "namespace": {
+            "type": "string",
+            "description": "The namespace of the repository (required). If not provided the `library` namespace will be used for official images."
+          },
+          "repository": {
+            "type": "string",
+            "description": "The repository name (required)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "getRepositoryTag",
+      "description": "Get the details of a tag in a repository. It can be use to show the latest tag details for example.",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "namespace",
+          "repository",
+          "tag"
+        ],
+        "properties": {
+          "tag": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "listAllNamespacesMemberOf",
+      "description": "List all namespaces the user is a member of",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "listNamespaces",
+      "description": "List paginated namespaces",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "The page number to list repositories from"
+          },
+          "page_size": {
+            "type": "number",
+            "description": "The page size to list repositories from"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "listRepositoriesByNamespace",
+      "description": "List paginated repositories by namespace",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "namespace"
+        ],
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "The page number to list repositories from"
+          },
+          "ordering": {
+            "enum": [
+              "last_updated",
+              "-last_updated",
+              "name",
+              "-name",
+              "pull_count",
+              "-pull_count"
+            ],
+            "type": "string",
+            "description": "The ordering of the repositories. Use \"-\" to reverse the ordering. For example, \"last_updated\" will order the repositories by last updated in descending order while \"-last_updated\" will order the repositories by last updated in ascending order."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "The namespace to list repositories from"
+          },
+          "page_size": {
+            "type": "number",
+            "description": "The page size to list repositories from"
+          },
+          "media_types": {
+            "type": "string",
+            "default": "",
+            "description": "Comma-delimited list of media types. Only repositories containing one or more artifacts with one of these media types will be returned. Default is empty to get all repositories."
+          },
+          "content_types": {
+            "type": "string",
+            "default": "",
+            "description": "Comma-delimited list of content types. Only repositories containing one or more artifacts with one of these content types will be returned. Default is empty to get all repositories."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "listRepositoryTags",
+      "description": "List paginated tags by repository",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "repository"
+        ],
+        "properties": {
+          "os": {
+            "type": "string",
+            "description": "The operating system to list tags from. If not provided, all operating systems will be listed."
+          },
+          "page": {
+            "type": "number",
+            "description": "The page number to list tags from"
+          },
+          "namespace": {
+            "type": "string",
+            "description": "The namespace of the repository. If not provided the 'library' namespace will be used for official images."
+          },
+          "page_size": {
+            "type": "number",
+            "description": "The page size to list tags from"
+          },
+          "repository": {
+            "type": "string",
+            "description": "The repository to list tags from"
+          },
+          "architecture": {
+            "type": "string",
+            "description": "The architecture to list tags from. If not provided, all architectures will be listed."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "search",
+      "description": "Search for repositories in Docker Hub. It sorts results by best match if no sort criteria is provided. If user asks for secure, production-ready images the \"dockerHardenedImages\" tool should be called first to get the list of DHI images available in the user organisations (if any) and fallback to search tool if no DHI images are available or user is not authenticated.",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "query"
+        ],
+        "properties": {
+          "from": {
+            "type": "number",
+            "description": "The number of repositories to skip"
+          },
+          "size": {
+            "type": "number",
+            "description": "The number of repositories to return"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "not": {}
+                  },
+                  {
+                    "enum": [
+                      "pull_count",
+                      "updated_at"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The criteria to sort the search results by. If the `sort` field is not set, the best match is used by default. When search extensions, documents are sort alphabetically if none is provided. Do not use it unless user explicitly asks for it."
+          },
+          "type": {
+            "type": "string",
+            "description": "The type of the repository to search for"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "not": {}
+                  },
+                  {
+                    "enum": [
+                      "asc",
+                      "desc"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The order to sort the search results by"
+          },
+          "query": {
+            "type": "string",
+            "description": "The query to search for"
+          },
+          "badges": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "official",
+                "verified_publisher",
+                "open_source"
+              ],
+              "type": "string"
+            },
+            "description": "The trusted content to search for"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The images to filter search results"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The categories names to filter search results"
+          },
+          "architectures": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The architectures to filter search results"
+          },
+          "operating_systems": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The operating systems to filter search results"
+          },
+          "extension_reviewed": {
+            "type": "boolean",
+            "description": "Whether to filter search results to only include reviewed extensions"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "updateRepositoryInfo",
+      "description": "Update the details of a repository in the given namespace. Description, overview and status are the only fields that can be updated. While description and overview changes are fine, a status change is a dangerous operation so the user must explicitly ask for it.",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "required": [
+          "namespace",
+          "repository"
+        ],
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "not": {}
+                  },
+                  {
+                    "enum": [
+                      "active",
+                      "inactive"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The status of the repository. If user asks for updating the status of the repository, this is the field that should be updated. This is a dangerous operation and should be done with caution so user must be prompted to confirm the operation. Valid status are `active` (1) and `inactive` (0). Normally do not update the status if it is not strictly required by the user. It is not possible to change an `inactive` repository to `active` if it has no images."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "The namespace of the repository (required)"
+          },
+          "repository": {
+            "type": "string",
+            "description": "The repository name (required)"
+          },
+          "description": {
+            "type": "string",
+            "description": "The description of the repository. If user asks for updating the description of the repository, this is the field that should be updated."
+          },
+          "full_description": {
+            "type": "string",
+            "maxLength": 25000,
+            "description": "The full description (overview)of the repository. If user asks for updating the full description or the overview of the repository, this is the field that should be updated. "
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  ]
+}

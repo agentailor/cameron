@@ -1,0 +1,417 @@
+{
+  "name": "couchbase",
+  "summary": "It examines clusters, buckets, documents, queries, and indexes to retrieve data and diagnose performance.",
+  "tools": [
+    {
+      "name": "explain_sql_plus_plus_query",
+      "description": "Generate and evaluate an EXPLAIN plan for a SQL++ query. It provides information about the execution plan for the query.\n\nThe EXPLAIN statement is run in the specified scope in the specified bucket.\nIt returns query metadata along with an extracted plan and plan evaluation.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "bucket_name",
+          "scope_name",
+          "query"
+        ],
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "scope_name": {
+            "type": "string"
+          },
+          "bucket_name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_buckets_in_cluster",
+      "description": "Get the names of all the accessible buckets in the cluster.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_cluster_health_and_services",
+      "description": "Get cluster health status and list of all running services.\n\nThis tool provides health monitoring by:\n- Getting health status of all running services with latency information (via ping)\n- Listing all services running on the cluster with their endpoints\n- Showing connection status and node information for each service\n\nIf bucket_name is provided, it actively pings services from the perspective of the bucket.\nOtherwise, it uses cluster-level ping to get the health status of the cluster.\n\nReturns:\n- Cluster health status with service-level connection details and latency measurements",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bucket_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_collections_in_scope",
+      "description": "Get the names of all collections in the given scope and bucket.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "bucket_name",
+          "scope_name"
+        ],
+        "properties": {
+          "scope_name": {
+            "type": "string"
+          },
+          "bucket_name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_document_by_id",
+      "description": "Get a document by its ID from the specified scope and collection.\nIf the document is not found, it will raise an exception.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "bucket_name",
+          "scope_name",
+          "collection_name",
+          "document_id"
+        ],
+        "properties": {
+          "scope_name": {
+            "type": "string"
+          },
+          "bucket_name": {
+            "type": "string"
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "collection_name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_index_advisor_recommendations",
+      "description": "Get index recommendations from Couchbase Index Advisor for a given SQL++ query.\n\nThe Index Advisor analyzes the query and provides recommendations for optimal indexes.\nThis tool works with SELECT, UPDATE, DELETE, or MERGE queries.\nThe queries will be run on the specified scope in the specified bucket.\n\nReturns a dictionary with:\n- current_used_indexes: Array of currently used indexes (if any)\n- recommended_indexes: Array of recommended secondary indexes (if any)\n- recommended_covering_indexes: Array of recommended covering indexes (if any)\n\nEach index object contains:\n- index: The CREATE INDEX SQL++ command\n- statements: Array of statement objects with the query and run count",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "bucket_name",
+          "scope_name",
+          "query"
+        ],
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "scope_name": {
+            "type": "string"
+          },
+          "bucket_name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_longest_running_queries",
+      "description": "Get the N longest running queries from the system:completed_requests catalog.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 10,
+            "description": "Number of queries to return (default: 10)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_most_frequent_queries",
+      "description": "Get the N most frequent queries from the system:completed_requests catalog.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 10,
+            "description": "Number of queries to return (default: 10)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_queries_not_selective",
+      "description": "Get queries that are not very selective from the system:completed_requests catalog.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 10,
+            "description": "Number of queries to return (default: 10)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_queries_not_using_covering_index",
+      "description": "Get queries that don't use a covering index from the system:completed_requests catalog.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 10,
+            "description": "Number of queries to return (default: 10)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_queries_using_primary_index",
+      "description": "Get queries that use a primary index from the system:completed_requests catalog.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 10,
+            "description": "Number of queries to return (default: 10)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_queries_with_large_result_count",
+      "description": "Get queries with the largest result counts from the system:completed_requests catalog.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 10,
+            "description": "Number of queries to return (default: 10)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_queries_with_largest_response_sizes",
+      "description": "Get queries with the largest response sizes from the system:completed_requests catalog.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 10,
+            "description": "Number of queries to return (default: 10)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_schema_for_collection",
+      "description": "Get the schema for a collection in the specified scope.\nReturns a dictionary with the collection name and the schema returned by running INFER query on the Couchbase collection.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "bucket_name",
+          "scope_name",
+          "collection_name"
+        ],
+        "properties": {
+          "scope_name": {
+            "type": "string"
+          },
+          "bucket_name": {
+            "type": "string"
+          },
+          "collection_name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_scopes_and_collections_in_bucket",
+      "description": "Get the names of all scopes and collections in the bucket.\nReturns a dictionary with scope names as keys and lists of collection names as values.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "bucket_name"
+        ],
+        "properties": {
+          "bucket_name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_scopes_in_bucket",
+      "description": "Get the names of all scopes in the given bucket.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "bucket_name"
+        ],
+        "properties": {
+          "bucket_name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_server_configuration_status",
+      "description": "Get the server status and configuration without establishing connection.\nThis tool can be used to verify if the server is running and check the configuration.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_indexes",
+      "description": "List indexes in the cluster with optional filtering by bucket, scope, collection, and index name.\n\nFilters must be provided hierarchically: scope requires bucket, collection requires both, index requires all three.\nSet ``return_raw_index_stats=True`` to get the unprocessed source row for each index.\n\nEach result contains: name, definition (CREATE INDEX statement), status, isPrimary, bucket, scope, collection, lastScanTime.\nIf a required field is missing, the entry contains warning and raw_index_stats instead.\n\nSource depends on cluster version: v8+ queries ``system:indexes`` via the\nquery service (RBAC-scoped — the connected user sees only indexes on\nkeyspaces they can access); older clusters fall back to the admin-level\nIndex Service REST API ``/getIndexStatus``.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "index_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "scope_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "bucket_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "collection_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "return_raw_index_stats": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "run_sql_plus_plus_query",
+      "description": "Run a SQL++ query on a scope and return the results as a list of JSON objects.\n\nThe query will be run on the specified scope in the specified bucket.\nThe query should use collection names directly without bucket/scope prefixes, as the scope context is automatically set.\n\nUse ``named_parameters`` to bind values to ``$name`` placeholders in the\nquery instead of concatenating user input into the statement. This prevents\nSQL++ injection\n\nExample:\n    query = \"SELECT * FROM users WHERE age > 18\"\n    # Incorrect: \"SELECT * FROM bucket.scope.users WHERE age > 18\"",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "bucket_name",
+          "scope_name",
+          "query"
+        ],
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "scope_name": {
+            "type": "string"
+          },
+          "bucket_name": {
+            "type": "string"
+          },
+          "named_parameters": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "test_cluster_connection",
+      "description": "Test the connection to Couchbase cluster and optionally to a bucket.\nThis tool verifies the connection to the Couchbase cluster and bucket by establishing the connection if it is not already established.\nIf bucket name is not provided, it will not try to connect to the bucket specified in the MCP server settings.\nReturns connection status and basic cluster information.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bucket_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  ]
+}

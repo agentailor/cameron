@@ -67,3 +67,5 @@ skills-lock.json
 
 # Database dumps (real financial data — never commit)
 backups/
+# MCP disclosure benchmark output
+eval/bench/results/
