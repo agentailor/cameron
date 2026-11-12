@@ -11,6 +11,8 @@ export interface CreateChatModelOptions {
   model: string;
   temperature?: number;
   baseUrl?: string | null;
+  /** Extra request-body fields, `openai-compatible` only. Set by the eval harness. */
+  requestBody?: Record<string, unknown>;
 }
 
 const NO_API_KEY_NEEDED = "not-needed";
@@ -20,6 +22,7 @@ export function createChatModel({
   model,
   temperature = 1,
   baseUrl,
+  requestBody,
 }: CreateChatModelOptions): BaseChatModel {
   switch (provider) {
     case "openai":
@@ -29,7 +32,7 @@ export function createChatModel({
     case "google":
       return new ChatGoogleGenerativeAI({ model, temperature });
     case OPENAI_COMPATIBLE_PROVIDER:
-      return createOpenAICompatibleModel({ model, temperature, baseUrl });
+      return createOpenAICompatibleModel({ model, temperature, baseUrl, requestBody });
     default:
       throw new Error(
         `Unknown model provider "${provider}". Expected one of: ${PROVIDERS.map((p) => p.id).join(", ")}.`,
@@ -41,10 +44,12 @@ function createOpenAICompatibleModel({
   model,
   temperature,
   baseUrl,
+  requestBody,
 }: {
   model: string;
   temperature: number;
   baseUrl?: string | null;
+  requestBody?: Record<string, unknown>;
 }): BaseChatModel {
   if (!baseUrl) {
     throw new Error(
@@ -61,6 +66,7 @@ function createOpenAICompatibleModel({
     // Explicit: left undefined, ChatOpenAI would send OPENAI_API_KEY to this third-party URL.
     apiKey: process.env.OPENAI_COMPATIBLE_API_KEY || NO_API_KEY_NEEDED,
     configuration: { baseURL: baseUrl },
+    ...(requestBody ? { modelKwargs: requestBody } : {}),
   });
 }
 

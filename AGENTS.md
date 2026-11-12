@@ -642,6 +642,10 @@ BENCH_SCALES=3,5 BENCH_REPEATS=1 pnpm bench:mcp [task id or group]   # needs EVA
 - **`BENCH_COLD=1`** starts every conversation with a unique line at the top of the system prompt,
   so no call is served from an earlier conversation's prompt cache. Calls inside one conversation
   can still hit it. Without it, back-to-back repeats are the best case for `bind-all`.
+- **`BENCH_REQUEST_BODY`** (JSON) adds fields to every model request, for a router's provider pin
+  (OpenRouter: `{"provider":{"only":["openai"],"allow_fallbacks":false}}`). It reaches the model
+  through `requestBodyForEval`, which only the `openai-compatible` provider reads. When the
+  endpoint reports a per-call `cost`, it is recorded beside the tokens.
 - Output: `eval/bench/results/latest.{json,csv}` (gitignored).
 
 ### Authoring skills (`.agents/`, not `skills/`)

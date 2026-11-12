@@ -48,7 +48,13 @@ async function buildAgent(cfg?: AgentConfigOptions) {
     modelName = stored.model;
     baseUrl = stored.baseUrl;
   }
-  const llm = createChatModel({ provider, model: modelName, temperature: 1, baseUrl });
+  const llm = createChatModel({
+    provider,
+    model: modelName,
+    temperature: 1,
+    baseUrl,
+    requestBody: cfg?.requestBodyForEval,
+  });
 
   // Built-in finance tools are registered here (server-side) so they are always present and
   // cannot be omitted by the client. MCP tools are NOT registered: the disclosure middleware shows

@@ -22,6 +22,11 @@ export interface AgentConfigOptions {
    * cases test whether the model finds and uses capabilities, not MCP plumbing.
    */
   mcpForEval?: { servers: DisclosureServer[]; resolveTool: ResolveMcpTool };
+  /**
+   * Extra request-body fields for the `openai-compatible` provider (a router's provider pin, say).
+   * FOR THE EVAL HARNESS ONLY.
+   */
+  requestBodyForEval?: Record<string, unknown>;
 }
 
 /**

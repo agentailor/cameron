@@ -135,8 +135,7 @@ describe("buildAgent forwards the compatible endpoint", () => {
   it("passes it on to createChatModel", async () => {
     const { readFile } = await import("node:fs/promises");
     const src = await readFile(new URL("./index.ts", import.meta.url), "utf-8");
-    expect(src).toContain(
-      "createChatModel({ provider, model: modelName, temperature: 1, baseUrl }",
-    );
+    const call = src.slice(src.indexOf("createChatModel({")).split("});")[0];
+    expect(call).toMatch(/\bbaseUrl,/);
   });
 });

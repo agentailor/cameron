@@ -19,6 +19,7 @@ import { tasks, type BenchTask } from "./tasks.mts";
  *   pnpm bench:mcp                      every scale the snapshots allow, both arms
  *   BENCH_SCALES=3,5 BENCH_REPEATS=1 pnpm bench:mcp bank-balance
  *   BENCH_COLD=1 pnpm bench:mcp         no prompt-cache hit across conversations
+ *   BENCH_REQUEST_BODY='{"provider":{"only":["openai"],"allow_fallbacks":false}}'   router pin
  */
 
 type Arm = "bind-all" | "disclosure";
@@ -40,6 +41,35 @@ const ARMS = (process.env.BENCH_ARMS?.split(",") as Arm[] | undefined) ?? [
 const REPEATS = Number(process.env.BENCH_REPEATS ?? 5);
 /** Cold cache: every conversation starts with a prefix the provider has never seen. */
 const COLD = process.env.BENCH_COLD === "1";
+
+/** Extra request-body fields as JSON, e.g. a router's provider pin. Recorded in the report. */
+const REQUEST_BODY = process.env.BENCH_REQUEST_BODY
+  ? (JSON.parse(process.env.BENCH_REQUEST_BODY) as Record<string, unknown>)
+  : undefined;
+
+/**
+ * LangChain drops the raw usage block, so a reported `usage.cost` (OpenRouter) is read off the
+ * HTTP response. Runs are sequential, so a before/after difference is one run's cost.
+ */
+const spend = { total: 0, calls: 0 };
+function watchSpend(baseUrl: string): void {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const res = await realFetch(input, init);
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (!url.startsWith(baseUrl) || !res.headers.get("content-type")?.includes("json")) return res;
+    try {
+      const body = (await res.clone().json()) as { usage?: { cost?: unknown } };
+      if (typeof body.usage?.cost === "number") {
+        spend.total += body.usage.cost;
+        spend.calls += 1;
+      }
+    } catch {
+      // Not a usage-bearing body.
+    }
+    return res;
+  };
+}
 
 /** One key per arm, so the provider's dashboard splits the two. Falls back to the usual key. */
 const ARM_KEY: Record<Arm, string | undefined> = {
@@ -66,6 +96,8 @@ interface BenchRun {
   inputTokens: number;
   outputTokens: number;
   cachedTokens: number | null;
+  /** What the endpoint said the run's calls cost, in its own currency; null when it didn't say. */
+  cost: number | null;
   trajectory: string[];
   toolsCorrect: boolean;
   answerCorrect: boolean;
@@ -170,6 +202,7 @@ async function measure(
     provider: MODEL.provider,
     model: MODEL.name,
     baseUrl: MODEL.baseUrl,
+    requestBodyForEval: REQUEST_BODY,
     bypassApprovalForEval: true,
     // A nonce first in the prompt, so nothing sent before can be reused.
     ...(COLD
@@ -184,6 +217,8 @@ ${basePrompt}`,
   })) as Agent;
 
   const t0 = Date.now();
+  const spentBefore = spend.total;
+  const costedBefore = spend.calls;
   try {
     const { capture, steps } = await runTask(agent, task);
     const cached = steps.map((s) => s.cacheRead);
@@ -195,6 +230,7 @@ ${basePrompt}`,
       cachedTokens: cached.every((c) => c === null)
         ? null
         : cached.reduce<number>((n, c) => n + (c ?? 0), 0),
+      cost: spend.calls > costedBefore ? spend.total - spentBefore : null,
       trajectory: capture.trajectory.map((t) => t.name),
       toolsCorrect: await passes(task.tools, capture),
       answerCorrect: await passes(task.answer, capture),
@@ -210,6 +246,7 @@ ${basePrompt}`,
       inputTokens: 0,
       outputTokens: 0,
       cachedTokens: null,
+      cost: null,
       trajectory: [],
       toolsCorrect: false,
       answerCorrect: false,
@@ -234,12 +271,14 @@ function summarize(runs: BenchRun[]) {
       );
       if (cell.length === 0) continue;
       const cached = cell.filter((r) => r.cachedTokens !== null);
+      const costed = cell.filter((r) => r.cost !== null);
       rows.push({
         servers: scale,
         arm,
         runs: cell.length,
         "input tok": Math.round(mean(cell.map((r) => r.inputTokens))),
         "cached tok": cached.length ? Math.round(mean(cached.map((r) => r.cachedTokens!))) : "n/a",
+        cost: costed.length ? mean(costed.map((r) => r.cost!)).toFixed(4) : "n/a",
         steps: mean(cell.map((r) => r.steps.length)).toFixed(1),
         "right tools": pct(cell.map((r) => r.toolsCorrect)),
         "right answer": pct(cell.map((r) => r.answerCorrect)),
@@ -262,6 +301,7 @@ const CSV_COLUMNS = [
   "inputTokens",
   "outputTokens",
   "cachedTokens",
+  "cost",
   "firstStepInput",
   "firstStepCached",
   "toolsCorrect",
@@ -287,6 +327,7 @@ function toCsv(runs: BenchRun[]): string {
       r.inputTokens,
       r.outputTokens,
       r.cachedTokens,
+      r.cost,
       r.steps[0]?.input,
       r.steps[0]?.cacheRead,
       r.toolsCorrect,
@@ -347,6 +388,7 @@ async function main() {
   await prepareDatabase();
   await seed(DATABASE.url);
   process.env.DATABASE_URL = DATABASE.url;
+  if (MODEL.baseUrl) watchSpend(MODEL.baseUrl);
   const { getAgent } = await import("../../src/lib/agent/index.ts");
   const { buildSystemPrompt } = await import("../../src/lib/agent/prompt.ts");
   const { listSkills } = await import("../../src/lib/skills/registry.ts");
@@ -404,6 +446,7 @@ async function main() {
     model: { provider: MODEL.provider, name: MODEL.name },
     repeats: REPEATS,
     coldCache: COLD,
+    requestBody: REQUEST_BODY ?? null,
     scales: worlds.map((w) => ({
       servers: w.scale,
       tools: w.toolCount,
