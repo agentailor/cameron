@@ -29,3 +29,6 @@ eval/viewer.mts
 
 # Generated eval reports (gitignored, but keep them out of `format` runs too).
 eval/results
+
+# Benchmark distractors: real servers' `tools/list`, kept as exported.
+eval/bench/snapshots
