@@ -14,6 +14,11 @@ vi.mock("@/lib/storage/content", () => ({ extractTextContent: vi.fn() }));
 
 const { csvImportTools } = await import("./tools/csvImport");
 
+// documents reaches the S3 client the same way, and the database through its repository.
+vi.mock("@/lib/storage/upload", () => ({ getFileWithType: vi.fn() }));
+vi.mock("@/lib/repositories/documentRepository", () => ({}));
+const { createDocumentTools } = await import("./tools/documents");
+
 describe("listCapabilities", () => {
   it("exposes every built-in tool with a usable description", () => {
     const caps = listCapabilities();
@@ -39,6 +44,15 @@ describe("listCapabilities", () => {
       .map((c) => c.name)
       .sort();
     expect(listed).toEqual(csvImportTools.map((t) => t.name).sort());
+  });
+
+  it("lists the same document tools the agent registers", () => {
+    const listed = listCapabilities()
+      .filter((c) => c.group === "Documents")
+      .map((c) => c.name)
+      .sort();
+    const real = createDocumentTools({ model: {} as never, readWith: "test:model" });
+    expect(listed).toEqual(real.map((t) => t.name).sort());
   });
 
   it("lists the same skill tools the agent registers", async () => {
@@ -75,6 +89,10 @@ describe("listCapabilities", () => {
     for (const g of groups) {
       expect(builtin, `${g} is not spread into builtin`).toContain(`...${g}`);
     }
+    // Built per agent from its own model, so it is a call, not an array.
+    expect(builtin, "document tools are not spread into builtin").toContain(
+      "...createDocumentTools(",
+    );
     // ./tools/config is imported under an ALIAS because of the collision above, and it is the
     // alias that must feed `builtin` — spreading the shadowed local name is the bug this pins.
     const aliasImport = new RegExp(String.raw`configTools as (\w+) \} from "\./tools/config"`).exec(

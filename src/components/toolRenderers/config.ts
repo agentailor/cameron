@@ -23,7 +23,14 @@ export type ArgsRenderer =
   | "txnUpdate"
   | "txnDelete"
   | "json";
-export type ResultRenderer = "table" | "receipt" | "chart" | "diff" | "txnRows" | "json";
+export type ResultRenderer =
+  | "table"
+  | "receipt"
+  | "chart"
+  | "diff"
+  | "txnRows"
+  | "document"
+  | "json";
 
 export interface ToolRenderers {
   /** null = the call has no arguments worth showing; render the name alone. */
@@ -39,6 +46,7 @@ export const TOOL_RENDERERS: Record<string, ToolRenderers> = {
   list_categories: { args: null, result: "table" },
   describe_finance_schema: { args: null, result: "json" },
   inspect_csv: { args: "file", result: "table" },
+  read_document: { args: "fields", result: "document" },
   log_expense: { args: "expense", result: "receipt" },
   // On the approval card an edit shows its matched validation — see services/editPreview.ts.
   validate_transaction_update: { args: "txnUpdate", result: "diff" },
