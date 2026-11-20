@@ -13,6 +13,7 @@ import { categoryTools } from "./tools/categories";
 import { configTools as settingsTools } from "./tools/config";
 import { chartTools } from "./tools/charts";
 import { skillTools } from "./tools/skills";
+import { createDocumentTools } from "./tools/documents";
 import { listSkills } from "@/lib/skills/registry";
 import { createAgent, humanInTheLoopMiddleware } from "langchain";
 import { mcpServerDisclosureMiddleware } from "@agentailor/mcp-disclosure";
@@ -68,6 +69,8 @@ async function buildAgent(cfg?: AgentConfigOptions) {
     ...settingsTools,
     ...skillTools,
     ...chartTools,
+    // Documents are read by the agent's own model: the provider the owner chose.
+    ...createDocumentTools({ model: llm, readWith: `${provider}:${modelName}` }),
   ];
   const builtinTools = (needsSchemaSanitizing(provider)
     ? builtin.map((t) => sanitizeTool(t as unknown as DynamicStructuredTool))

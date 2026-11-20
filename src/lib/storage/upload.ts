@@ -135,6 +135,16 @@ export async function getFile(key: string): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+/** A file's bytes with the content type it was uploaded as. */
+export async function getFileWithType(
+  key: string,
+): Promise<{ buffer: Buffer; contentType: string | undefined }> {
+  const response = await s3Client.send(new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
+  if (!response.Body) throw new Error("File not found");
+  const bytes = await response.Body.transformToByteArray();
+  return { buffer: Buffer.from(bytes), contentType: response.ContentType };
+}
+
 export interface StoredFile {
   body: ReadableStream;
   contentType?: string;

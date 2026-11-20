@@ -164,6 +164,24 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     string, not an enum, because the skill names are already in the prompt verbatim: a wrong name is
     a mistyped copy, and `availableSkills` in the `unknown_skill` payload corrects it in one turn
     (an enum would also break the legitimate zero-skills case, since `z.enum([])` is invalid).
+  - `src/lib/agent/tools/documents.ts` — `read_document` (read-only), full detail in
+    [docs/DOCUMENTS.md](docs/DOCUMENTS.md). The load-bearing invariants:
+    - **It is the only way the model sees an image or PDF.** Attachments go into the message as a
+      `fileKey` reference (`storage/content.ts`), never as bytes, so no prompt rule is needed to
+      route uploads through the tool.
+    - **Read with the agent's own model**: `createDocumentTools({ model: llm, readWith })` is built
+      inside `buildAgent`, so the eval path's explicit model reads documents too. The vision calls
+      (`src/lib/documents/vision.ts`) carry the tool's callbacks for tracing and the `nostream`
+      tag — without it LangGraph streams the reader's output into the chat as the agent's words.
+    - **One reading per distinct file**, stored on `document` keyed by the sha256 of its bytes. A
+      re-upload returns the stored reading with `readBefore: true` and no model call; only a
+      `question` costs a call on a file already read.
+    - **Unreadable means null.** The reading schema (`src/lib/documents/reading.ts`, server-owned)
+      lists illegible fields in `fields.unreadable`, and `normalizeReading` nulls any value the
+      model put beside one — a value next to "unreadable" is the guess the agent would log.
+    - **Failures are payloads**: `file_unreadable`, `unsupported_type`, `timeout`,
+      `invalid_reading`, `model_cannot_read` (names the model, quotes the provider, tells the agent
+      not to describe what it has not seen). A failed read stores nothing.
 - **Tool Approval**: Human-in-the-loop via `humanInTheLoopMiddleware`. Approval is gated **per-tool**
   through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
   `import_transactions_csv`, `create_category`, `set_config`, `update_transaction`,
@@ -272,9 +290,10 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   `drizzle.config.ts`.
 - **Repository seam**: application code NEVER imports Drizzle directly. All DB access goes through
   the `src/lib/repositories/` files (`threadRepository`, `mcpServerRepository`, `transactionRepository`,
-  `categoryRepository`, `analyticsRepository`, `configRepository`, `mcpServerCatalogRepository`), which return **plain domain objects**
+  `categoryRepository`, `analyticsRepository`, `configRepository`, `mcpServerCatalogRepository`, `documentRepository`), which return **plain domain objects**
   (`ThreadRecord`, `MCPServer` in `src/types/mcp.ts`; `Transaction`, `Category` in
-  `src/types/finance.ts`; `ConfigEntry` in `src/types/config.ts`), not Drizzle row types. This keeps the persistence layer swappable — replacing the ORM touches only these files.
+  `src/types/finance.ts`; `ConfigEntry` in `src/types/config.ts`; `DocumentRecord` in
+  `src/types/document.ts`), not Drizzle row types. This keeps the persistence layer swappable — replacing the ORM touches only these files.
   Add new DB access as repository functions, not inline queries.
 - **Sanctioned raw-SQL exception**: `analyticsRepository.runReadOnlyQuery` runs agent-authored SQL for
   the `run_sql` tool. It is the ONE place raw SQL executes; it runs inside a Drizzle `db.transaction`
@@ -334,6 +353,9 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   still, don't put credentials there.
 - **Tables**: `thread` (minimal metadata; actual history in LangGraph checkpoints) and `mcp_server`
   (stdio/http with conditional fields + OAuth token/state columns; JSON columns for flexible config).
+  `document` holds one stored reading per distinct file (unique `content_hash`); it is not granted
+  to `cameron_analytics`, so `run_sql` cannot read it, and `drizzle.config.ts`'s `tablesFilter`
+  must list it (and any new table) or drizzle-kit ignores it.
   `id` columns are text (app-generated uuids); `updated_at` is app-managed (set on writes).
 - **Naming convention**: physical DB identifiers are lowercase `snake_case` (Postgres norm — avoids
   forced quoting). TypeScript property names stay camelCase, mapped via the column helper's first
@@ -532,7 +554,9 @@ To switch to AWS S3, Cloudflare R2, or other S3-compatible storage:
 1. User selects files in `MessageInput` component
 2. Files uploaded to MinIO via `/api/agent/upload` endpoint
 3. File metadata (URL, key, name, type, size) stored in message options
-4. Files can be passed to agent for multimodal processing
+4. The model gets a `fileKey` reference, never the bytes (`processAttachmentsForAI` in
+   `src/lib/storage/content.ts`); it reads an image or PDF with `read_document`, a CSV with
+   `inspect_csv`
 
 ### Storage Libraries
 

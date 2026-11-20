@@ -12,6 +12,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+// Relative, not "@/": drizzle-kit loads this file outside the app's path aliases.
+import type { DocumentReading } from "../documents/reading";
 
 /**
  * Drizzle table definitions.
@@ -145,6 +147,28 @@ export const transactions = pgTable(
       table.externalId.asc(),
     ),
   ],
+);
+
+// --- Documents (v6) ---
+// One row per distinct file the agent has read, keyed by the hash of its bytes: a re-upload of
+// the same file resolves to the same row and its stored reading, so it is read (and paid for) once.
+export const documents = pgTable(
+  "document",
+  {
+    id: text("id").primaryKey().notNull(),
+    // The upload this row was first read from. A later re-upload has a new key and the same hash.
+    fileKey: text("file_key").notNull(),
+    contentHash: text("content_hash").notNull(),
+    mimeType: text("mime_type").notNull(),
+    reading: jsonb("reading").$type<DocumentReading>().notNull(),
+    // "provider:model" that produced the reading, so a bad reading can be traced to its reader.
+    readWith: text("read_with").notNull(),
+    createdAt: timestamp("created_at", { precision: 3, mode: "string" })
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { precision: 3, mode: "string" }).notNull(),
+  },
+  (table) => [uniqueIndex("document_content_hash_key").using("btree", table.contentHash.asc())],
 );
 
 /**

@@ -2,26 +2,6 @@ import { getFile } from "./upload";
 import { FileAttachment } from "@/types/message";
 
 /**
- * Download a file from S3/MinIO and convert to base64
- * @param key File key in bucket
- * @returns Base64 encoded string
- */
-export async function downloadFileAsBase64(key: string): Promise<string> {
-  const buffer = await getFile(key);
-  return buffer.toString("base64");
-}
-
-/**
- * Create a data URL for an image file
- * @param attachment File attachment metadata
- * @returns Data URL string (e.g., "data:image/jpeg;base64,...")
- */
-export async function getFileDataUrl(attachment: FileAttachment): Promise<string> {
-  const base64 = await downloadFileAsBase64(attachment.key);
-  return `data:${attachment.type};base64,${base64}`;
-}
-
-/**
  * Extract text content from a text file
  * @param key File key in bucket
  * @returns Text content as string
@@ -29,16 +9,6 @@ export async function getFileDataUrl(attachment: FileAttachment): Promise<string
 export async function extractTextContent(key: string): Promise<string> {
   const buffer = await getFile(key);
   return buffer.toString("utf-8");
-}
-
-/**
- * Prepare a PDF file for AI processing (base64 data URL)
- * @param attachment PDF file attachment metadata
- * @returns Data URL for PDF
- */
-export async function preparePdfForAI(attachment: FileAttachment): Promise<string> {
-  const base64 = await downloadFileAsBase64(attachment.key);
-  return `data:application/pdf;base64,${base64}`;
 }
 
 /**
@@ -52,93 +22,65 @@ interface FileMetadata {
   size: number;
 }
 
+export interface AttachmentReference {
+  type: "text";
+  text: string;
+  file_metadata: FileMetadata;
+}
+
+const TEXT_EXTENSIONS = ["md", "markdown", "txt", "csv"];
+
+function isDocument(attachment: FileAttachment): boolean {
+  return attachment.type.startsWith("image/") || attachment.type === "application/pdf";
+}
+
+function isText(attachment: FileAttachment): boolean {
+  const extension = attachment.name.split(".").pop()?.toLowerCase() || "";
+  return (
+    attachment.type.startsWith("text/") ||
+    attachment.type === "application/csv" ||
+    (attachment.type === "application/octet-stream" && TEXT_EXTENSIONS.includes(extension))
+  );
+}
+
 /**
- * Process file attachments and convert to AI-compatible format
- * @param attachments Array of file attachments
- * @returns Array of content items for LangChain HumanMessage
+ * Turn attachments into the content items of the user's message.
+ *
+ * Every attachment goes to the model as a REFERENCE carrying its fileKey, never inlined: inline
+ * bytes would sit in the checkpoint and be re-sent every turn, and a CSV's rows must never reach
+ * the model at all. The agent reads a file with a tool — `read_document` for an image or PDF,
+ * `inspect_csv` for a CSV.
  */
 export async function processAttachmentsForAI(
   attachments: FileAttachment[],
-): Promise<
-  Array<{ type: string; image_url?: { url: string }; text?: string; file_metadata?: FileMetadata }>
-> {
-  const contentItems: Array<{
-    type: string;
-    image_url?: { url: string };
-    text?: string;
-    file_metadata?: FileMetadata;
-  }> = [];
+): Promise<AttachmentReference[]> {
+  const items: AttachmentReference[] = [];
 
   for (const attachment of attachments) {
-    try {
-      // Extract file extension for fallback detection
-      const extension = attachment.name.split(".").pop()?.toLowerCase() || "";
+    const document = isDocument(attachment);
+    if (!document && !isText(attachment)) continue;
 
-      // Process images
-      if (attachment.type.startsWith("image/")) {
-        const dataUrl = await getFileDataUrl(attachment);
-        contentItems.push({
-          type: "image_url",
-          image_url: { url: dataUrl },
-          file_metadata: {
-            url: attachment.url,
-            key: attachment.key,
-            name: attachment.name,
-            type: attachment.type,
-            size: attachment.size,
-          },
-        });
-      }
-      // Process PDFs
-      else if (attachment.type === "application/pdf") {
-        const dataUrl = await preparePdfForAI(attachment);
-        contentItems.push({
-          type: "image_url", // Gemini uses image_url type for PDFs too
-          image_url: { url: dataUrl },
-          file_metadata: {
-            url: attachment.url,
-            key: attachment.key,
-            name: attachment.name,
-            type: attachment.type,
-            size: attachment.size,
-          },
-        });
-      }
-      // Text-like files (markdown, plain text, CSV) are sent as a REFERENCE, not inlined.
-      // Inlining raw content (e.g. a whole CSV export) bloats the model's context and defeats
-      // the CSV-import handshake, whose whole point is that rows never reach the model. Instead
-      // we surface the fileKey so the agent can pull/inspect the file on demand via a tool
-      // (e.g. inspect_csv). Images and PDFs still go inline above (the model reads them directly).
-      // Checks both MIME type and extension (for application/octet-stream cases).
-      else if (
-        attachment.type.startsWith("text/") ||
-        attachment.type === "application/csv" ||
-        (attachment.type === "application/octet-stream" &&
-          ["md", "markdown", "txt", "csv"].includes(extension))
-      ) {
-        contentItems.push({
-          type: "text",
-          text:
-            `\n\n[Attached file: ${attachment.name} ` +
-            `(${attachment.type}, ${attachment.size} bytes). fileKey: ${attachment.key}]\n` +
-            `The file's contents are NOT included here. To read or import it, call the ` +
-            `appropriate tool with this fileKey (e.g. inspect_csv for a CSV).`,
-          // Preserved so the chat UI still renders the file chip/download link, and so this
-          // reference stays out of the user-visible bubble (getMessageContent skips file_metadata).
-          file_metadata: {
-            url: attachment.url,
-            key: attachment.key,
-            name: attachment.name,
-            type: attachment.type,
-            size: attachment.size,
-          },
-        });
-      }
-    } catch (error) {
-      console.error(`Failed to process attachment ${attachment.name}:`, error);
-      throw new Error(`Failed to process attachment ${attachment.name}`);
-    }
+    items.push({
+      type: "text",
+      text:
+        `\n\n[Attached file: ${attachment.name} ` +
+        `(${attachment.type}, ${attachment.size} bytes). fileKey: ${attachment.key}]\n` +
+        (document
+          ? "Its contents are NOT included here. To see what it says, call read_document with " +
+            "this fileKey."
+          : "The file's contents are NOT included here. To read or import it, call the " +
+            "appropriate tool with this fileKey (e.g. inspect_csv for a CSV)."),
+      // Keeps the chip in the chat UI, and keeps this reference out of the visible bubble
+      // (getMessageContent skips items with file_metadata).
+      file_metadata: {
+        url: attachment.url,
+        key: attachment.key,
+        name: attachment.name,
+        type: attachment.type,
+        size: attachment.size,
+      },
+    });
   }
 
-  return contentItems;
+  return items;
 }
