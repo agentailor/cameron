@@ -4,6 +4,7 @@
 import "@/app/api/agent/threads/schema";
 import "@/app/api/agent/stream/schema";
 import "@/app/api/agent/upload/schema";
+import "@/app/api/files/[key]/schema";
 import "@/app/api/agent/history/[threadId]/schema";
 import "@/app/api/mcp-servers/schema";
 import "@/app/api/mcp-servers/[id]/tools/schema";

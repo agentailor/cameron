@@ -53,7 +53,7 @@ services:
       /bin/sh -c "
       /usr/bin/mc alias set localminio http://minio:9000 minioadmin minioadmin;
       /usr/bin/mc mb localminio/uploads --ignore-existing;
-      /usr/bin/mc anonymous set download localminio/uploads;
+      /usr/bin/mc anonymous set none localminio/uploads;
       exit 0;
       "
 
