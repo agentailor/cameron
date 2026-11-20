@@ -2,20 +2,7 @@ import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { s3Client, BUCKET_NAME } from "./s3-client";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-
-/**
- * Base URL the BROWSER uses to fetch an uploaded file — not the one the server uploads through.
- *
- * They are the same value only while server and browser share a host. Containerized, the server
- * reaches MinIO at `http://minio:9000` (the compose network) while the browser must still be handed
- * `http://localhost:9100`, so `S3_ENDPOINT` alone cannot serve both: the upload succeeds and the
- * returned link is unreachable, which looks exactly like a working upload.
- *
- * Unset outside Docker, where the fallback keeps the host workflow byte-identical.
- */
-function publicEndpoint(): string {
-  return process.env.S3_PUBLIC_URL || process.env.S3_ENDPOINT || "";
-}
+import { fileUrl } from "./fileUrl";
 
 function sanitizeFilenameForHeader(filename: string): string | undefined {
   // Prevent HTTP header injection (CRLF) and other control characters.
@@ -58,7 +45,7 @@ function buildContentDispositionAttachment(originalFilename: string): string | u
  * @param key Unique file key (path in bucket)
  * @param contentType MIME type of the file
  * @param originalFilename Original filename for Content-Disposition header
- * @returns Public URL of the uploaded file
+ * @returns App-relative URL the browser fetches the file from
  */
 export async function uploadFile(
   buffer: Buffer,
@@ -81,8 +68,7 @@ export async function uploadFile(
 
   await s3Client.send(command);
 
-  // Return public URL (MinIO bucket is set to public download in compose.yaml)
-  return `${publicEndpoint()}/${BUCKET_NAME}/${key}`;
+  return fileUrl(key);
 }
 
 /**
@@ -91,7 +77,7 @@ export async function uploadFile(
  * @param key Unique file key (path in bucket)
  * @param contentType MIME type of the file
  * @param originalFilename Original filename for Content-Disposition header
- * @returns Public URL of the uploaded file
+ * @returns App-relative URL the browser fetches the file from
  */
 export async function uploadLargeFile(
   buffer: Buffer,
@@ -120,7 +106,7 @@ export async function uploadLargeFile(
 
   await upload.done();
 
-  return `${publicEndpoint()}/${BUCKET_NAME}/${key}`;
+  return fileUrl(key);
 }
 
 /**
@@ -147,6 +133,30 @@ export async function getFile(key: string): Promise<Buffer> {
   }
 
   return Buffer.concat(chunks);
+}
+
+export interface StoredFile {
+  body: ReadableStream;
+  contentType?: string;
+  contentLength?: number;
+  contentDisposition?: string;
+}
+
+/** Stream an object for the file route; `null` when the key does not exist. */
+export async function openFile(key: string): Promise<StoredFile | null> {
+  try {
+    const response = await s3Client.send(new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
+    if (!response.Body) return null;
+    return {
+      body: response.Body.transformToWebStream(),
+      contentType: response.ContentType,
+      contentLength: response.ContentLength,
+      contentDisposition: response.ContentDisposition,
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === "NoSuchKey") return null;
+    throw error;
+  }
 }
 
 /**

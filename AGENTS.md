@@ -490,7 +490,14 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
 ### MinIO Setup (Development)
 
 - **S3-compatible object storage** runs in Docker alongside Postgres
-- **Bucket**: `uploads` (auto-created on startup, public download access)
+- **Bucket**: `uploads`, auto-created and **private** (`mc anonymous set none` on every `up`, so
+  older volumes that were public get closed too). Uploads hold receipts and statements, so a
+  bucket anyone on the network can read breaks the "your data, your infrastructure" rule.
+- **Browsers never talk to MinIO.** They fetch `/api/files/{key}` (`src/app/api/files/[key]/route.ts`),
+  which serves only keys the upload route mints (`<uuid>.<ext>`, checked by `isServableFileKey`
+  in the zero-import leaf `src/lib/storage/fileUrl.ts`). `HumanMessage` builds the URL from the
+  stored KEY, not the stored `url`, because threads from before this change saved direct bucket
+  links. This also removed `S3_PUBLIC_URL`: only the server needs to reach `S3_ENDPOINT`.
 - **Web Console**: http://localhost:9101 (credentials: minioadmin/minioadmin)
 - **S3 API**: http://localhost:9100
 

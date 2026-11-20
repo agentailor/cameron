@@ -522,12 +522,22 @@ Handles file validation and storage:
 - Validates MIME type and file size
 - Handles `application/octet-stream` for text files by extension
 - Uploads to MinIO/S3 with unique keys
-- Returns file metadata (URL, key, name, type, size)
+- Returns file metadata (URL, key, name, type, size). The URL is app-relative
+  (`/api/files/{key}`): the bucket is private and the browser never reaches it directly.
+
+#### File Route (`src/app/api/files/[key]/route.ts`)
+
+Streams an upload back from the private bucket. It serves only keys the upload route mints
+(`<uuid>.<ext>`), so other objects in the bucket (eval fixtures, anything added by hand) are not
+reachable through it. Responses carry the stored `Content-Type` and `Content-Disposition`, plus
+`X-Content-Type-Options: nosniff` and a sandboxing CSP, because this is user-supplied content served
+from the app's own origin.
 
 #### Storage Utilities (`src/lib/storage/`)
 
 - **s3-client.ts**: AWS SDK S3 client configuration
-- **upload.ts**: Upload functions with multipart support for large files
+- **upload.ts**: Upload functions with multipart support for large files, and `openFile()` for the file route
+- **fileUrl.ts**: `fileUrl(key)` and `isServableFileKey()`, a zero-import leaf safe for client components
 - **validation.ts**: File type and size validation rules
 - **content.ts**: File processing for AI (base64 conversion, text extraction)
 

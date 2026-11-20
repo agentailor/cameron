@@ -72,7 +72,7 @@ services:
       /bin/sh -c "
       /usr/bin/mc alias set localminio http://minio:9000 ${S3_ACCESS_KEY_ID:-minioadmin} ${S3_SECRET_ACCESS_KEY:-minioadmin};
       /usr/bin/mc mb localminio/${S3_BUCKET_NAME:-uploads} --ignore-existing;
-      /usr/bin/mc anonymous set download localminio/${S3_BUCKET_NAME:-uploads};
+      /usr/bin/mc anonymous set none localminio/${S3_BUCKET_NAME:-uploads};
       exit 0;
       "
 
@@ -148,7 +148,7 @@ services:
       /bin/sh -c "
       /usr/bin/mc alias set localminio http://minio-prod:9000 ${S3_ACCESS_KEY_ID:-minioadmin} ${S3_SECRET_ACCESS_KEY:-minioadmin};
       /usr/bin/mc mb localminio/${S3_BUCKET_NAME:-uploads} --ignore-existing;
-      /usr/bin/mc anonymous set download localminio/${S3_BUCKET_NAME:-uploads};
+      /usr/bin/mc anonymous set none localminio/${S3_BUCKET_NAME:-uploads};
       exit 0;
       "
 
@@ -198,10 +198,8 @@ services:
       # Service names, not localhost — inside the network, localhost is the container itself.
       DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db-prod:5432/${POSTGRES_PROD_DB:-mydb}
 
-      # The two halves of the split: S3_ENDPOINT is how the SERVER reaches MinIO, S3_PUBLIC_URL is
-      # what gets handed to the BROWSER in an upload's returned link. Same store, different routes.
+      # Only the server reaches MinIO; the browser fetches files through /api/files.
       S3_ENDPOINT: http://minio-prod:9000
-      S3_PUBLIC_URL: http://localhost:${S3_PROD_API_PORT:-9102}
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-minioadmin}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-minioadmin}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-uploads}

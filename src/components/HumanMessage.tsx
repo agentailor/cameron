@@ -8,6 +8,7 @@ import type {
 import { UserIcon, FileText, Image as ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getMessageContent } from "@/services/messageUtils";
+import { fileUrl } from "@/lib/storage/fileUrl";
 
 interface HumanMessageProps {
   message: MessageResponse;
@@ -50,6 +51,7 @@ export const HumanMessage = ({ message }: HumanMessageProps) => {
           )}
         >
           {/* File Attachments */}
+          {/* URLs come from the key: older threads stored direct bucket links, now private. */}
           {attachments.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
               {attachments.map((attachment) => (
@@ -61,7 +63,7 @@ export const HumanMessage = ({ message }: HumanMessageProps) => {
                     <>
                       <ImageIcon className="h-3.5 w-3.5" />
                       <img
-                        src={attachment.url}
+                        src={fileUrl(attachment.key)}
                         alt={attachment.name}
                         className="my-0 h-20 w-20 rounded object-cover"
                       />
@@ -70,7 +72,7 @@ export const HumanMessage = ({ message }: HumanMessageProps) => {
                     <>
                       <FileText className="h-3.5 w-3.5" />
                       <a
-                        href={attachment.url}
+                        href={fileUrl(attachment.key)}
                         download={attachment.name}
                         className="max-w-[150px] truncate hover:underline"
                       >
