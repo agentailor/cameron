@@ -1,51 +1,33 @@
-import { createHash } from "node:crypto";
 import { tool } from "@langchain/core/tools";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { z } from "zod";
-import * as documentRepo from "@/lib/repositories/documentRepository";
 import { getFileWithType } from "@/lib/storage/upload";
-import {
-  askWithModel,
-  isReadableType,
-  readWithModel,
-  type DocumentFile,
-} from "@/lib/documents/vision";
+import { isReadableType, readWithModel } from "@/lib/documents/vision";
 import type { DocumentReading } from "@/lib/documents/reading";
 
 /**
  * `read_document`: the only way the agent sees an uploaded image or PDF. Attachments reach the
- * model as a fileKey reference (storage/content.ts), so every one goes through here, and the
- * reading is stored by content hash so the same bytes are read once. See docs/DOCUMENTS.md.
+ * model as a fileKey reference (storage/content.ts), so every one goes through here. Nothing is
+ * stored: the file is the source of truth and is read again when needed. See docs/DOCUMENTS.md.
  */
 
-/** Transcription returned to the agent; the full text stays on the stored reading. */
-export const MAX_TEXT_CHARS = 6000;
-
 export interface DocumentToolsOptions {
-  /** The agent's own model — v6 reads documents with the provider the owner chose. */
+  /** The agent's own model — documents go to the provider the owner chose. */
   model: BaseChatModel;
-  /** "provider:model", stored with each reading and named in errors. */
+  /** "provider:model", named in errors. */
   readWith: string;
 }
 
-function readingPayload(
-  documentId: string,
-  reading: DocumentReading,
-  extra: { answer?: string; readBefore: boolean },
-) {
-  const truncated = reading.text.length > MAX_TEXT_CHARS;
+function readingPayload(reading: DocumentReading, answer: string | undefined) {
   return {
     ok: true,
-    documentId,
     kind: reading.kind,
     summary: reading.summary,
+    language: reading.language,
     ...(reading.fields ? { fields: reading.fields } : {}),
-    text: truncated ? reading.text.slice(0, MAX_TEXT_CHARS) : reading.text,
-    truncated,
-    ...(truncated ? { textLength: reading.text.length } : {}),
-    ...(extra.answer !== undefined ? { answer: extra.answer } : {}),
-    ...(extra.readBefore ? { readBefore: true } : {}),
+    text: reading.text,
+    ...(answer !== undefined ? { answer } : {}),
   };
 }
 
@@ -60,13 +42,16 @@ function failure(error: unknown, readWith: string) {
         "do not describe the document's contents, you have not seen them.",
     };
   }
-  const code = (error as { lc_error_code?: string } | null)?.lc_error_code;
-  if (
-    name === "ReadingParseError" ||
-    name === "ZodError" ||
-    name === "OutputParserException" ||
-    code === "OUTPUT_PARSING_FAILURE"
-  ) {
+  if (name === "ReadingTooLongError") {
+    return {
+      error: "too_long",
+      message:
+        `The document has more text than ${readWith} can return in one reply, so it was not ` +
+        "read. Retrying will not help. Tell the user; for a long PDF, ask for just the pages " +
+        "that matter. Do not describe the document's contents.",
+    };
+  }
+  if (name === "InvalidReadingError") {
     return {
       error: "invalid_reading",
       message:
@@ -108,40 +93,14 @@ export function createDocumentTools({ model, readWith }: DocumentToolsOptions) {
         });
       }
 
-      const doc: DocumentFile = {
-        data: file.buffer,
-        mimeType: file.contentType,
-        filename: input.fileKey,
-      };
-      const contentHash = createHash("sha256").update(file.buffer).digest("hex");
-      const opts = { callbacks: config?.callbacks };
-
       try {
-        const existing = await documentRepo.getByHash(contentHash);
-        if (existing) {
-          // Only a question costs a call on a file already read; its reading is reused as stored.
-          const answer = input.question
-            ? await askWithModel(model, doc, input.question, opts)
-            : undefined;
-          return JSON.stringify(
-            readingPayload(existing.id, existing.reading, { answer, readBefore: true }),
-          );
-        }
-
-        const { reading, answer } = await readWithModel(model, doc, input.question, opts);
-        const stored = await documentRepo.create({
-          fileKey: input.fileKey,
-          contentHash,
-          mimeType: file.contentType,
-          reading,
-          readWith,
-        });
-        return JSON.stringify(
-          readingPayload(stored.id, stored.reading, {
-            answer,
-            readBefore: stored.fileKey !== input.fileKey,
-          }),
+        const { reading, answer } = await readWithModel(
+          model,
+          { data: file.buffer, mimeType: file.contentType, filename: input.fileKey },
+          input.question,
+          { callbacks: config?.callbacks },
         );
+        return JSON.stringify(readingPayload(reading, answer));
       } catch (err) {
         return JSON.stringify(failure(err, readWith));
       }
@@ -155,8 +114,8 @@ export function createDocumentTools({ model, readWith }: DocumentToolsOptions) {
         "summary and a faithful transcription; for a receipt or invoice also `fields` (merchant, " +
         "date as printed, total, subtotal, tax, tip, currency). A field the reader could not make " +
         "out is null and named in `fields.unreadable`: never fill it in yourself, not even by " +
-        "adding up other lines — ask the user. `truncated: true` means `text` was cut short. " +
-        "Read-only — runs without approval and writes nothing to the ledger.",
+        "adding up other lines — ask the user. Each call reads the file again, so call it once " +
+        "per file and reuse the result. Read-only — runs without approval and writes nothing.",
       schema: z.object({
         fileKey: z
           .string()
@@ -167,8 +126,7 @@ export function createDocumentTools({ model, readWith }: DocumentToolsOptions) {
           .optional()
           .describe(
             "Only for something a transcription cannot carry — layout, a stamp, a logo, which " +
-              "line a handwritten note sits on. Leave it out to just read the document; a " +
-              "question costs an extra model call on a file already read.",
+              "line a handwritten note sits on. It is answered in the same read.",
           ),
       }),
     },

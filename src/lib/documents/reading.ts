@@ -40,6 +40,10 @@ export const DocumentReadingSchema = z.object({
     .enum(DOCUMENT_KINDS)
     .describe("receipt: proof of a purchase; invoice: a bill; else other"),
   summary: z.string().describe("One line saying what the document is"),
+  language: z
+    .string()
+    .nullable()
+    .describe("ISO 639-1 code of the document's main language (fr, de, ja…); null if none"),
   text: z
     .string()
     .describe(
