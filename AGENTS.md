@@ -164,6 +164,10 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     string, not an enum, because the skill names are already in the prompt verbatim: a wrong name is
     a mistyped copy, and `availableSkills` in the `unknown_skill` payload corrects it in one turn
     (an enum would also break the legitimate zero-skills case, since `z.enum([])` is invalid).
+  - `src/lib/agent/tools/documents.ts` — `read_document` (read-only): the only way the model sees
+    an uploaded image or PDF, read with the agent's own model. The reader, its prompt, its evals
+    (`pnpm eval:reader`) and the untrusted-document rule are all in
+    [docs/DOCUMENTS.md](docs/DOCUMENTS.md) — read it before changing `src/lib/documents/`.
 - **Tool Approval**: Human-in-the-loop via `humanInTheLoopMiddleware`. Approval is gated **per-tool**
   through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
   `import_transactions_csv`, `create_category`, `set_config`, `update_transaction`,
@@ -183,10 +187,11 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
   way to learn what Cameron can do isn't reading the source. Data comes from
   `listCapabilities()` in `src/lib/agent/capabilities.ts`, which is derived from the same tool arrays
   `index.ts` registers — a new tool appears with no UI edit. That module is deliberately a **leaf**:
-  it must not import `agent/index.ts`. Two groups are hand-transcribed rather than imported, both
-  because the real module reaches something that blows up at module load: `tools/csvImport.ts`
-  imports the S3 client (throws without S3 env vars), and `tools/skills.ts` reaches the registry
-  (reads the filesystem). `capabilities.test.ts` pins both to the real tools so they can't drift.
+  it must not import `agent/index.ts`. Three groups are hand-transcribed rather than imported, all
+  because the real module reaches something that blows up at module load: `tools/csvImport.ts` and
+  `tools/documents.ts` import the S3 client (throws without S3 env vars), and `tools/skills.ts`
+  reaches the registry (reads the filesystem). `capabilities.test.ts` pins them to the real tools
+  so they can't drift.
   Deliberately minimal — the design is expected to change.
 
 ### Skills (`skills/` + `src/lib/skills/`)
@@ -334,6 +339,7 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   still, don't put credentials there.
 - **Tables**: `thread` (minimal metadata; actual history in LangGraph checkpoints) and `mcp_server`
   (stdio/http with conditional fields + OAuth token/state columns; JSON columns for flexible config).
+  `drizzle.config.ts`'s `tablesFilter` must list every app table, or drizzle-kit ignores it.
   `id` columns are text (app-generated uuids); `updated_at` is app-managed (set on writes).
 - **Naming convention**: physical DB identifiers are lowercase `snake_case` (Postgres norm — avoids
   forced quoting). TypeScript property names stay camelCase, mapped via the column helper's first
@@ -532,7 +538,9 @@ To switch to AWS S3, Cloudflare R2, or other S3-compatible storage:
 1. User selects files in `MessageInput` component
 2. Files uploaded to MinIO via `/api/agent/upload` endpoint
 3. File metadata (URL, key, name, type, size) stored in message options
-4. Files can be passed to agent for multimodal processing
+4. The model gets a `fileKey` reference, never the bytes (`processAttachmentsForAI` in
+   `src/lib/storage/content.ts`); it reads an image or PDF with `read_document`, a CSV with
+   `inspect_csv`
 
 ### Storage Libraries
 

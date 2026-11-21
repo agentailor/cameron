@@ -44,6 +44,7 @@ eval/results/report-*.json
 eval/results/report-*.html
 eval/results/latest.json
 eval/results/latest.html
+src/lib/documents/eval/results/
 
 # vercel
 .vercel

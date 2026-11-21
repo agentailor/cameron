@@ -496,3 +496,9 @@ recorded reason is a tracked finding; a deleted one is lost.
   `toolResultMatches` scans payloads, but independently — nothing asserts "the call with THESE args
   returned THAT result". Fine while a tool is called once per case; a rejected `set_config`
   followed by a good one satisfies both graders separately.
+
+## Reader evals live elsewhere
+
+The document reader has its own small suite, `pnpm eval:reader`, beside it in
+`src/lib/documents/eval/` (see docs/DOCUMENTS.md). It grades one model call against fixtures, so
+it reuses this harness's `MODEL` and `GradeResult` but none of its threads, seeds or approvals.

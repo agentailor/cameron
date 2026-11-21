@@ -495,23 +495,28 @@ HTTP MCP servers may require OAuth 2.0 authentication. See [OAuth Documentation]
 
 ## 📁 File Upload & Storage
 
-The application supports multimodal AI conversations through file uploads. Files are stored in S3-compatible storage (MinIO for development) and processed for AI consumption.
+Files are stored in S3-compatible storage (MinIO for development). The model never receives a
+file's bytes in the chat: every attachment reaches it as a reference carrying the file's key, and
+the agent reads the file with a tool — `read_document` for an image or PDF, `inspect_csv` for a CSV.
+Inline bytes would sit in the conversation checkpoint and be re-sent on every later turn.
 
 ### Upload Flow
 
 ```
 User → MessageInput → Upload API → MinIO/S3 → File Metadata
                                         ↓
-Agent Request ← processAttachmentsForAI ← Download & Convert to Base64
+Agent Request ← processAttachmentsForAI ← "[Attached file: … fileKey: <key>]" reference
+                                        ↓
+              read_document / inspect_csv (tool call, by fileKey)
 ```
 
 ### Supported File Types
 
-| Type      | Extensions | Max Size | AI Processing         |
-| --------- | ---------- | -------- | --------------------- |
-| Images    | PNG, JPEG  | 5MB      | Base64 data URL       |
-| Documents | PDF        | 10MB     | Base64 data URL       |
-| Text      | MD, TXT    | 2MB      | UTF-8 text extraction |
+| Type      | Extensions   | Max Size | Read by                                 |
+| --------- | ------------ | -------- | --------------------------------------- |
+| Images    | PNG, JPEG    | 5MB      | `read_document` (vision, see DOCUMENTS) |
+| Documents | PDF          | 10MB     | `read_document` (vision, see DOCUMENTS) |
+| Text      | MD, TXT, CSV | 2MB      | `inspect_csv` / UTF-8 text extraction   |
 
 ### Key Components
 
@@ -539,9 +544,9 @@ from the app's own origin.
 - **upload.ts**: Upload functions with multipart support for large files, and `openFile()` for the file route
 - **fileUrl.ts**: `fileUrl(key)` and `isServableFileKey()`, a zero-import leaf safe for client components
 - **validation.ts**: File type and size validation rules
-- **content.ts**: File processing for AI (base64 conversion, text extraction)
+- **content.ts**: Attachment references for the user's message, and text extraction
 
-#### Multimodal Message Building (`src/services/agentService.ts`)
+#### Message Building (`src/services/agentService.ts`)
 
 ```typescript
 if (opts?.attachments && opts.attachments.length > 0) {
@@ -560,8 +565,8 @@ if (opts?.attachments && opts.attachments.length > 0) {
                                                         │
                                                         ▼
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  LangChain      │◄────│ processAttach-  │◄────│  Download &     │
-│  HumanMessage   │     │ mentsForAI()    │     │  Base64 Convert │
+│  LangChain      │◄────│ processAttach-  │     │  read_document  │
+│  HumanMessage   │     │ mentsForAI()    │     │  (by fileKey)   │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
