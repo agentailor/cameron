@@ -39,8 +39,15 @@ export const MODEL = {
  * to relay a fact from a list, not to reason.
  */
 export const SIMULATOR_MODEL = {
-  provider: "anthropic",
-  name: process.env.EVAL_SIMULATOR_MODEL ?? "claude-haiku-5-5",
+  provider: "openrouter",
+  name: process.env.EVAL_SIMULATOR_MODEL ?? "anthropic/claude-haiku-5.5",
+  /**
+   * OpenRouter's OpenAI-compatible endpoint, with its OWN key. Not the app's `openai-compatible`
+   * provider: that reads `OPENAI_COMPATIBLE_API_KEY`, which the model under test may already use
+   * for a different endpoint — one key would then be sent to two hosts.
+   */
+  baseUrl: "https://openrouter.ai/api/v1",
+  apiKeyEnv: "OPENROUTER_API_KEY",
 } as const;
 
 /**

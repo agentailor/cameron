@@ -9,7 +9,7 @@ Unlike `pnpm test`, these are **slow, paid, and non-deterministic**. They are ne
 
 ```bash
 docker compose -f compose.eval.yaml up -d   # sandbox stack (Postgres 5545, MinIO 9110) — once
-cp .env.eval.example .env.eval              # then add your ANTHROPIC_API_KEY
+cp .env.eval.example .env.eval              # then add OPENROUTER_API_KEY + the tested model's key
 pnpm eval                                   # every case
 ```
 
@@ -301,7 +301,11 @@ on. What changed is that the agent may now ask for the information it needs, whi
 the product is supposed to have.
 
 The simulator is pinned separately from the model under test (`SIMULATOR_MODEL` in `config.mts`) at
-its default temperature (Haiku 5.5 accepts no other), and recorded in every report. Changing it invalidates comparison with older reports
+its default temperature (Haiku 5.5 accepts no other), and recorded in every report. It runs on
+OpenRouter (`anthropic/claude-haiku-5.5`) through `ChatOpenAI` with its own `OPENROUTER_API_KEY`,
+not through the app's `openai-compatible` provider, whose single key the model under test may
+already be using for another endpoint. Reports before 2026-11-21 used Anthropic's own API for the
+same model. Changing it invalidates comparison with older reports
 the same way a fixture change would: moved together, a suite-wide swing could not be attributed —
 you would not know whether the agent got worse or the user got weirder.
 

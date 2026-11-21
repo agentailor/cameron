@@ -1,5 +1,5 @@
 import { createLLMSimulatedUser, runMultiturnSimulation } from "openevals";
-import { createChatModel } from "../src/lib/agent/models.ts";
+import { ChatOpenAI } from "@langchain/openai";
 import { DEFAULT_MAX_TURNS, SIMULATOR_MODEL } from "./config.mts";
 import { buildUserPrompt, CANNOT_ANSWER, DONE } from "./simulatedUser.prompt.mts";
 import type { ConversationTurn, Inconclusive, SimulatedUser } from "./types.mts";
@@ -60,9 +60,17 @@ export async function runSimulatedConversation(opts: {
   // The agent's most recent reply, so `simulator-cannot-answer` can name the question it declined.
   let lastAgentText = "";
 
-  const client = createChatModel({
-    provider: SIMULATOR_MODEL.provider,
+  const apiKey = process.env[SIMULATOR_MODEL.apiKeyEnv];
+  if (!apiKey) {
+    throw new Error(
+      `The simulated user needs ${SIMULATOR_MODEL.apiKeyEnv} (in .env.eval) to reach ` +
+        `${SIMULATOR_MODEL.name} on OpenRouter.`,
+    );
+  }
+  const client = new ChatOpenAI({
     model: SIMULATOR_MODEL.name,
+    apiKey,
+    configuration: { baseURL: SIMULATOR_MODEL.baseUrl },
   });
 
   const simulatedUser = createLLMSimulatedUser({
