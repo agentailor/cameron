@@ -1,6 +1,7 @@
 import type { MessageResponse, ToolCall } from "@/types/message";
 import { isMutatingTool } from "@/lib/agent/mutatingTools";
 import { linkPreviews } from "./editPreview";
+import { linkDocumentReadings } from "./documentPreview";
 import {
   getMessageContent,
   getPendingToolCallIds,
@@ -183,7 +184,9 @@ export function buildThreadItems(input: MessageResponse[]): ThreadItem[] {
   }
 
   // Thread-wide, in order: an edit's validation is usually in an earlier card than the edit.
-  linkPreviews(items.flatMap((i) => (i.kind === "tools" ? i.activities : [])));
+  const activities = items.flatMap((i) => (i.kind === "tools" ? i.activities : []));
+  linkPreviews(activities);
+  linkDocumentReadings(activities);
 
   return items;
 }

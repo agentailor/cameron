@@ -64,6 +64,12 @@ const DOCUMENT_CAPABILITIES = [
       "transcription, and for a receipt or invoice the merchant, date, amounts and currency. A " +
       "value it cannot make out is reported as unreadable, never guessed. Read-only.",
   },
+  {
+    name: "log_from_document",
+    description:
+      "Log an expense from an uploaded receipt or invoice, linked to the file so it can be traced " +
+      "back and is never logged twice. The approval card shows the document beside the values.",
+  },
 ];
 
 /** Tools that mutate the ledger and pause for approval. Names must match ./tools/*. */

@@ -1,8 +1,12 @@
+import { createHash } from "node:crypto";
 import { tool } from "@langchain/core/tools";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { z } from "zod";
 import { getFileWithType } from "@/lib/storage/upload";
+import { getSkill } from "@/lib/skills/registry";
+import * as transactionRepo from "@/lib/repositories/transactionRepository";
+import { Account, TransactionType } from "@/types/finance";
 import { isReadableType, readWithModel } from "@/lib/documents/vision";
 import type { DocumentReading } from "@/lib/documents/reading";
 
@@ -19,6 +23,18 @@ export interface DocumentToolsOptions {
   readWith: string;
 }
 
+/** The skill that logs a receipt; read_document points at it only if it is loaded. */
+export const RECEIPTS_SKILL = "receipts";
+
+/** For a receipt or invoice, when the receipts skill exists, the step a bare upload leads to. */
+function receiptsHint(kind: DocumentReading["kind"]): string | undefined {
+  if (kind === "other" || !getSkill(RECEIPTS_SKILL)) return undefined;
+  return (
+    "If the owner wants this logged, or sent it with no other request, the receipts skill " +
+    "covers it."
+  );
+}
+
 function readingPayload(reading: DocumentReading, answer: string | undefined) {
   return {
     ok: true,
@@ -28,6 +44,7 @@ function readingPayload(reading: DocumentReading, answer: string | undefined) {
     ...(reading.fields ? { fields: reading.fields } : {}),
     text: reading.text,
     ...(answer !== undefined ? { answer } : {}),
+    ...(receiptsHint(reading.kind) ? { hint: receiptsHint(reading.kind) } : {}),
   };
 }
 
@@ -147,5 +164,120 @@ export function createDocumentTools({ model, readWith }: DocumentToolsOptions) {
     },
   );
 
-  return [readDocument];
+  const logFromDocument = tool(
+    async (input) => {
+      let file: { buffer: Buffer; contentType: string | undefined };
+      try {
+        file = await getFileWithType(input.fileKey);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return JSON.stringify({
+          error: "file_unreadable",
+          message:
+            `Could not read the file for fileKey "${input.fileKey}": ${message}. Nothing was ` +
+            "written. Use the exact fileKey from the attachment reference — never invent one.",
+        });
+      }
+      if (!isReadableType(file.contentType)) {
+        return JSON.stringify({
+          error: "unsupported_type",
+          message:
+            `log_from_document logs from a PNG, JPEG or PDF; this file is ${file.contentType ?? "of unknown type"}. ` +
+            "Nothing was written.",
+        });
+      }
+
+      const result = await transactionRepo.createFromDocument(
+        {
+          occurredAt: input.occurredAt,
+          amount: Math.abs(input.amount),
+          type: TransactionType.expense,
+          note: input.note,
+          currency: input.currency,
+          account: input.account as Account,
+          merchant: input.merchant ?? null,
+          description: input.description ?? null,
+          categoryName: input.category ?? null,
+        },
+        {
+          fileKey: input.fileKey,
+          contentHash: createHash("sha256").update(file.buffer).digest("hex"),
+          mimeType: file.contentType,
+        },
+      );
+
+      if (result.status === "already_logged") {
+        return JSON.stringify({
+          error: "already_logged",
+          transactionId: result.transactionId,
+          message:
+            `This document is already logged as transaction ${result.transactionId}, so nothing ` +
+            "was written. Tell the user. To change that transaction use update_transaction; " +
+            "never log the same document twice.",
+        });
+      }
+
+      const txn = result.transaction;
+      // Echo what was written (resolved values), as log_expense does.
+      return JSON.stringify({
+        ok: true,
+        id: txn.id,
+        occurredAt: txn.occurredAt.toISOString(),
+        amount: txn.amount,
+        type: txn.type,
+        note: txn.note,
+        account: txn.account,
+        currency: txn.currency,
+        merchant: txn.merchant,
+        category: result.category?.name ?? null,
+        ...(result.categoryCreated && result.category
+          ? { categoryCreated: result.category.name }
+          : {}),
+        documentId: result.documentId,
+      });
+    },
+    {
+      name: "log_from_document",
+      description:
+        "Log one expense from an uploaded receipt or invoice, linked to the file so it can be " +
+        "traced back and never logged twice. You state every value: the owner approves them on a " +
+        "card that shows the document beside them. Read the document with read_document first, " +
+        "and never fill in a value it reported unreadable — ask. This mutates financial records " +
+        "and requires the user's approval. If the same file was already logged it returns " +
+        "already_logged and writes nothing. For anything not backed by an uploaded document, use " +
+        "log_expense.",
+      schema: z.object({
+        fileKey: z
+          .string()
+          .min(1)
+          .describe("The fileKey from the attachment reference, copied exactly"),
+        amount: z
+          .number()
+          .positive()
+          .describe("The total actually paid, as a positive decimal in major units, e.g. 47.35"),
+        occurredAt: z
+          .string()
+          .describe(
+            "ISO date of the purchase, e.g. '2026-03-14'. Resolve the printed date's format first; " +
+              "if it is ambiguous (03/04), ask.",
+          ),
+        note: z.string().min(1).describe("Required short label, e.g. 'Dinner at Corner Bistro'"),
+        currency: z.string().describe("ISO code of the currency on the document, e.g. 'EUR'"),
+        account: z
+          .enum(["CHECKING", "SAVINGS", "CREDIT", "CASH"])
+          .describe("Which of the owner's accounts paid. Ask when the document doesn't say."),
+        category: z
+          .string()
+          .optional()
+          .describe(
+            "Category name. Created if no category has this exact name — call list_categories " +
+              "first and reuse one.",
+          ),
+        merchant: z.string().optional().describe("Merchant / payee name, as printed"),
+        description: z.string().optional().describe("Optional longer detail"),
+      }),
+    },
+  );
+
+  return [readDocument, logFromDocument];
 }

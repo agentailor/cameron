@@ -13,6 +13,7 @@ export const MUTATING_TOOL_NAMES = [
   "set_config",
   "update_transaction",
   "delete_transaction",
+  "log_from_document",
 ] as const;
 
 export function isMutatingTool(name: string): boolean {

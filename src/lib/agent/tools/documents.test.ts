@@ -1,15 +1,27 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import { CallbackManager } from "@langchain/core/callbacks/manager";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import type { DocumentReading } from "@/lib/documents/reading";
 import { GenAiTracer } from "@/lib/tracing/genAiTracer";
+import type { StructuredToolInterface } from "@langchain/core/tools";
 import { callTool } from "./testing";
 
 const getFileWithType = vi.fn();
 vi.mock("@/lib/storage/upload", () => ({
   getFileWithType: (key: string) => getFileWithType(key),
+}));
+
+let receiptsSkillLoaded = false;
+vi.mock("@/lib/skills/registry", () => ({
+  getSkill: (name: string) => (receiptsSkillLoaded && name === "receipts" ? { name } : undefined),
+}));
+
+const createFromDocument = vi.fn();
+vi.mock("@/lib/repositories/transactionRepository", () => ({
+  createFromDocument: (input: unknown, doc: unknown) => createFromDocument(input, doc),
 }));
 
 const { createDocumentTools } = await import("./documents");
@@ -72,7 +84,10 @@ function fakeModel() {
 let fake: ReturnType<typeof fakeModel>;
 const tools = () =>
   createDocumentTools({ model: fake.model as never, readWith: "openai:test-model" });
-const read = (input: Record<string, unknown>) => callTool(tools()[0], input);
+/** One of the document tools by name. */
+const toolNamed = (name: string) =>
+  tools().find((t) => t.name === name) as unknown as StructuredToolInterface;
+const read = (input: Record<string, unknown>) => callTool(toolNamed("read_document"), input);
 
 /** The non-text block of the document message the model was sent. */
 const sentBlock = () => (fake.calls[0].messages[1].content as any[]).find((b) => b.type !== "text");
@@ -138,6 +153,27 @@ describe("read_document — reading", () => {
  * stream handler: its reply streams into the chat as the agent's words and arrives in a format
  * the structured-output parser reads as empty. The reader must run as a unit of its own.
  */
+describe("read_document — the receipts hint", () => {
+  afterEach(() => {
+    receiptsSkillLoaded = false;
+  });
+
+  it("points a receipt at the receipts skill when it is loaded", async () => {
+    receiptsSkillLoaded = true;
+    expect((await read({ fileKey: "k.png" })).hint).toContain("receipts skill");
+  });
+
+  it("never names a skill that isn't loaded", async () => {
+    expect(await read({ fileKey: "k.png" })).not.toHaveProperty("hint");
+  });
+
+  it("says nothing for a document that isn't a receipt or invoice", async () => {
+    receiptsSkillLoaded = true;
+    fake.returns(() => ({ ...READING, kind: "other" }));
+    expect(await read({ fileKey: "k.png" })).not.toHaveProperty("hint");
+  });
+});
+
 describe("read_document — runs outside the agent's graph", () => {
   class StreamHandler extends BaseCallbackHandler {
     name = "langgraph_stream";
@@ -149,7 +185,7 @@ describe("read_document — runs outside the agent's graph", () => {
     const graphCallbacks = new CallbackManager("tool-run-id");
     graphCallbacks.addHandler(new StreamHandler());
     graphCallbacks.addHandler(tracer);
-    const [tool] = tools();
+    const tool = toolNamed("read_document");
     await AsyncLocalStorageProviderSingleton.runWithConfig({ callbacks: graphCallbacks }, () =>
       tool.invoke({ fileKey: "k.png" }, { callbacks: graphCallbacks }),
     );
@@ -256,5 +292,106 @@ describe("read_document — failures come back as payloads", () => {
     expect(out.error).toBe("model_cannot_read");
     expect(out.message).toContain("openai:test-model");
     expect(out.message).toContain("image input is not supported");
+  });
+});
+
+describe("log_from_document", () => {
+  const ARGS = {
+    fileKey: "k.png",
+    amount: 47.35,
+    occurredAt: "2026-03-14",
+    note: "Dinner at Corner Bistro",
+    currency: "EUR",
+    account: "CREDIT",
+    category: "Dining",
+    merchant: "CORNER BISTRO",
+  };
+  const log = (args: Record<string, unknown> = ARGS) =>
+    callTool(toolNamed("log_from_document"), args);
+
+  beforeEach(() => {
+    createFromDocument.mockReset().mockImplementation(async (input: any) => ({
+      status: "logged",
+      documentId: "doc-1",
+      category: { id: "cat-1", name: input.categoryName },
+      categoryCreated: false,
+      transaction: {
+        id: "txn-1",
+        occurredAt: new Date(`${input.occurredAt}T00:00:00.000Z`),
+        amount: input.amount,
+        type: input.type,
+        note: input.note,
+        account: input.account,
+        currency: input.currency,
+        merchant: input.merchant,
+      },
+    }));
+  });
+
+  it("is gated", async () => {
+    const { isMutatingTool } = await import("../mutatingTools");
+    expect(isMutatingTool("log_from_document")).toBe(true);
+  });
+
+  it("writes an expense linked to the file's content hash, and echoes what was written", async () => {
+    const out = await log();
+    const [input, doc] = createFromDocument.mock.calls[0];
+    expect(input).toMatchObject({ amount: 47.35, type: "expense", categoryName: "Dining" });
+    expect(doc).toEqual({
+      fileKey: "k.png",
+      contentHash: createHash("sha256").update(BYTES).digest("hex"),
+      mimeType: "image/png",
+    });
+    expect(out).toMatchObject({
+      ok: true,
+      id: "txn-1",
+      amount: 47.35,
+      category: "Dining",
+      documentId: "doc-1",
+    });
+  });
+
+  it("already_logged when these bytes back a transaction, naming it", async () => {
+    createFromDocument.mockResolvedValue({
+      status: "already_logged",
+      transactionId: "txn-0",
+      documentId: "doc-1",
+    });
+    const out = await log();
+    expect(out.error).toBe("already_logged");
+    expect(out.transactionId).toBe("txn-0");
+    expect(out.message).toContain("update_transaction");
+  });
+
+  it("reports a category it had to create", async () => {
+    createFromDocument.mockImplementation(async (input: any) => ({
+      status: "logged",
+      documentId: "doc-1",
+      category: { id: "cat-9", name: input.categoryName },
+      categoryCreated: true,
+      transaction: {
+        id: "t",
+        occurredAt: new Date(),
+        amount: 1,
+        type: "expense",
+        note: "n",
+        account: "CASH",
+        currency: "EUR",
+        merchant: null,
+      },
+    }));
+    expect((await log({ ...ARGS, category: "Bistros" })).categoryCreated).toBe("Bistros");
+  });
+
+  it("file_unreadable writes nothing", async () => {
+    getFileWithType.mockRejectedValue(new Error("NoSuchKey"));
+    expect((await log()).error).toBe("file_unreadable");
+    expect(createFromDocument).not.toHaveBeenCalled();
+  });
+
+  it("unsupported_type writes nothing", async () => {
+    getFileWithType.mockResolvedValue({ buffer: BYTES, contentType: "text/csv" });
+    expect((await log()).error).toBe("unsupported_type");
+    expect(createFromDocument).not.toHaveBeenCalled();
   });
 });

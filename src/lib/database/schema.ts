@@ -147,6 +147,26 @@ export const transactions = pgTable(
   ],
 );
 
+// --- Documents (v6) ---
+// Provenance for transactions logged from an uploaded receipt or invoice: one row per distinct
+// file, keyed by the hash of its bytes, so the same receipt re-uploaded is recognised as already
+// logged. A transaction points here through (source = 'document', external_id = document.id).
+// No reading is stored: the file is the source of truth.
+export const documents = pgTable(
+  "document",
+  {
+    id: text("id").primaryKey().notNull(),
+    // The upload it was first logged from; a re-upload of the same bytes has another key.
+    fileKey: text("file_key").notNull(),
+    contentHash: text("content_hash").notNull(),
+    mimeType: text("mime_type").notNull(),
+    createdAt: timestamp("created_at", { precision: 3, mode: "string" })
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+  },
+  (table) => [uniqueIndex("document_content_hash_key").using("btree", table.contentHash.asc())],
+);
+
 /**
  * Owner-level settings the agent reads and writes through `get_config` / `set_config`.
  *
