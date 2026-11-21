@@ -1,11 +1,10 @@
 import { HumanMessage, isAIMessage, isToolMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
-import { Command } from "@langchain/langgraph";
-import type { HITLResponse } from "langchain";
 import { randomUUID } from "node:crypto";
 import {
   readPendingBatch,
   resolveDecisions,
+  toResumeCommand,
   type GraphSnapshot,
   type PendingBatch,
 } from "../src/services/approvalDecisions.ts";
@@ -81,7 +80,10 @@ const callsOf = (batch: PendingBatch): ToolCall[] =>
   batch.actionRequests.map((a) => ({ name: a.name, args: a.args as Record<string, unknown> }));
 
 /** Answer one batch through the app's own resolver, so the model sees what the UI would send. */
-function resumeFor(policy: ApprovalPolicy, batch: PendingBatch): Command {
+function resumeFor(
+  policy: ApprovalPolicy,
+  batch: PendingBatch,
+): ReturnType<typeof toResumeCommand> {
   const decide = typeof policy === "string" ? () => policy : policy.decide;
   const decisions = Object.fromEntries(
     batch.pausedCalls.map((c) => [
@@ -91,8 +93,7 @@ function resumeFor(policy: ApprovalPolicy, batch: PendingBatch): Command {
   );
   const resolved = resolveDecisions({ ...batch, decisions });
   if (!resolved.ok) throw new Error(`approval resume refused: ${resolved.error}`);
-  const resume: HITLResponse = { decisions: resolved.decisions };
-  return new Command({ resume });
+  return toResumeCommand(resolved.decisions);
 }
 
 export async function runCase(agent: Agent, testCase: EvalCase): Promise<RunCapture> {

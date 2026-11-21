@@ -4,9 +4,8 @@ import type { ApprovalDecision, MessageOptions, MessageResponse } from "@/types/
 import * as threadRepo from "@/lib/repositories/threadRepository";
 import { getHistory } from "@/lib/agent/memory";
 import { HumanMessage } from "@langchain/core/messages";
-import { Command } from "@langchain/langgraph";
-import type { HITLResponse } from "langchain";
-import { readPendingBatch, resolveDecisions } from "./approvalDecisions";
+import type { Command } from "@langchain/langgraph";
+import { readPendingBatch, resolveDecisions, toResumeCommand } from "./approvalDecisions";
 import { processAttachmentsForAI } from "@/lib/storage/content";
 import { streamMessages, type AgentRun } from "./messageStream";
 import { projectHistory } from "./historyProjection";
@@ -72,8 +71,7 @@ async function buildResumeCommand(
   const resolved = resolveDecisions({ ...readPendingBatch(snapshot), decisions });
   if (!resolved.ok) throw new Error(resolved.error);
 
-  const resume: HITLResponse = { decisions: resolved.decisions };
-  return new Command({ resume });
+  return toResumeCommand(resolved.decisions);
 }
 
 /** Fetch prior messages for a thread from the LangGraph checkpoint/memory system. */

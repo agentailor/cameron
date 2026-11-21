@@ -1,5 +1,6 @@
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
-import type { Decision, HITLRequest } from "langchain";
+import { Command } from "@langchain/langgraph";
+import type { Decision, HITLRequest, HITLResponse } from "langchain";
 import type { ApprovalDecision } from "@/types/message";
 import { isMutatingTool } from "@/lib/agent/mutatingTools";
 
@@ -123,4 +124,15 @@ export function resolveDecisions(input: {
       return anyDenied ? { type: "reject", message: HELD_BACK_MESSAGE } : { type: "approve" };
     }),
   };
+}
+
+/**
+ * The resume input for a resolved batch. Build it here, never with a caller's own `new Command`:
+ * under tsx the eval's `.mts` files load `@langchain/langgraph` as ESM while `src/` loads it as
+ * CJS, and `createAgent`'s `invoke` checks `instanceof Command`. A foreign Command is merged into
+ * state as fresh input, so the graph restarts with the gated call unanswered.
+ */
+export function toResumeCommand(decisions: Decision[]): Command {
+  const resume: HITLResponse = { decisions };
+  return new Command({ resume });
 }
