@@ -1,4 +1,5 @@
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
+import { CallbackManager, type Callbacks } from "@langchain/core/callbacks/manager";
 import type { Serialized } from "@langchain/core/load/serializable";
 import { AIMessage, BaseMessage, ToolMessage } from "@langchain/core/messages";
 import type { ChatGeneration, LLMResult } from "@langchain/core/outputs";
@@ -313,4 +314,19 @@ function finishReasonOf(message: BaseMessage | undefined): string | undefined {
 
 function toolResult(content: unknown): string {
   return typeof content === "string" ? content : JSON.stringify(content);
+}
+
+/**
+ * Callbacks for a model call made as its own unit inside a tool (the document reader): only this
+ * tracer, parented to the tool's run so the span nests under `execute_tool`. The graph's other
+ * handlers stay out — LangGraph's stream handler would stream the call's output into the chat
+ * and switch its reply to the v1 format. See docs/DOCUMENTS.md.
+ */
+export function tracerOnlyCallbacks(callbacks: Callbacks | undefined): CallbackManager | undefined {
+  if (!(callbacks instanceof CallbackManager)) return undefined;
+  const tracers = callbacks.handlers.filter((h) => h instanceof GenAiTracer);
+  if (tracers.length === 0) return undefined;
+  const manager = new CallbackManager(callbacks.getParentRunId());
+  for (const t of tracers) manager.addHandler(t);
+  return manager;
 }

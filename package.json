@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "eval": "tsx --env-file=.env.eval eval/run.mts",
     "eval:render": "tsx eval/render.mts",
+    "eval:reader": "tsx --env-file=.env.eval src/lib/documents/eval/run.mts",
     "typecheck:eval": "tsc --noEmit -p eval/tsconfig.json",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

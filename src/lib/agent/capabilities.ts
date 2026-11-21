@@ -54,6 +54,18 @@ const SKILL_CAPABILITIES = [
   },
 ];
 
+// Transcribed for the same reason as the CSV tools: ./tools/documents reaches the S3 client.
+// capabilities.test.ts pins these to the real tools.
+const DOCUMENT_CAPABILITIES = [
+  {
+    name: "read_document",
+    description:
+      "Read an uploaded image or PDF with the configured model: what kind of document it is, a " +
+      "transcription, and for a receipt or invoice the merchant, date, amounts and currency. A " +
+      "value it cannot make out is reported as unreadable, never guessed. Read-only.",
+  },
+];
+
 /** Tools that mutate the ledger and pause for approval. Names must match ./tools/*. */
 export { MUTATING_TOOL_NAMES } from "./mutatingTools";
 
@@ -69,6 +81,7 @@ const GROUPS: { label: string; tools: { name: string; description: string }[] }[
   { label: "Transactions", tools: [...financeTools, ...transactionEditTools] },
   { label: "Categories", tools: categoryTools },
   { label: "CSV import", tools: CSV_IMPORT_CAPABILITIES },
+  { label: "Documents", tools: DOCUMENT_CAPABILITIES },
   { label: "Analysis", tools: analyticsTools },
   { label: "Settings", tools: configTools },
   { label: "Charts", tools: chartTools },

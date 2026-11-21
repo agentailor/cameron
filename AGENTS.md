@@ -164,6 +164,35 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     string, not an enum, because the skill names are already in the prompt verbatim: a wrong name is
     a mistyped copy, and `availableSkills` in the `unknown_skill` payload corrects it in one turn
     (an enum would also break the legitimate zero-skills case, since `z.enum([])` is invalid).
+  - `src/lib/agent/tools/documents.ts` — `read_document` (read-only), full detail in
+    [docs/DOCUMENTS.md](docs/DOCUMENTS.md). The load-bearing invariants:
+    - **It is the only way the model sees an image or PDF.** Attachments go into the message as a
+      `fileKey` reference (`storage/content.ts`), never as bytes, so no prompt rule is needed to
+      route uploads through the tool.
+    - **The reader runs outside the agent's graph** (`outsideGraph()` in
+      `src/lib/documents/vision.ts`). A call inside a tool inherits the graph's handlers through
+      AsyncLocalStorage — even on a fresh model instance — and LangGraph's stream handler then
+      streams the reply into the chat and returns it in the v1 format `withStructuredOutput` reads
+      as empty. Only Cameron's tracer is passed back in (`tracerOnlyCallbacks()`), parented to the
+      tool's run so the span still nests. Don't "simplify" this to passing `config.callbacks`.
+    - **Read with the agent's own model** (`createDocumentTools({ model: llm, readWith })`, built in
+      `buildAgent`), so the eval path's explicit model reads documents too.
+    - **The reader's prompt is `src/lib/documents/reader.prompt.ts`** — any language, label →
+      field mapping, decimal-comma rules, ambiguous currency symbols. Treat it like the system
+      prompt: discuss before changing it. `reading.test.ts` fails if it stops naming a schema field.
+    - **Reader evals** (`pnpm eval:reader`, `src/lib/documents/eval/`): real-model readings of
+      committed fixtures, graded field by field. They sit beside the reader, not in `eval/`,
+      reusing its `MODEL` config and `GradeResult`. Run them when the reader prompt or schema
+      changes, once per provider. `.mts` files, typechecked by `pnpm typecheck:eval`.
+    - **Nothing is stored.** The file is the source of truth; the reading lives in the thread as
+      the tool result. No text cap either — the reader's output limit bounds it, and hitting that
+      limit is reported as `too_long` (stop reason checked), never as a retryable parse failure.
+    - **Unreadable means null.** The reading schema (`src/lib/documents/reading.ts`, server-owned)
+      lists illegible fields in `fields.unreadable`, and `normalizeReading` nulls any value the
+      model put beside one — a value next to "unreadable" is the guess the agent would log.
+    - **Failures are payloads**: `file_unreadable`, `unsupported_type`, `timeout`, `too_long`,
+      `invalid_reading`, `model_cannot_read` (names the model, quotes the provider, tells the agent
+      not to describe what it has not seen).
 - **Tool Approval**: Human-in-the-loop via `humanInTheLoopMiddleware`. Approval is gated **per-tool**
   through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
   `import_transactions_csv`, `create_category`, `set_config`, `update_transaction`,
@@ -334,6 +363,7 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   still, don't put credentials there.
 - **Tables**: `thread` (minimal metadata; actual history in LangGraph checkpoints) and `mcp_server`
   (stdio/http with conditional fields + OAuth token/state columns; JSON columns for flexible config).
+  `drizzle.config.ts`'s `tablesFilter` must list every app table, or drizzle-kit ignores it.
   `id` columns are text (app-generated uuids); `updated_at` is app-managed (set on writes).
 - **Naming convention**: physical DB identifiers are lowercase `snake_case` (Postgres norm — avoids
   forced quoting). TypeScript property names stay camelCase, mapped via the column helper's first
@@ -527,7 +557,9 @@ To switch to AWS S3, Cloudflare R2, or other S3-compatible storage:
 1. User selects files in `MessageInput` component
 2. Files uploaded to MinIO via `/api/agent/upload` endpoint
 3. File metadata (URL, key, name, type, size) stored in message options
-4. Files can be passed to agent for multimodal processing
+4. The model gets a `fileKey` reference, never the bytes (`processAttachmentsForAI` in
+   `src/lib/storage/content.ts`); it reads an image or PDF with `read_document`, a CSV with
+   `inspect_csv`
 
 ### Storage Libraries
 
