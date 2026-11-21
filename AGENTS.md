@@ -424,6 +424,11 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   and returns to the model, so those would vanish from the history unseen. `resolveDecisions`
   therefore rejects them with `HELD_BACK_MESSAGE` ("approved, not run — request it again"), and
   the agent re-requests them, gated again. The card says "not run" rather than pretending it ran. The eval harness answers interrupts through the same two functions.
+- **Build the resume with `toResumeCommand()`, never your own `new Command`.** Under tsx the eval's
+  `.mts` files load `@langchain/langgraph` as ESM and `src/` loads it as CJS: two `Command`
+  classes. `createAgent`'s `invoke` checks `instanceof Command`, so a foreign one is merged into
+  state as fresh input, the graph restarts, and the next model call carries the gated call with
+  no result (a 400 on strict OpenAI-compatible endpoints). `approvalResume.test.ts` pins both.
 
 ## Project-Specific Patterns
 
