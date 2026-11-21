@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { normalizeReading, type DocumentReading } from "./reading";
+import {
+  DocumentReadingSchema,
+  FIELD_NAMES,
+  normalizeReading,
+  type DocumentReading,
+} from "./reading";
+import { READER_SYSTEM_PROMPT } from "./reader.prompt";
 
 const receipt = (fields: Partial<NonNullable<DocumentReading["fields"]>>): DocumentReading => ({
   kind: "receipt",
   summary: "s",
+  language: "fr",
   text: "t",
   fields: {
     merchant: "M",
@@ -41,4 +48,16 @@ describe("normalizeReading", () => {
     const r = receipt({});
     expect(normalizeReading(r)).toEqual(r);
   });
+});
+
+// The prompt tells the reader what each field means; a field it never mentions is one the model
+// fills from the schema's name alone.
+describe("READER_SYSTEM_PROMPT", () => {
+  it.each([...Object.keys(DocumentReadingSchema.shape), ...FIELD_NAMES, "unreadable"])(
+    "covers %s",
+    (name) => {
+      const key = name === "fields" ? "`fields`" : name;
+      expect(READER_SYSTEM_PROMPT).toContain(key);
+    },
+  );
 });

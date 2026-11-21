@@ -10,8 +10,7 @@ How Cameron reads an uploaded image or PDF: receipts, invoices, anything else.
    user's message — `[Attached file: receipt.png (image/png, …). fileKey: <key>]` — never the bytes.
 3. The model can't see the file, so to answer anything about it, it calls **`read_document`** with
    the key.
-4. `read_document` fetches the bytes, hashes them, and either returns the stored reading for that
-   hash or reads the file with the agent's own model and stores the result on the `document` table.
+4. `read_document` fetches the bytes and has the **document reader** read them.
 
 The file's bytes are never inlined into the conversation. Inlined, they would be saved in the
 thread's checkpoint and re-sent to the model on every later turn of that thread. That's the same
@@ -19,16 +18,16 @@ reason a CSV's rows never reach the model either.
 
 ## `read_document(fileKey, question?)`
 
-Read-only, so it runs without approval and writes nothing to the ledger.
+Read-only, so it runs without approval and writes nothing.
 
 A successful call returns:
 
 ```jsonc
 {
   "ok": true,
-  "documentId": "…",
   "kind": "receipt", // receipt | invoice | other
   "summary": "Restaurant receipt from CORNER BISTRO",
+  "language": "fr", // ISO 639-1
   "fields": {
     // only for a receipt or invoice
     "merchant": "CORNER BISTRO",
@@ -41,11 +40,13 @@ A successful call returns:
     "unreadable": ["total"],
   },
   "text": "CORNER BISTRO\n…\nTOTAL EUR [illegible]",
-  "truncated": false,
   "answer": "…", // only when `question` was passed
-  "readBefore": true, // only when these bytes were read before
 }
 ```
+
+`question` is for what a transcription can't carry: layout, a stamp, a logo, where a handwritten
+note sits. It is answered in the same read. Most questions about a document can be answered from
+`text`.
 
 ### Unreadable means null
 
@@ -58,78 +59,120 @@ standing next to "unreadable" is exactly the guess that would end up in the ledg
 The date is returned as printed. Whether `03/04` means March or April is decided later, where the
 owner can see the decision, not silently by the reader.
 
-### One reading per file
+### Nothing is stored
 
-Readings are stored by the sha256 of the file's bytes, so uploading the same receipt twice reads it
-once. The second upload gets the stored reading back with `readBefore: true` and costs no model
-call. Only a `question` asked about a file that was already read costs a call, and that answer is
-not stored.
+The file is the source of truth. A reading is a model's claim about it, and it is already in the
+thread as the tool's result, which is what the agent acted on. Reading the same file again costs
+one more model call, which is rare enough not to be worth a cache that could go stale or disagree
+with the thread.
 
-`question` is for what a transcription can't carry: layout, a stamp, a logo, where a handwritten
-note sits. Most questions about a document can be answered from `text`.
+### Nothing is cut short
 
-`text` is capped at 6,000 characters in the payload (`truncated: true`, plus `textLength`); the
-stored reading keeps all of it.
+`text` is returned whole. Its size is bounded by the reader's own output limit, and that limit is
+the real risk: a long PDF can produce more text than the model can return in one reply. The reply
+then stops mid-JSON. The reader checks the stop reason (`length` / `max_tokens` / `MAX_TOKENS`) and
+reports `too_long` instead of a parse failure, because "retry" would hit the same limit.
 
 ### Failures
 
-Every failure comes back as a payload the agent can act on, and a failed read stores nothing:
+Every failure comes back as a payload the agent can act on:
 
 | `error`             | When                                                               |
 | ------------------- | ------------------------------------------------------------------ |
 | `file_unreadable`   | No such key in storage — usually an invented key                   |
 | `unsupported_type`  | Not PNG, JPEG or PDF (a CSV is pointed at `inspect_csv`)           |
 | `timeout`           | The model took longer than 90 s                                    |
-| `invalid_reading`   | The model's reply didn't fit the reading schema                    |
+| `too_long`          | The reading didn't fit in one reply (stopped at the output limit)  |
+| `invalid_reading`   | The reply didn't parse into a reading                              |
 | `model_cannot_read` | Anything else from the provider — typically a model without vision |
 
 `model_cannot_read` names the configured model and quotes the provider's own message, rather than
 sniffing for "this model can't take images". Error text varies by provider, and a matcher would
 misclassify the next one. Each message tells the agent not to describe a document it hasn't seen.
 
-## Which model reads
+## The document reader
 
-The **agent's own model**, the provider and model the owner picked in Settings (or the explicit
-pair the eval harness passes). `createDocumentTools({ model, readWith })` is built inside
-`buildAgent` from the same instance the agent runs on, and `readWith` (`provider:model`) is stored
-with each reading.
+`src/lib/documents/vision.ts`, with its prompt in `reader.prompt.ts`. It's one model call with no tools and no loop, so it isn't a
+subagent. It is a model-backed component, though, and gets the same treatment as the agent: its
+own prompt, its own evals, its own trace.
 
-So a document goes to whichever provider the owner chose for chat, and no other. A separate
-document model (for an owner who doesn't want files sent to the chat provider) is a possible later
-option, not something this version does.
+### Its prompt
+
+`READER_SYSTEM_PROMPT` assumes a receipt can come from any country, in any language. It maps the
+document's own labels onto the fields (TVA / MwSt / IVA → `tax`, Pourboire / Trinkgeld → `tip`, Montant
+dû / Gesamt → `total`) without translating the transcription. It reads number separators the way
+the document uses them (`1.234,56` is 1234.56), and treats an amount whose decimal separator can't
+be told apart as unreadable: a misread separator still produces a valid-looking number, which is
+why it matters. A bare `$`, `kr` or `¥` gives `currency: null` unless the document names the code.
+
+Change it like Cameron's system prompt: with evidence, and through review. `reading.test.ts` checks
+that it names every field of the schema.
+
+### Which model reads
+
+The **agent's own model**: the provider and model the owner picked in Settings, or the explicit
+pair the eval harness passes. `createDocumentTools({ model, readWith })` is built inside
+`buildAgent`. So a document goes to whichever provider the owner chose for chat, and no other. A
+separate document model is a possible later option, not something this version does.
 
 The file is sent as a LangChain standard content block: `{ type: "image" | "file", data, mimeType,
-metadata: { filename } }`. LangChain's Anthropic, Google and OpenAI packages each map these to
-their native image / PDF input. OpenAI requires the `filename`. So far it has been checked live
-only against an OpenAI-compatible endpoint.
+metadata: { filename } }`. LangChain's Anthropic, Google and OpenAI packages each map these to their
+native image / PDF input. OpenAI requires the `filename`.
 
-### Parsing the reply inside the agent graph
+### It runs outside the agent's graph
 
-Run on its own, `withStructuredOutput` parses the reply fine. Run from inside the agent graph, the
-call inherits LangChain's **v1 output format** from the graph's run config: the reply's `content`
-is an array of blocks, the structured-output parser reads it as no text at all, and it fails with
-`Failed to parse. Text: "undefined"`, even though the JSON is right there. A fresh model instance
-inherits it too, and so does a call made without passing callbacks (LangChain propagates the parent
-config through AsyncLocalStorage). A call option on the outer `invoke` doesn't reach the model
-through the structured-output runnable.
+A model call made inside a tool inherits the graph's run context through LangChain's
+AsyncLocalStorage, and with it the graph's callback handlers. LangGraph's stream handler is one of
+them, and it does two things to the reader's call:
 
-So `readWithModel` asks for `includeRaw: true`. When `parsed` is empty, it takes the JSON from
-`raw.text` (which joins text blocks in either format, `json` fence or not), then validates it
-against the schema either way. A reply that is not JSON, or not a valid reading, is
-`invalid_reading`. `documents.test.ts` pins the v1 case. A standalone test of the vision call
-can't catch this; only a call made from a tool inside the graph can.
+- its reply **streams into the chat** as if the agent had written it;
+- it comes back in LangChain's **v1 output format** (array content), which `withStructuredOutput`'s
+  parser reads as no text at all (`Failed to parse. Text: "undefined"`).
 
-## Tracing and streaming
+A fresh model instance doesn't help, because the context is inherited regardless of instance.
+Passing the tool's callbacks explicitly brings both problems back. So `outsideGraph()` runs the
+call with no inherited context, as it would run in another process, and `withStructuredOutput`
+works as designed.
 
-The vision call runs with the tool's callbacks, so it shows up as a `chat` span under the tool's
-`execute_tool` span, with its token usage. The tracer names image and file blocks without
-including their bytes, even with content capture on.
+Tracing is kept on purpose. `tracerOnlyCallbacks()` (`src/lib/tracing/genAiTracer.ts`) takes just
+Cameron's `GenAiTracer` from the tool's callbacks, parented to the tool's run. The reader's call
+shows up as a `chat` span under `execute_tool read_document`, with its token usage. The tracer
+names image and file blocks without including their bytes, even with content capture on.
 
-The call is also tagged `nostream`. With the graph's callbacks attached, LangGraph would otherwise
-stream the reader's structured reply into the chat as if the agent had written it.
+`documents.test.ts` pins both halves: the model sees no inherited context, and its only handler is
+the tracer.
 
-## Storage
+## Reader evals
 
-`document` (`src/lib/repositories/documentRepository.ts`): `id`, `file_key` (the first upload of
-these bytes), `content_hash` (unique), `mime_type`, `reading` (jsonb), `read_with`. It is not
-granted to `cameron_analytics`, so `run_sql` can't read it.
+`src/lib/documents/eval/`. These check what unit tests can't: whether a real model reads a document
+right. They're paid and non-deterministic like `eval/`, so they never run in CI or `pnpm test`.
+
+```bash
+pnpm eval:reader                                   # every case, on the eval harness's model
+pnpm eval:reader de-receipt-decimal-comma          # one case
+$env:EVAL_PROVIDER="openai-compatible"; $env:EVAL_MODEL="…"; $env:EVAL_BASE_URL="…"; pnpm eval:reader
+```
+
+- **The model** comes from `eval/config.mts` (`EVAL_PROVIDER` / `EVAL_MODEL` / `EVAL_BASE_URL`), and
+  verdicts use its `GradeResult`. Nothing from the agent harness is copied. The reader suite has
+  no threads, seeds or approvals, so it doesn't need that harness's runner, simulator or viewer.
+- **One fixture per promise the prompt makes** (`cases.mts`): French, German decimal commas,
+  Spanish, Japanese, a smudged total, a bare `$`, two VAT rates, a printed prompt injection, a PDF
+  invoice, and a letter that isn't a receipt. Fixtures are committed; `fixtures/generate.ps1`
+  regenerates them (Windows), and expected values are what each document prints.
+- **One grader per fact** (`graders.mts`): amounts to the cent, `null` vs `unreadable` told apart,
+  merchant and date as substrings (since "as printed" may include a branch name or a time). A
+  failing case names the field the model got wrong.
+- **One run per case.** The point is to catch a model that reads `47,35` as 4735, not to measure
+  how often it happens. Run it once per provider you plan to use. Each run writes one JSON file of
+  readings and verdicts to `src/lib/documents/eval/results/` (gitignored).
+
+First runs on the OpenAI-compatible model used during development (one run each):
+
+| Prompt                           | Result                                            |
+| -------------------------------- | ------------------------------------------------- |
+| Current `READER_SYSTEM_PROMPT`   | 10/10 cases, 49/49 checks                         |
+| The earlier one-paragraph prompt | 9/10 — two VAT lines reported as `unreadable` tax |
+
+A strong model gets most of the way from the schema's field descriptions alone. The prompt's rules
+earn their place on the cases a model gets wrong, and on weaker models.

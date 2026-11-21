@@ -14,9 +14,8 @@ vi.mock("@/lib/storage/content", () => ({ extractTextContent: vi.fn() }));
 
 const { csvImportTools } = await import("./tools/csvImport");
 
-// documents reaches the S3 client the same way, and the database through its repository.
+// documents reaches the S3 client the same way.
 vi.mock("@/lib/storage/upload", () => ({ getFileWithType: vi.fn() }));
-vi.mock("@/lib/repositories/documentRepository", () => ({}));
 const { createDocumentTools } = await import("./tools/documents");
 
 describe("listCapabilities", () => {

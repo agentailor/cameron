@@ -18,6 +18,12 @@
     "../src/lib/agent/capabilities.ts",
     "../src/lib/agent/util.ts",
     "../src/lib/agent/models.ts",
+    // The reader evals live beside the reader (src/lib/documents/eval) and reuse this harness's
+    // config and GradeResult; the reader files they run are checked here with them.
+    "../src/lib/documents/eval/**/*.mts",
+    "../src/lib/documents/vision.ts",
+    "../src/lib/documents/reading.ts",
+    "../src/lib/documents/reader.prompt.ts",
     "../src/types/**/*.ts"
   ],
   "exclude": ["../node_modules"]

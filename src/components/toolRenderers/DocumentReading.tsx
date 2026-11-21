@@ -20,6 +20,7 @@ interface Fields {
 export interface ReadingPayload {
   kind?: string;
   summary?: string;
+  language?: string | null;
   fields?: Fields;
   text?: string;
   truncated?: boolean;
@@ -49,6 +50,7 @@ export const DocumentReading = ({ payload }: { payload: ReadingPayload }) => {
         <FileText className="text-muted-foreground h-3.5 w-3.5" />
         <span className="text-muted-foreground font-mono text-[10px] tracking-[0.13em] uppercase">
           {payload.kind ?? "document"}
+          {payload.language ? ` · ${payload.language}` : ""}
         </span>
         {payload.summary && (
           <span className="text-foreground/80 truncate text-[13px]">{payload.summary}</span>

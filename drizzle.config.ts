@@ -15,13 +15,5 @@ export default defineConfig({
   },
   // The LangGraph checkpointer owns its own tables; keep drizzle-kit from
   // touching anything it doesn't manage.
-  tablesFilter: [
-    "thread",
-    "mcp_server",
-    "mcp_server_catalog",
-    "category",
-    "transaction",
-    "config",
-    "document",
-  ],
+  tablesFilter: ["thread", "mcp_server", "mcp_server_catalog", "category", "transaction", "config"],
 });
