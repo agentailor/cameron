@@ -11,6 +11,7 @@ const receipt = (fields: Partial<NonNullable<DocumentReading["fields"]>>): Docum
   kind: "receipt",
   summary: "s",
   language: "fr",
+  addressedToAssistant: false,
   text: "t",
   fields: {
     merchant: "M",

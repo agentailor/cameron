@@ -40,6 +40,20 @@ export function languageIs(code: string): ReaderGrader {
   };
 }
 
+/** Whether the reader flagged text addressed to an AI; `true` makes read_document withhold it all. */
+export function addressedToAssistant(expected: boolean): ReaderGrader {
+  const id = `addressedToAssistant=${expected}`;
+  return {
+    id,
+    grade: (r) =>
+      result(
+        id,
+        r.addressedToAssistant === expected,
+        `addressedToAssistant was ${show(r.addressedToAssistant)}`,
+      ),
+  };
+}
+
 /** A document that is not a receipt or invoice carries no fields at all. */
 export function noFields(): ReaderGrader {
   return {

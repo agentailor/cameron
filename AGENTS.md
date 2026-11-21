@@ -164,35 +164,10 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     string, not an enum, because the skill names are already in the prompt verbatim: a wrong name is
     a mistyped copy, and `availableSkills` in the `unknown_skill` payload corrects it in one turn
     (an enum would also break the legitimate zero-skills case, since `z.enum([])` is invalid).
-  - `src/lib/agent/tools/documents.ts` — `read_document` (read-only), full detail in
-    [docs/DOCUMENTS.md](docs/DOCUMENTS.md). The load-bearing invariants:
-    - **It is the only way the model sees an image or PDF.** Attachments go into the message as a
-      `fileKey` reference (`storage/content.ts`), never as bytes, so no prompt rule is needed to
-      route uploads through the tool.
-    - **The reader runs outside the agent's graph** (`outsideGraph()` in
-      `src/lib/documents/vision.ts`). A call inside a tool inherits the graph's handlers through
-      AsyncLocalStorage — even on a fresh model instance — and LangGraph's stream handler then
-      streams the reply into the chat and returns it in the v1 format `withStructuredOutput` reads
-      as empty. Only Cameron's tracer is passed back in (`tracerOnlyCallbacks()`), parented to the
-      tool's run so the span still nests. Don't "simplify" this to passing `config.callbacks`.
-    - **Read with the agent's own model** (`createDocumentTools({ model: llm, readWith })`, built in
-      `buildAgent`), so the eval path's explicit model reads documents too.
-    - **The reader's prompt is `src/lib/documents/reader.prompt.ts`** — any language, label →
-      field mapping, decimal-comma rules, ambiguous currency symbols. Treat it like the system
-      prompt: discuss before changing it. `reading.test.ts` fails if it stops naming a schema field.
-    - **Reader evals** (`pnpm eval:reader`, `src/lib/documents/eval/`): real-model readings of
-      committed fixtures, graded field by field. They sit beside the reader, not in `eval/`,
-      reusing its `MODEL` config and `GradeResult`. Run them when the reader prompt or schema
-      changes, once per provider. `.mts` files, typechecked by `pnpm typecheck:eval`.
-    - **Nothing is stored.** The file is the source of truth; the reading lives in the thread as
-      the tool result. No text cap either — the reader's output limit bounds it, and hitting that
-      limit is reported as `too_long` (stop reason checked), never as a retryable parse failure.
-    - **Unreadable means null.** The reading schema (`src/lib/documents/reading.ts`, server-owned)
-      lists illegible fields in `fields.unreadable`, and `normalizeReading` nulls any value the
-      model put beside one — a value next to "unreadable" is the guess the agent would log.
-    - **Failures are payloads**: `file_unreadable`, `unsupported_type`, `timeout`, `too_long`,
-      `invalid_reading`, `model_cannot_read` (names the model, quotes the provider, tells the agent
-      not to describe what it has not seen).
+  - `src/lib/agent/tools/documents.ts` — `read_document` (read-only): the only way the model sees
+    an uploaded image or PDF, read with the agent's own model. The reader, its prompt, its evals
+    (`pnpm eval:reader`) and the untrusted-document rule are all in
+    [docs/DOCUMENTS.md](docs/DOCUMENTS.md) — read it before changing `src/lib/documents/`.
 - **Tool Approval**: Human-in-the-loop via `humanInTheLoopMiddleware`. Approval is gated **per-tool**
   through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
   `import_transactions_csv`, `create_category`, `set_config`, `update_transaction`,
@@ -212,10 +187,11 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
   way to learn what Cameron can do isn't reading the source. Data comes from
   `listCapabilities()` in `src/lib/agent/capabilities.ts`, which is derived from the same tool arrays
   `index.ts` registers — a new tool appears with no UI edit. That module is deliberately a **leaf**:
-  it must not import `agent/index.ts`. Two groups are hand-transcribed rather than imported, both
-  because the real module reaches something that blows up at module load: `tools/csvImport.ts`
-  imports the S3 client (throws without S3 env vars), and `tools/skills.ts` reaches the registry
-  (reads the filesystem). `capabilities.test.ts` pins both to the real tools so they can't drift.
+  it must not import `agent/index.ts`. Three groups are hand-transcribed rather than imported, all
+  because the real module reaches something that blows up at module load: `tools/csvImport.ts` and
+  `tools/documents.ts` import the S3 client (throws without S3 env vars), and `tools/skills.ts`
+  reaches the registry (reads the filesystem). `capabilities.test.ts` pins them to the real tools
+  so they can't drift.
   Deliberately minimal — the design is expected to change.
 
 ### Skills (`skills/` + `src/lib/skills/`)
