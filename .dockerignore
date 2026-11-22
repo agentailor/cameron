@@ -2,7 +2,9 @@
 # both a speed win and a correctness one: a local `.next/` or `node_modules/` copied into the
 # image would shadow what the build itself produces.
 
-node_modules
+# `**/` so workspace packages' node_modules are excluded too: pnpm fills them with links to
+# absolute host paths, which the daemon refuses ("invalid file request").
+**/node_modules
 .next
 out
 build

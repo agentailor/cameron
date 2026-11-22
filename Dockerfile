@@ -23,6 +23,7 @@ WORKDIR /app
 RUN corepack enable
 
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/mcp-disclosure/node_modules ./packages/mcp-disclosure/node_modules
 COPY . .
 
 # `next build` runs the app's own code (route modules are evaluated to collect metadata), and
