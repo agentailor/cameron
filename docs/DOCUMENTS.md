@@ -113,6 +113,54 @@ Every failure comes back as a payload the agent can act on:
 sniffing for "this model can't take images". Error text varies by provider, and a matcher would
 misclassify the next one. Each message tells the agent not to describe a document it hasn't seen.
 
+## Logging from a document
+
+`log_from_document(fileKey, amount, occurredAt, note, currency, account, category?, merchant?,
+description?)` is gated like every write. It logs one **expense** linked to the file it came from.
+
+**The agent states every value.** Nothing is filled in from a reading. The tool takes no reading
+at all, since none is stored. What protects the owner is the approval card
+(`DocumentLogPreview.tsx`): it shows the **document itself** beside the values being approved,
+and, when the conversation holds an earlier `read_document` result for the same file, what the
+document said under each value, in red where they differ. `linkDocumentReadings`
+(`src/services/documentPreview.ts`) does that pairing by file key, on the same principle as
+`editPreview.ts`: only an earlier successful reading counts. A withheld document
+(`untrusted_document`) never pairs, so its card shows the image and the values the owner gave.
+
+**Once per distinct file.** `transactionRepository.createFromDocument` runs as one database
+transaction:
+
+1. Find or create the `document` row for the file's sha256, locked, so two logs of one receipt run
+   one after the other.
+2. If a transaction from that document still exists, return `already_logged` with its id and write
+   nothing. The same receipt uploaded again under a new key is still the same bytes.
+3. Otherwise resolve the category (after the check, so a duplicate never creates one) and insert
+   the transaction with `source = "document"`, `external_id = <document id>`.
+
+A deleted transaction frees its document, so the receipt can be logged again. The `document` table
+holds only provenance (`file_key`, `content_hash`, `mime_type`), never a reading, and isn't granted
+to `cameron_analytics`.
+
+Failures, all writing nothing: `file_unreadable`, `unsupported_type`, `already_logged`.
+
+### The receipts skill
+
+`skills/receipts/SKILL.md` holds the workflow, loaded on demand like any skill. In short:
+
+- A bare receipt upload means "log this": propose it, don't ask whether to.
+- Ask, in one message, for whatever logging needs and the document doesn't settle: an unreadable
+  total or date, an ambiguous date, an unknown currency, and **the account**. A card payment can be
+  CREDIT or CHECKING, so it is asked rather than guessed; CASH is used only when the receipt says
+  so.
+- Keep the receipt's currency (no conversion), checking it against `get_config`.
+- Look for a likely duplicate (same amount within 3 days, often a bank import) and ask before
+  logging it twice.
+
+`read_document` doesn't know the skill exists. The agent picks the skill the way it picks any
+skill: by matching the result's `kind` against the description in its prompt. The dependency
+runs one way, from the skill to the tool, so the reader can be tested and changed without the
+skill registry.
+
 ## The document reader
 
 `src/lib/documents/vision.ts`, with its prompt in `reader.prompt.ts`. It's one model call with no tools and no loop, so it isn't a

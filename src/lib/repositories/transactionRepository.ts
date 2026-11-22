@@ -1,18 +1,22 @@
 import { and, count, desc, eq, gte, ilike, inArray, lte, or, type SQL } from "drizzle-orm";
 import db from "@/lib/database/db";
 import { columnToDate } from "@/lib/database/timestamps";
-import { categories, transactions } from "@/lib/database/schema";
+import { categories, documents, transactions } from "@/lib/database/schema";
 import { Account, TransactionType, type Transaction } from "@/types/finance";
-import type {
-  CreateTransactionInput,
-  GuardedDeleteResult,
-  GuardedUpdateResult,
-  ImportResult,
-  ImportRow,
-  TransactionFilters,
-  TransactionPage,
-  TransactionPatch,
-  TransactionSnapshot,
+import {
+  DOCUMENT_SOURCE,
+  type CreateTransactionInput,
+  type DocumentLogInput,
+  type DocumentLogResult,
+  type DocumentRef,
+  type GuardedDeleteResult,
+  type GuardedUpdateResult,
+  type ImportResult,
+  type ImportRow,
+  type TransactionFilters,
+  type TransactionPage,
+  type TransactionPatch,
+  type TransactionSnapshot,
 } from "./transactionTypes";
 
 /**
@@ -126,6 +130,66 @@ function toValues(input: CreateTransactionInput) {
 export async function create(input: CreateTransactionInput): Promise<Transaction> {
   const [row] = await db.insert(transactions).values(toValues(input)).returning();
   return toDomain(row);
+}
+
+/**
+ * Log one transaction from an uploaded document, atomically with its provenance: find or create
+ * the `document` row for these bytes (locked, so two logs of one receipt run one after the other),
+ * refuse if a transaction from it still exists, else insert with
+ * (source = "document", externalId = document id). A deleted transaction frees its document.
+ */
+export async function createFromDocument(
+  input: DocumentLogInput,
+  doc: DocumentRef,
+): Promise<DocumentLogResult> {
+  const { categoryName, ...fields } = input;
+  return db.transaction(async (tx) => {
+    await tx
+      .insert(documents)
+      .values({ id: crypto.randomUUID(), ...doc })
+      .onConflictDoNothing({ target: documents.contentHash });
+    const [document] = await tx
+      .select({ id: documents.id })
+      .from(documents)
+      .where(eq(documents.contentHash, doc.contentHash))
+      .for("update");
+
+    const [existing] = await tx
+      .select({ id: transactions.id })
+      .from(transactions)
+      .where(
+        and(eq(transactions.source, DOCUMENT_SOURCE), eq(transactions.externalId, document.id)),
+      )
+      .limit(1);
+    if (existing) {
+      return { status: "already_logged", transactionId: existing.id, documentId: document.id };
+    }
+
+    // After the check, so an already-logged receipt never coins a category as a side effect.
+    const name = categoryName?.trim();
+    const resolved = name ? await resolveCategoryIn(tx, name) : null;
+    const category = resolved && name ? { id: resolved.id, name } : null;
+    const created = resolved?.created ?? false;
+
+    const [row] = await tx
+      .insert(transactions)
+      .values(
+        toValues({
+          ...fields,
+          categoryId: category?.id ?? null,
+          source: DOCUMENT_SOURCE,
+          externalId: document.id,
+        }),
+      )
+      .returning();
+    return {
+      status: "logged",
+      transaction: toDomain(row),
+      documentId: document.id,
+      category,
+      categoryCreated: created,
+    };
+  });
 }
 
 /**

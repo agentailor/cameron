@@ -165,13 +165,15 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     a mistyped copy, and `availableSkills` in the `unknown_skill` payload corrects it in one turn
     (an enum would also break the legitimate zero-skills case, since `z.enum([])` is invalid).
   - `src/lib/agent/tools/documents.ts` — `read_document` (read-only): the only way the model sees
-    an uploaded image or PDF, read with the agent's own model. The reader, its prompt, its evals
-    (`pnpm eval:reader`) and the untrusted-document rule are all in
+    an uploaded image or PDF, read with the agent's own model; and `log_from_document`
+    (mutating/gated): an expense linked to its file, logged once per distinct file, with the
+    `skills/receipts` skill driving it. The reader, its prompt, its evals (`pnpm eval:reader`),
+    the logging flow and the untrusted-document rule are all in
     [docs/DOCUMENTS.md](docs/DOCUMENTS.md) — read it before changing `src/lib/documents/`.
 - **Tool Approval**: Human-in-the-loop via `humanInTheLoopMiddleware`. Approval is gated **per-tool**
   through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
   `import_transactions_csv`, `create_category`, `set_config`, `update_transaction`,
-  `delete_transaction`); read tools (incl. `run_sql`), MCP tools and `load_tools` (which only changes
+  `delete_transaction`, `log_from_document`); read tools (incl. `run_sql`), MCP tools and `load_tools` (which only changes
   what the model sees) auto-approve. **The gate cannot be switched off from the product**: no UI control, no query
   param, and nothing on `MessageOptions` can disable it — `bypassApprovalForEval` omits the
   middleware for the eval harness alone, which calls the agent factory in-process and has no human

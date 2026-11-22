@@ -89,3 +89,32 @@ export type GuardedDeleteResult =
   | { status: "deleted"; rows: TransactionSnapshot[] }
   | { status: "not_found"; ids: string[] }
   | { status: "stale"; ids: string[] };
+
+/** `source` of a transaction logged from an uploaded document; its `externalId` is the document id. */
+export const DOCUMENT_SOURCE = "document";
+
+/** The uploaded file a transaction is logged from, identified by the hash of its bytes. */
+export interface DocumentRef {
+  fileKey: string;
+  contentHash: string;
+  mimeType: string;
+}
+
+/** `already_logged`: these bytes already back a transaction that still exists. Nothing written. */
+export type DocumentLogInput = Omit<
+  CreateTransactionInput,
+  "source" | "externalId" | "categoryId"
+> & {
+  /** Resolved (and created if new) inside the write, after the already-logged check. */
+  categoryName?: string | null;
+};
+
+export type DocumentLogResult =
+  | {
+      status: "logged";
+      transaction: Transaction;
+      documentId: string;
+      category: { id: string; name: string } | null;
+      categoryCreated: boolean;
+    }
+  | { status: "already_logged"; transactionId: string; documentId: string };

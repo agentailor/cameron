@@ -7,6 +7,7 @@ import { Receipt } from "./Receipt";
 import { TransactionDiff, hasDiff } from "./TransactionDiff";
 import { TransactionRows, NotValidated } from "./TransactionRows";
 import { DocumentReading } from "./DocumentReading";
+import { DocumentLogPreview } from "./DocumentLogPreview";
 
 /**
  * Dispatch from the catalog in `config.ts` to a component. A tool with no entry renders as JSON.
@@ -70,6 +71,8 @@ export const ToolArgs = ({
       const ids = Array.isArray(args.ids) ? args.ids : [];
       return <FieldGrid args={{ transactions: ids.length, ids: ids.join(", ") }} />;
     }
+    case "documentLog":
+      return <DocumentLogPreview args={args} reading={preview} />;
     case "filters":
     case "fields":
     case "file":

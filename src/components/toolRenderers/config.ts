@@ -22,6 +22,7 @@ export type ArgsRenderer =
   | "csvPlan"
   | "txnUpdate"
   | "txnDelete"
+  | "documentLog"
   | "json";
 export type ResultRenderer =
   | "table"
@@ -47,6 +48,8 @@ export const TOOL_RENDERERS: Record<string, ToolRenderers> = {
   describe_finance_schema: { args: null, result: "json" },
   inspect_csv: { args: "file", result: "table" },
   read_document: { args: "fields", result: "document" },
+  // On the approval card: the document beside the values — see services/documentPreview.ts.
+  log_from_document: { args: "documentLog", result: "receipt" },
   log_expense: { args: "expense", result: "receipt" },
   // On the approval card an edit shows its matched validation — see services/editPreview.ts.
   validate_transaction_update: { args: "txnUpdate", result: "diff" },
