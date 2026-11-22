@@ -1,5 +1,6 @@
 import { getFile } from "./upload";
 import { FileAttachment } from "@/types/message";
+import { attachmentReferenceText, isDocumentType } from "./attachmentText";
 
 /**
  * Extract text content from a text file
@@ -30,10 +31,6 @@ export interface AttachmentReference {
 
 const TEXT_EXTENSIONS = ["md", "markdown", "txt", "csv"];
 
-function isDocument(attachment: FileAttachment): boolean {
-  return attachment.type.startsWith("image/") || attachment.type === "application/pdf";
-}
-
 function isText(attachment: FileAttachment): boolean {
   const extension = attachment.name.split(".").pop()?.toLowerCase() || "";
   return (
@@ -57,19 +54,11 @@ export async function processAttachmentsForAI(
   const items: AttachmentReference[] = [];
 
   for (const attachment of attachments) {
-    const document = isDocument(attachment);
-    if (!document && !isText(attachment)) continue;
+    if (!isDocumentType(attachment.type) && !isText(attachment)) continue;
 
     items.push({
       type: "text",
-      text:
-        `\n\n[Attached file: ${attachment.name} ` +
-        `(${attachment.type}, ${attachment.size} bytes). fileKey: ${attachment.key}]\n` +
-        (document
-          ? "Its contents are NOT included here. To see what it says, call read_document with " +
-            "this fileKey."
-          : "The file's contents are NOT included here. To read or import it, call the " +
-            "appropriate tool with this fileKey (e.g. inspect_csv for a CSV)."),
+      text: attachmentReferenceText(attachment),
       // Keeps the chip in the chat UI, and keeps this reference out of the visible bubble
       // (getMessageContent skips items with file_metadata).
       file_metadata: {

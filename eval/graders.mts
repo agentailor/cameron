@@ -5,6 +5,7 @@ import {
   countInCategory,
   countRows,
   countWithAmount,
+  documentLogs,
   importedCategoryNames,
   importedCurrencies,
   importedMonths,
@@ -656,6 +657,49 @@ export function categoryRowCount(name: string, expected: number): Grader {
         actual === expected,
         actual === expected ? undefined : `${name} has ${actual} rows, expected ${expected}`,
       );
+    },
+  };
+}
+
+/**
+ * What was logged from documents: exactly `count` rows, and each expected field on every one.
+ * `count: 0` is a negative and needs a positive partner in the case. A `wrongDate` names the
+ * reading the agent should NOT have used, so a failure says which convention it applied.
+ */
+export function loggedFromDocument(expected: {
+  count: number;
+  amount?: number;
+  currency?: string;
+  date?: string;
+  wrongDate?: string;
+  account?: string;
+}): Grader {
+  const fields = (["amount", "currency", "date", "account"] as const).filter(
+    (k) => expected[k] !== undefined,
+  );
+  const id = `loggedFromDocument(${[`count=${expected.count}`, ...fields.map((k) => `${k}=${expected[k]}`)].join(",")})`;
+  return {
+    id,
+    grade: async () => {
+      const rows = await documentLogs();
+      if (rows.length !== expected.count) {
+        return result(
+          id,
+          false,
+          `${rows.length} rows logged from a document, expected ${expected.count}`,
+        );
+      }
+      for (const row of rows) {
+        for (const k of fields) {
+          if (row[k] === expected[k]) continue;
+          const why =
+            k === "date" && row.date === expected.wrongDate
+              ? " — the date was read with the wrong day/month convention"
+              : "";
+          return result(id, false, `logged ${k} ${row[k]}, expected ${expected[k]}${why}`);
+        }
+      }
+      return result(id, true);
     },
   };
 }

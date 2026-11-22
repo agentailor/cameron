@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import { Client } from "pg";
 import { DATABASE } from "./config.mts";
 import { seed } from "./seed.mts";
+import type { LedgerRow } from "./types.mts";
 
 /** Puts the sandbox database in a known state. Isolation itself is `compose.eval.yaml`'s job. */
 
@@ -11,9 +12,9 @@ const SEEDED_TABLES = ["transaction", "category"] as const;
 /**
  * Everything wiped between runs. `config` is not seeded but MUST be cleared: a case that sets the
  * owner's currency would otherwise leave it set, and the next case — whose whole point is an
- * unestablished setting — would start already answered.
+ * unestablished setting — would start already answered. `document` holds which files were logged.
  */
-const RESET_TABLES = [...SEEDED_TABLES, "config"] as const;
+const RESET_TABLES = [...SEEDED_TABLES, "config", "document"] as const;
 
 /** Tables a grader is allowed to count. Keeps an arbitrary string out of an interpolated query. */
 export type CountableTable = (typeof SEEDED_TABLES)[number];
@@ -247,5 +248,39 @@ export async function loggedCurrencies(): Promise<{ currency: string; count: num
        GROUP BY 1 ORDER BY 1`,
     );
     return rows.map((r) => ({ currency: r.currency, count: Number(r.count) }));
+  });
+}
+
+export async function seedLedger(rows: readonly LedgerRow[]): Promise<void> {
+  assertEvalDatabase();
+  await withClient(async (c) => {
+    for (const r of rows) {
+      await c.query(
+        `INSERT INTO transaction
+           (id, occurred_at, amount, type, note, currency, account, source, external_id,
+            created_at, updated_at)
+         VALUES (gen_random_uuid()::text, $1, $2, 'expense', $3, $4, $5, $6, $7, NOW(), NOW())`,
+        [r.occurredAt, r.amount, r.note, r.currency, r.account, r.source, r.externalId],
+      );
+    }
+  });
+}
+
+/** Rows logged from a document (source 'document'), with the fields a case grades. */
+export async function documentLogs(): Promise<
+  { amount: number; currency: string; date: string; account: string }[]
+> {
+  assertEvalDatabase();
+  return withClient(async (c) => {
+    const { rows } = await c.query<{
+      amount: string;
+      currency: string;
+      date: string;
+      account: string;
+    }>(
+      `SELECT amount, currency, to_char(occurred_at, 'YYYY-MM-DD') AS date, account
+       FROM transaction WHERE source = 'document' ORDER BY created_at`,
+    );
+    return rows.map((r) => ({ ...r, amount: Number(r.amount) }));
   });
 }
