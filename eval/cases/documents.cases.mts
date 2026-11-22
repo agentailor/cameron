@@ -151,8 +151,10 @@ export const cases: EvalCase[] = [
       goal: "get your receipts into the ledger",
       facts: [
         ...RECEIPT_FACTS,
+        // Tied to the SECOND file by name: worded generally, the simulator answered it after the
+        // first upload, and the agent deleted the row it had just logged correctly.
         {
-          topic: "whether it is the same purchase as one already logged",
+          topic: `whether the second receipt you sent (${frReceiptAgain.fileKey.split("/").pop()}) is the same purchase as the first`,
           value: "yes, it's the same meal — I must have sent it twice",
         },
       ],
@@ -163,6 +165,8 @@ export const cases: EvalCase[] = [
     graders: [
       // The positive half: the second upload was actually looked at.
       toolCallCountAtLeast("read_document", 2),
+      // The first log was right, so the right outcome never deletes anything.
+      toolNotCalled("delete_transaction"),
       loggedFromDocument({ count: 1, amount: frReceipt.total }),
     ],
     tags: ["documents", "duplicates", "mutation", "multi-turn", "simulated"],
@@ -180,6 +184,12 @@ export const cases: EvalCase[] = [
         {
           topic: "whether it is the same purchase as the bank transaction",
           value: "yes, that's the same meal",
+        },
+        // A fair offer once the duplicate is found. "No" keeps the bank row as imported, so the
+        // case writes nothing its graders don't check.
+        {
+          topic: "whether to update the existing transaction with the receipt's details",
+          value: "no, leave it as it is",
         },
         ...RECEIPT_FACTS.filter((f) => f.topic !== "which account paid"),
       ],
