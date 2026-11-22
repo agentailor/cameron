@@ -156,9 +156,10 @@ Failures, all writing nothing: `file_unreadable`, `unsupported_type`, `already_l
 - Look for a likely duplicate (same amount within 3 days, often a bank import) and ask before
   logging it twice.
 
-`read_document` adds a `hint` naming the skill for a receipt or invoice, but only while a
-`receipts` skill is loaded, so it never points at one that isn't there. It's worded so a plain
-question about a receipt doesn't pull the skill in.
+`read_document` doesn't know the skill exists. The agent picks the skill the way it picks any
+skill: by matching the result's `kind` against the description in its prompt. The dependency
+runs one way, from the skill to the tool, so the reader can be tested and changed without the
+skill registry.
 
 ## The document reader
 

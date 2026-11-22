@@ -4,7 +4,6 @@ import type { BaseChatModel } from "@langchain/core/language_models/chat_models"
 import type { Callbacks } from "@langchain/core/callbacks/manager";
 import { z } from "zod";
 import { getFileWithType } from "@/lib/storage/upload";
-import { getSkill } from "@/lib/skills/registry";
 import * as transactionRepo from "@/lib/repositories/transactionRepository";
 import { Account, TransactionType } from "@/types/finance";
 import { isReadableType, readWithModel } from "@/lib/documents/vision";
@@ -23,18 +22,6 @@ export interface DocumentToolsOptions {
   readWith: string;
 }
 
-/** The skill that logs a receipt; read_document points at it only if it is loaded. */
-export const RECEIPTS_SKILL = "receipts";
-
-/** For a receipt or invoice, when the receipts skill exists, the step a bare upload leads to. */
-function receiptsHint(kind: DocumentReading["kind"]): string | undefined {
-  if (kind === "other" || !getSkill(RECEIPTS_SKILL)) return undefined;
-  return (
-    "If the owner wants this logged, or sent it with no other request, the receipts skill " +
-    "covers it."
-  );
-}
-
 function readingPayload(reading: DocumentReading, answer: string | undefined) {
   return {
     ok: true,
@@ -44,7 +31,6 @@ function readingPayload(reading: DocumentReading, answer: string | undefined) {
     ...(reading.fields ? { fields: reading.fields } : {}),
     text: reading.text,
     ...(answer !== undefined ? { answer } : {}),
-    ...(receiptsHint(reading.kind) ? { hint: receiptsHint(reading.kind) } : {}),
   };
 }
 

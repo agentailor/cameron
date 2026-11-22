@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import { CallbackManager } from "@langchain/core/callbacks/manager";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
@@ -12,11 +12,6 @@ import { callTool } from "./testing";
 const getFileWithType = vi.fn();
 vi.mock("@/lib/storage/upload", () => ({
   getFileWithType: (key: string) => getFileWithType(key),
-}));
-
-let receiptsSkillLoaded = false;
-vi.mock("@/lib/skills/registry", () => ({
-  getSkill: (name: string) => (receiptsSkillLoaded && name === "receipts" ? { name } : undefined),
 }));
 
 const createFromDocument = vi.fn();
@@ -153,27 +148,6 @@ describe("read_document — reading", () => {
  * stream handler: its reply streams into the chat as the agent's words and arrives in a format
  * the structured-output parser reads as empty. The reader must run as a unit of its own.
  */
-describe("read_document — the receipts hint", () => {
-  afterEach(() => {
-    receiptsSkillLoaded = false;
-  });
-
-  it("points a receipt at the receipts skill when it is loaded", async () => {
-    receiptsSkillLoaded = true;
-    expect((await read({ fileKey: "k.png" })).hint).toContain("receipts skill");
-  });
-
-  it("never names a skill that isn't loaded", async () => {
-    expect(await read({ fileKey: "k.png" })).not.toHaveProperty("hint");
-  });
-
-  it("says nothing for a document that isn't a receipt or invoice", async () => {
-    receiptsSkillLoaded = true;
-    fake.returns(() => ({ ...READING, kind: "other" }));
-    expect(await read({ fileKey: "k.png" })).not.toHaveProperty("hint");
-  });
-});
-
 describe("read_document — runs outside the agent's graph", () => {
   class StreamHandler extends BaseCallbackHandler {
     name = "langgraph_stream";
