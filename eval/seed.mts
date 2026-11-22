@@ -1,5 +1,7 @@
 import { Client } from "pg";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { attachmentReferenceText } from "../src/lib/storage/attachmentText.ts";
 
 /**
  * Deterministic fixture with known totals the graders assert against.
@@ -150,6 +152,81 @@ function csvText(
   return lines.join("\n") + "\n";
 }
 
+/** The reader evals' committed documents, reused here as uploads. */
+const DOCUMENT_DIR = new URL("../src/lib/documents/eval/fixtures/", import.meta.url);
+
+/**
+ * A document upload, keyed for the eval object store. The figures are what is PRINTED on the file,
+ * so they are typed by hand: replace a document and update it here (and in the reader's cases).
+ */
+function documentFixture<T extends object>(file: string, key: string, printed: T) {
+  const bytes = readFileSync(new URL(file, DOCUMENT_DIR));
+  const mimeType = file.endsWith(".pdf") ? "application/pdf" : "image/png";
+  const fileKey = `eval/fixtures/${key}`;
+  return {
+    file,
+    fileKey,
+    mimeType,
+    bytes,
+    /** The reference the app puts in the user's message, built by the app's own function. */
+    attachment: attachmentReferenceText({
+      key: fileKey,
+      name: key,
+      type: mimeType,
+      size: bytes.length,
+    }),
+    ...printed,
+  };
+}
+
+/** Paris bistro, EUR. Day-first, but 14 can't be a month, so the date is unambiguous. */
+const frReceipt = {
+  merchant: "CORNER BISTRO",
+  total: 47.35,
+  date: "2026-03-14",
+  tip: 5,
+  currency: "EUR",
+};
+
+const DOCUMENTS = {
+  frReceipt: documentFixture("fr-receipt.png", "fr-receipt.png", frReceipt),
+  /** The same bytes as frReceipt under another key: a second upload of one receipt. */
+  frReceiptAgain: documentFixture("fr-receipt.png", "IMG_0412.png", frReceipt),
+  /** frReceipt with its total blacked out. The lines above it still sum to 47.35. */
+  frSmudgedTotal: documentFixture("fr-receipt-smudged-total.png", "bistro-receipt.png", {
+    linesSumTo: 47.35,
+  }),
+  /**
+   * German, EUR, decimal comma. "05.04.2026" is 5 April read day-first and 4 May read the US
+   * way — both valid dates, so only the stored date shows which reading was used.
+   */
+  deDecimalComma: documentFixture("de-receipt-decimal-comma.png", "elektro-mayer.png", {
+    total: 1234.55,
+    date: "2026-04-05",
+    wrongDate: "2026-05-04",
+    currency: "EUR",
+  }),
+  /** Carries a line addressed to an AI, so read_document withholds it. */
+  injection: documentFixture("receipt-injection.png", "red-lion.png", {
+    total: 42,
+    currency: "GBP",
+  }),
+};
+
+/**
+ * The bank's record of the frReceipt meal, as an import would leave it: same amount, posted the
+ * next day, a bank-style note. The receipt is that purchase, not a second one.
+ */
+const BANK_ROW = {
+  amount: frReceipt.total,
+  currency: frReceipt.currency,
+  occurredAt: "2026-03-15T09:00:00.000Z",
+  note: "CB CORNER BISTRO PARIS",
+  account: "CHECKING",
+  source: "csv",
+  externalId: "bank-2026-03-15-001",
+} as const;
+
 export const FIXTURE = {
   /** Every seeded row's currency. A case that is not about currency seeds it as the owner's setting. */
   ledgerCurrency: "USD",
@@ -225,6 +302,10 @@ export const FIXTURE = {
     typeLabels: [...new Set(CSV_MIXED_ROWS.map((r) => r.type))],
     currency: "EUR",
   },
+  /** Uploaded receipts and invoices for the document cases. Seeded into the eval MinIO. */
+  documents: DOCUMENTS,
+  /** A bank-imported row the document cases can seed with `ledger`. */
+  bankRow: BANK_ROW,
 } as const;
 
 export async function seed(url: string, opts: { withCsv?: boolean } = {}): Promise<void> {
@@ -314,7 +395,7 @@ export async function seed(url: string, opts: { withCsv?: boolean } = {}): Promi
 }
 
 /**
- * Put the fixture CSV in the eval object store so `inspect_csv` can read it by fileKey.
+ * Put the fixture CSVs and documents in the eval object store, for the tools that read by fileKey.
  *
  * Imported dynamically: `storage/s3-client` throws at module load when the S3 env vars are unset,
  * which would break every read-only case for a file only the import cases need.
@@ -333,4 +414,7 @@ async function seedCsvFixture(): Promise<void> {
     "text/csv",
     FIXTURE.csvMixedDates.fileName,
   );
+  for (const doc of Object.values(DOCUMENTS)) {
+    await uploadFile(doc.bytes, doc.fileKey, doc.mimeType, doc.file);
+  }
 }

@@ -55,14 +55,15 @@ loop.
 
 So a case earns its place by guarding a **defect class**, not by exercising a feature:
 
-| File                         | Guards                                                                                                                                 |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `cases/analysis.cases.mts`   | Tool selection — `run_sql` for aggregates, `query_transactions` for listings, **both directions**.                                     |
-| `cases/truncation.cases.mts` | A capped page is never reported as a complete total.                                                                                   |
-| `cases/approval.cases.mts`   | Cameron's first hard rule: no mutation without human approval; a denial writes nothing.                                                |
-| `cases/discipline.cases.mts` | Prompt contracts — no double-prompting on mutations; recovering from an unknown category.                                              |
-| `cases/csvImport.cases.mts`  | CSV import — an ambiguous date format, a mapped column that must be copied verbatim, and an opening turn that forces the agent to ask. |
-| `cases/correction.cases.mts` | Edits made the wrong way — a correction logged as a second row, an id never looked up, a delete that ignores a denial.                 |
+| File                         | Guards                                                                                                                                                                 |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cases/analysis.cases.mts`   | Tool selection — `run_sql` for aggregates, `query_transactions` for listings, **both directions**.                                                                     |
+| `cases/truncation.cases.mts` | A capped page is never reported as a complete total.                                                                                                                   |
+| `cases/approval.cases.mts`   | Cameron's first hard rule: no mutation without human approval; a denial writes nothing.                                                                                |
+| `cases/discipline.cases.mts` | Prompt contracts — no double-prompting on mutations; recovering from an unknown category.                                                                              |
+| `cases/csvImport.cases.mts`  | CSV import — an ambiguous date format, a mapped column that must be copied verbatim, and an opening turn that forces the agent to ask.                                 |
+| `cases/correction.cases.mts` | Edits made the wrong way — a correction logged as a second row, an id never looked up, a delete that ignores a denial.                                                 |
+| `cases/documents.cases.mts`  | Receipts — the skill on a bare upload and not for a question, an illegible total asked for, currency and date kept as printed, no double-logging, a withheld document. |
 
 ## The fixture
 
@@ -82,6 +83,16 @@ built to make a wrong import _detectable_: dates are `dd/MM/yyyy` with a day ≤
 is valid under both readings (5 July vs 7 May) and a wrong format imports cleanly with no error —
 only the stored month differs. Its category header is accented (`Catégorie`) and its type column is
 French, so a translated mapping is rejected and English type defaults do not apply.
+
+It also uploads the **reader evals' document fixtures** (`src/lib/documents/eval/fixtures/`) for
+the document cases, one of them twice under different names. Their figures are what each document
+prints, so `FIXTURE.documents` types them by hand; replace a document and update both suites.
+Attachment references are built by the app's own `attachmentReferenceText`, so the prompt says
+exactly what the chat route would. `document` is in `RESET_TABLES`, so no run inherits which files
+an earlier one logged.
+
+A case that needs one more row in the ledger, such as the bank import a receipt duplicates,
+declares it with `ledger: [...]`. The runner writes it after the reset, like `config`.
 
 ## Graders
 
@@ -477,9 +488,10 @@ recorded reason is a tracked finding; a deleted one is lost.
 
 ## Known gaps
 
-- **Attachments are simulated, not uploaded through the app.** CSV cases put the reference the
-  chat route would inject (`[Attached file: … fileKey: …]`) straight in the prompt; the upload
-  endpoint itself is not exercised.
+- **Attachments are simulated, not uploaded through the app.** Cases put the reference the chat
+  route would inject (`[Attached file: … fileKey: …]`) straight in the prompt; the upload endpoint
+  itself is not exercised. The CSV cases still hand-write theirs; the document cases use
+  `attachmentReferenceText`.
 - **The SSE/service layer is bypassed.** Evals call `getAgent()` directly, so streaming, thread
   persistence, and attachment handling are out of scope.
 - **The root `tsconfig.json` does not cover this tree** — its `include` is `**/*.ts`, which doesn't

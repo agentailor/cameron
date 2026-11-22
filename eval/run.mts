@@ -7,7 +7,7 @@ import {
   SIMULATED_DEFAULT,
   SIMULATOR_MODEL,
 } from "./config.mts";
-import { prepareDatabase, resetToFixture, seedConfig } from "./db.mts";
+import { prepareDatabase, resetToFixture, seedConfig, seedLedger } from "./db.mts";
 import { mockResolveTool, mockServers } from "./mcpMocks.mts";
 import { seed } from "./seed.mts";
 import { runCase } from "./runner.mts";
@@ -155,6 +155,7 @@ async function main() {
         await resetToFixture();
         // After the reset, or the seeded settings would be wiped by it.
         if (testCase.config) await seedConfig(testCase.config);
+        if (testCase.ledger) await seedLedger(testCase.ledger);
 
         // A fresh agent per run: no checkpointer state leaks between runs.
         // `bypassApprovalForEval` omits the HITL middleware entirely — it is the harness-only

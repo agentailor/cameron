@@ -3,6 +3,17 @@
  * swapping in a library later means writing adapters that satisfy `Grader`, not a rewrite.
  */
 
+/** An extra ledger row a case seeds after the reset, e.g. a bank import a receipt duplicates. */
+export interface LedgerRow {
+  amount: number;
+  currency: string;
+  occurredAt: string;
+  note: string;
+  account: string;
+  source: string;
+  externalId: string;
+}
+
 export interface ToolCall {
   name: string;
   args: Record<string, unknown>;
@@ -188,6 +199,8 @@ export interface EvalCase {
    * A case about REUSING one needs the opposite, and this is how it says so.
    */
   config?: Record<string, string>;
+  /** Extra ledger rows written after the fixture reset, e.g. a bank import a receipt duplicates. */
+  ledger?: readonly LedgerRow[];
   /** Give the agent the mock MCP servers in `eval/mcpMocks.mts`. Other cases have none. */
   mcp?: boolean;
   /** Reported as skipped, never executed. Keeps a known-red case (and its reason) on the books. */

@@ -214,6 +214,21 @@ names image and file blocks without including their bytes, even with content cap
 the tracer. Don't "simplify" this to passing `config.callbacks` through: that is exactly what
 brings both problems back.
 
+## Agent evals
+
+The reader evals grade one model call. Whether the agent uses what it reads is graded in
+`eval/cases/documents.cases.mts`, on the main eval harness (`pnpm eval documents`):
+
+- a bare upload loads the skill, reads the receipt, and logs the total paid, tip included;
+- a question about a receipt is answered without the skill or the logging tool;
+- an illegible total is asked for, not added up from the lines above it;
+- a German receipt for a USD owner is logged in EUR, on 5 April rather than 4 May;
+- the same receipt sent twice, or one already in the ledger from a bank import, ends as one row;
+- a withheld document (`untrusted_document`) logs nothing.
+
+They reuse the reader's fixtures, uploaded to the eval object store. Each case is graded on the
+rows that end up in the database.
+
 ## Reader evals
 
 `src/lib/documents/eval/`. These check what unit tests can't: whether a real model reads a document

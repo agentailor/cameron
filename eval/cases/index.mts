@@ -6,6 +6,7 @@ import { cases as correction } from "./correction.cases.mts";
 import { cases as csvImport } from "./csvImport.cases.mts";
 import { cases as skills } from "./skills.cases.mts";
 import { cases as discipline } from "./discipline.cases.mts";
+import { cases as documents } from "./documents.cases.mts";
 import { cases as mcp } from "./mcp.cases.mts";
 import { cases as truncation } from "./truncation.cases.mts";
 
@@ -25,4 +26,5 @@ export const cases: EvalCase[] = [
   ...correction,
   ...skills,
   ...mcp,
+  ...documents,
 ];
