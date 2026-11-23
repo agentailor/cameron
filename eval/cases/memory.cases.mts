@@ -8,9 +8,9 @@ import {
   memorySaved,
   rowCountInStore,
   statesAmount,
+  statesNoWrongTotal,
   toolCalled,
   toolCalledBefore,
-  toolNotCalled,
 } from "../graders.mts";
 import { FIXTURE } from "../seed.mts";
 import type { EvalCase, MemorySeed } from "../types.mts";
@@ -39,8 +39,13 @@ const T = transport.category;
 /** "Food" is ambiguous without the preference: dining alone is a plausible reading. */
 const foodTotal = dining.totalMajor + groceries.totalMajor;
 
+/**
+ * The title says WHEN it applies, not what it says: the categories are only in the content, so
+ * applying it takes a `recall`. A title holding the whole preference let a model answer from the
+ * index alone, and "recall before run_sql" then failed a correct run.
+ */
 const FOOD: MemorySeed = {
-  title: `spending questions: "food" means ${D} and ${G} together`,
+  title: `spending questions: what "food" means`,
   content: `When the owner asks about food, count the ${D} and ${G} categories together.`,
 };
 const PAYDAY: MemorySeed = {
@@ -76,7 +81,7 @@ export const cases: EvalCase[] = [
       agenda: [`No, eating out for me is ${D} and ${G}: most of my ${G} spending is ready meals.`],
       until: async () => (await memoryRows()).length > 0,
     },
-    graders: [toolCalled("remember"), memorySaved(/eating out/i)],
+    graders: [toolCalled("remember"), memorySaved(/eating[\s-]?out/i)],
     tags: ["memory", "multi-turn", "simulated"],
   },
   {
@@ -151,13 +156,17 @@ export const cases: EvalCase[] = [
     tags: ["memory"],
   },
   {
-    id: "memory-unrelated-question-recalls-nothing",
+    id: "memory-preference-not-misapplied",
     description:
-      "With memories saved that don't apply, a plain question is answered without recalling them.",
-    prompt: `What's my total ${T} spending?`,
+      `A question naming one category is answered for that category alone, even with a "food" ` +
+      `preference saved that covers it. Recalling the preference is fine; widening the answer ` +
+      `with it is not.`,
+    // Recalling a memory that turns out not to apply costs a round trip, not correctness, so the
+    // call itself isn't graded. The defect is applying it: the D+G total in place of D's.
+    prompt: `How much have I spent on ${D}?`,
     memories: [FOOD, PAYDAY],
     config,
-    graders: [statesAmount(transport.totalMajor), toolNotCalled("recall")],
+    graders: [statesAmount(dining.totalMajor), statesNoWrongTotal(dining.totalMajor)],
     tags: ["memory"],
   },
 
