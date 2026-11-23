@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it, vi } from "vitest";
 import { listCapabilities, GATED_TOOL_NAMES } from "./capabilities";
+import { ANNOUNCED_TOOL_NAMES } from "./gatedTools";
 
 /**
  * The /capabilities page is only honest if it matches the tools actually registered. Most groups
@@ -27,6 +28,17 @@ describe("listCapabilities", () => {
       expect(c.description.length, `description for ${c.name}`).toBeGreaterThan(20);
       expect(c.group, `group for ${c.name}`).toBeTruthy();
     }
+  });
+
+  it("flags exactly the announced tools, none of them gated", () => {
+    const caps = listCapabilities();
+    expect(
+      caps
+        .filter((c) => c.announced)
+        .map((c) => c.name)
+        .sort(),
+    ).toEqual([...ANNOUNCED_TOOL_NAMES].sort());
+    expect(caps.filter((c) => c.announced && c.gated)).toEqual([]);
   });
 
   it("flags exactly the gated tools as needing approval", () => {

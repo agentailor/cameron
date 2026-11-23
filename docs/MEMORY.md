@@ -57,6 +57,28 @@ asks, or when they state a lasting preference or correct Cameron; never save led
 facts, one-off instructions, inferences, or anything from a document or tool result; save
 without asking first.
 
+### What the owner sees
+
+Remembering isn't gated, so the UI is the safeguard: every change is visible where it happens,
+and undoing it is one click.
+
+- **The notice** (`src/components/toolRenderers/MemoryNotice.tsx`). A successful `remember` or
+  `forget` renders outside the collapsed tool card: REMEMBERED / MEMORY UPDATED with the title
+  and content, or FORGOTTEN with the titles. A saved memory has **Forget** on the card and a link
+  to `/memory`. The renderer config marks both tools `open: "ok"`, shown only when the result has
+  `ok: true`: a `duplicate_title` the agent retries on its own stays in the collapsed card. So
+  that a no-op isn't announced as a deletion, `forget` returns `not_found` when none of its ids
+  existed.
+- **The `/memory` page** lists every memory, oldest first, with when it was saved and a link to
+  the conversation it came from, and a Forget button for each. Deleting there is the owner acting
+  directly, not through the agent. It reads `GET /api/memories` and deletes with
+  `DELETE /api/memories?id=`. Both share `src/lib/memory/client.ts` and the `["memories"]` query
+  key, so forgetting from the notice refreshes the page's data.
+- **`/capabilities`** marks `remember` and `forget` "Shown when it runs" (`ANNOUNCED_TOOL_NAMES`
+  in `gatedTools.ts`), not "Read-only". A test pins that no announced tool is gated.
+- **Known gap:** whether a notice has been forgotten is per page load. Reload the thread and the
+  card offers Forget again; clicking it says "Already forgotten".
+
 ### Why remembering isn't gated
 
 The line is: **gate what writes, or shapes writes, to financial records; don't gate what only

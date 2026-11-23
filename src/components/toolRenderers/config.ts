@@ -31,14 +31,19 @@ export type ResultRenderer =
   | "diff"
   | "txnRows"
   | "document"
+  | "memory"
   | "json";
 
 export interface ToolRenderers {
   /** null = the call has no arguments worth showing; render the name alone. */
   args: ArgsRenderer | null;
   result: ResultRenderer;
-  /** The result is shown outside the collapsed group: the user is asked to review it. */
-  open?: true;
+  /**
+   * The result is shown outside the collapsed group. `true`: always (the user is asked to review
+   * it). `"ok"`: only when it succeeded — a write the user should see, whose failures the agent
+   * retries on its own.
+   */
+  open?: true | "ok";
 }
 
 export const TOOL_RENDERERS: Record<string, ToolRenderers> = {
@@ -65,9 +70,10 @@ export const TOOL_RENDERERS: Record<string, ToolRenderers> = {
   // The result is a skill's markdown instructions — no purpose-built view yet, so it shows as
   // JSON. Listed anyway because an unlisted registered tool is what config.test.ts guards against.
   load_skill: { args: "fields", result: "json" },
-  remember: { args: "fields", result: "json" },
+  // Not gated, so the notice is how the owner learns a memory changed — see docs/MEMORY.md.
+  remember: { args: "fields", result: "memory", open: "ok" },
   recall: { args: "fields", result: "json" },
-  forget: { args: "fields", result: "json" },
+  forget: { args: "fields", result: "memory", open: "ok" },
   // The rows arrive as an artifact, not in the result content — see ToolActivityGroup.
   render_chart: { args: "sql", result: "chart" },
 };

@@ -8,6 +8,7 @@ import { TransactionDiff, hasDiff } from "./TransactionDiff";
 import { TransactionRows, NotValidated } from "./TransactionRows";
 import { DocumentReading } from "./DocumentReading";
 import { DocumentLogPreview } from "./DocumentLogPreview";
+import { MemoryNotice, isMemoryChange } from "./MemoryNotice";
 
 /**
  * Dispatch from the catalog in `config.ts` to a component. A tool with no entry renders as JSON.
@@ -113,6 +114,7 @@ export const ToolResult = ({ toolName, content }: { toolName?: string; content: 
     if (kind === "diff" && hasDiff(p)) return <TransactionDiff before={p.before} after={p.after} />;
     if (kind === "txnRows" && Array.isArray(p.transactions)) return <TransactionRows payload={p} />;
     if (kind === "document" && typeof p.kind === "string") return <DocumentReading payload={p} />;
+    if (kind === "memory" && isMemoryChange(p)) return <MemoryNotice payload={p} />;
   }
 
   return <Json value={parsed} />;

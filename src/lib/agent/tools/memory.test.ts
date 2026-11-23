@@ -176,12 +176,24 @@ describe("recall", () => {
 });
 
 describe("forget", () => {
+  it("is an error when nothing matched, so it isn't announced as a deletion", async () => {
+    vi.mocked(repo.removeMany).mockResolvedValue([]);
+
+    const res = await callTool(forget, { ids: ["m-404"] });
+
+    expect(res).toMatchObject({ ok: false, error: "not_found", missing: ["m-404"] });
+  });
+
   it("reports what was deleted and what didn't exist", async () => {
-    vi.mocked(repo.removeMany).mockResolvedValue(["m-1"]);
+    vi.mocked(repo.removeMany).mockResolvedValue([{ id: "m-1", title: "payday: the 25th" }]);
 
     const res = await callTool(forget, { ids: ["m-1", "m-404"] });
 
-    expect(res).toEqual({ ok: true, forgotten: ["m-1"], missing: ["m-404"] });
+    expect(res).toEqual({
+      ok: true,
+      forgotten: [{ id: "m-1", title: "payday: the 25th" }],
+      missing: ["m-404"],
+    });
   });
 });
 
