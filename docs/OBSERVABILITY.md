@@ -88,12 +88,12 @@ GET /api/agent/stream                       Next.js route span
 Graph nodes and middleware get no span. **With content capture off**, these are the only
 attributes Cameron sets:
 
-| Span           | Attributes                                                                                                                                               |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `invoke_agent` | `gen_ai.agent.name`, `gen_ai.conversation.id` (the thread id), `cameron.run.resumed`, and on a resume `cameron.approval.approved` / `.rejected` counts   |
-| `chat`         | `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.usage.input_tokens` / `output_tokens`, `gen_ai.response.finish_reasons` |
-| `execute_tool` | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.type`, `cameron.tool.mutating`                                                                   |
-| any, on error  | `error.type` and ERROR status — no message, no stack trace (an error message can quote an amount)                                                        |
+| Span           | Attributes                                                                                                                                                                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `invoke_agent` | `gen_ai.agent.name`, `gen_ai.conversation.id` (the thread id), `cameron.run.resumed`, and on a resume `cameron.approval.approved` / `.rejected` counts                                                                                                                          |
+| `chat`         | `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.usage.input_tokens` / `output_tokens`, `gen_ai.response.finish_reasons`, and `cameron.context.cleared_results` when old tool results were cleared from that call ([docs/MEMORY.md](MEMORY.md)) |
+| `execute_tool` | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.type`, `cameron.tool.mutating`                                                                                                                                                                                          |
+| any, on error  | `error.type` and ERROR status — no message, no stack trace (an error message can quote an amount)                                                                                                                                                                               |
 
 When the approval gate pauses a run, the `invoke_agent` span gets a `cameron.approval.requested`
 event listing the gated **tool names** — never their arguments. A pause is not an error.

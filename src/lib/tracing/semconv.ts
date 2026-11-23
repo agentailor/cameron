@@ -40,6 +40,7 @@ export const CAMERON = {
   SPAN_UNFINISHED: "cameron.span.unfinished",
   APPROVAL_REQUESTED_EVENT: "cameron.approval.requested",
   APPROVAL_TOOLS: "cameron.approval.tools",
+  CONTEXT_CLEARED_RESULTS: "cameron.context.cleared_results",
 } as const;
 
 export const AGENT_NAME = "cameron";

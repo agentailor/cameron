@@ -108,6 +108,9 @@ export class GenAiTracer extends BaseCallbackHandler {
       ...(provider ? { [GEN_AI.PROVIDER_NAME]: toProviderName(provider) } : {}),
       ...(model ? { [GEN_AI.REQUEST_MODEL]: model } : {}),
     };
+    // A count, not content, so it is recorded with capture off.
+    const cleared = countClearedResults(messages[0] ?? []);
+    if (cleared) attributes[CAMERON.CONTEXT_CLEARED_RESULTS] = cleared;
     if (this.capture) {
       const input = toSemconvInput(messages[0] ?? []);
       if (input.systemInstructions.length) {
@@ -310,6 +313,15 @@ function runOutputAttributes(outputs: ChainValues): Attributes {
 function finishReasonOf(message: BaseMessage | undefined): string | undefined {
   const meta = (message?.response_metadata ?? {}) as Metadata;
   return str(meta.finish_reason) ?? str(meta.stop_reason);
+}
+
+/** Tool results the context-editing middleware replaced with its placeholder for this call. */
+function countClearedResults(messages: BaseMessage[]): number {
+  return messages.filter(
+    (m) =>
+      ToolMessage.isInstance(m) &&
+      (m.response_metadata?.context_editing as { cleared?: boolean } | undefined)?.cleared === true,
+  ).length;
 }
 
 function toolResult(content: unknown): string {

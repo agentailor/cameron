@@ -247,6 +247,28 @@ describe("GenAiTracer span tree", () => {
     );
   });
 
+  it("counts tool results cleared from the request, with content capture off", () => {
+    const { tracer, byName } = setup(false);
+    startRoot(tracer);
+    const cleared = new ToolMessage({
+      content: "[cleared]",
+      tool_call_id: "c1",
+      response_metadata: { context_editing: { cleared: true, strategy: "clear_tool_uses" } },
+    });
+    const kept = new ToolMessage({ content: "{}", tool_call_id: "c2" });
+    tracer.handleChatModelStart(SERIALIZED, [[cleared, kept]], "chat-1", "root", {}, [], META);
+    tracer.handleLLMEnd(aiReply({ content: "" }), "chat-1");
+    tracer.handleChatModelStart(SERIALIZED, [[kept]], "chat-2", "root", {}, [], {
+      ...META,
+      ls_model_name: "other",
+    });
+    tracer.handleLLMEnd(aiReply({ content: "" }), "chat-2");
+    tracer.handleChainEnd({}, "root");
+
+    expect(byName("chat claude-haiku-5-5").attributes["cameron.context.cleared_results"]).toBe(1);
+    expect(byName("chat other").attributes).not.toHaveProperty("cameron.context.cleared_results");
+  });
+
   it("flags mutating tools so they can be told apart from reads", () => {
     const { tracer, byName } = setup();
     startRoot(tracer);
