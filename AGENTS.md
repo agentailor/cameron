@@ -164,7 +164,8 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     what Cameron knows, not the records, and any effect on the records still passes a gated write.
     `recall`'s description lists every memory's `id · title`, rebuilt per message by
     `createMemoryTools(await memoryRepo.list())`; the system prompt is untouched. When to remember
-    lives in `remember`'s description only, until experiments show it isn't enough.
+    lives in `remember`'s description only: the memory evals (`eval/cases/memory.cases.mts`)
+    pass without a system-prompt rule, so add one only for a case that keeps failing.
   - `src/lib/agent/tools/skills.ts` — `load_skill` (read-only): returns one skill's full instructions
     by name. Auto-approves — reading a skill approves nothing it tells you to do. `name` is a plain
     string, not an enum, because the skill names are already in the prompt verbatim: a wrong name is
