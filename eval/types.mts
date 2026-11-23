@@ -14,6 +14,28 @@ export interface LedgerRow {
   externalId: string;
 }
 
+/** A memory a case seeds after the reset, for a case about USING one rather than saving it. */
+export interface MemorySeed {
+  title: string;
+  content: string;
+}
+
+/** A conversation after the first, on a thread of its own. */
+export interface CaseThread {
+  /** Its opening user message. */
+  prompt: string;
+  /** Its own simulated user, if it needs one; independent of the first thread's. */
+  user?: SimulatedUser;
+}
+
+/** What one thread of a multi-thread run produced. Same fields as the run's, scoped. */
+export interface ThreadCapture {
+  finalText: string;
+  trajectory: ToolCall[];
+  toolResults: ToolResult[];
+  interrupts: ToolCall[];
+}
+
 export interface ToolCall {
   name: string;
   args: Record<string, unknown>;
@@ -49,6 +71,11 @@ export interface RunCapture {
    * one message is already in `EvalCase.prompt`, and the report renders that.
    */
   conversation?: ConversationTurn[];
+  /**
+   * Set only for a case with `threads`: each thread's part of the run, in order (the first is
+   * `prompt`'s). The top-level fields span every thread; `inThread` grades one.
+   */
+  threads?: ThreadCapture[];
   /**
    * The graph was STILL PAUSED when the run ended — the agent was waiting on approval, not silent.
    * Lets a grader tell "never requested" from "requested and still waiting", which read the same
@@ -98,6 +125,8 @@ export interface ConversationTurn {
    * answered a question the case never foresaw".
    */
   source?: "fixed" | "simulated";
+  /** 1-based thread number, set only on a multi-thread run so the report can mark the break. */
+  thread?: number;
 }
 
 /**
@@ -199,6 +228,14 @@ export interface EvalCase {
    * A case about REUSING one needs the opposite, and this is how it says so.
    */
   config?: Record<string, string>;
+  /**
+   * Later conversations, each on a NEW thread, run in order after the first ends. The database
+   * carries over (ledger, settings, memories); the conversation does not. For what must survive a
+   * new thread, like a preference remembered in the first. Grade one thread with `inThread`.
+   */
+  threads?: readonly CaseThread[];
+  /** Memories written after the fixture reset, for a case about using a stored preference. */
+  memories?: readonly MemorySeed[];
   /** Extra ledger rows written after the fixture reset, e.g. a bank import a receipt duplicates. */
   ledger?: readonly LedgerRow[];
   /** Give the agent the mock MCP servers in `eval/mcpMocks.mts`. Other cases have none. */

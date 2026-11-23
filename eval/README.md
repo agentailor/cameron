@@ -470,6 +470,45 @@ The runner applies it after the fixture reset. Both halves are needed: without t
 the agent can silently default; without the reuse case a settings store the agent re-asks past
 looks identical to one that works.
 
+## Multi-thread cases
+
+Some things only exist across conversations: a preference remembered in one thread must change
+the answer in the next. A case says so with `threads`, a list of later conversations, each with
+its own `prompt` and, optionally, its own simulated `user`:
+
+```ts
+{
+  prompt: 'Remember this: when I ask about "food", I mean Dining and Groceries together.',
+  threads: [{ prompt: "How much have I spent on food in total?" }],
+  graders: [memorySaved(/food/i), inThread(2, toolCalledBefore("recall", "run_sql"))],
+}
+```
+
+- **Each thread is a new `thread_id`, run in order.** The database carries over (ledger, settings,
+  memories); the conversation does not. A thread that comes back inconclusive ends the run.
+- **`inThread(n, grader)` grades one thread** (1-based; thread 1 is `prompt`'s). The wrapped
+  grader sees only that thread's trajectory, results, interrupts and final answer, so "recall ran
+  in the new thread" can't pass on a recall made in the first. Without it a grader sees every
+  thread: the top-level capture spans them all. Database graders are unaffected either way.
+- **The transcript marks each thread** in the report and viewer (`ConversationTurn.thread`).
+
+### The agent is rebuilt per message, as in the app
+
+`run.mts` hands the runner a factory, not an agent, and every message builds a fresh one. The app
+does the same, and some tools depend on it: `recall`'s description lists the memories that
+existed when the agent was built. With one agent per run, a memory saved in thread 1 would be
+missing from thread 2's `recall`, and the case would grade the harness instead of the agent.
+
+## Memory cases
+
+`memory` is in `RESET_TABLES`, so every run starts with nothing remembered. A case about USING a
+stored preference seeds it with `memories: [{ title, content }]`, applied after the reset like
+`config`. Grade on the table, not on the agent saying "noted":
+
+- `memorySaved(pattern)`: some memory's title or content matches.
+- `memoryCount(n)`: exactly n exist. `memoryCount(0)` is a negative grader (nothing was
+  remembered) and passes on a run that did nothing, so always pair it with a positive one.
+
 ## Adding a case
 
 1. Pick the file matching the defect class (or add one and export it from `cases/index.mts`).

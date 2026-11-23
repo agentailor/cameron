@@ -16,6 +16,8 @@ import type {
   EvalCase,
   Inconclusive,
   RunCapture,
+  SimulatedUser,
+  ThreadCapture,
   ToolCall,
   ToolResult,
 } from "./types.mts";
@@ -96,124 +98,170 @@ function resumeFor(
   return toResumeCommand(resolved.decisions);
 }
 
-export async function runCase(agent: Agent, testCase: EvalCase): Promise<RunCapture> {
-  const threadId = `${testCase.id}-${randomUUID()}`;
+/**
+ * Builds the agent for one message. The app rebuilds it per message (tools such as `recall` list
+ * what was in the database when the message started), so the eval does too: a memory saved in one
+ * thread must be visible to the next exactly as it would be in the app.
+ */
+export type AgentFactory = () => Promise<Agent>;
 
+export async function runCase(agentFor: AgentFactory, testCase: EvalCase): Promise<RunCapture> {
   const trajectory: ToolCall[] = [];
   const toolResults: ToolResult[] = [];
   const interrupts: ToolCall[] = [];
   const interruptBatches: ToolCall[][] = [];
 
-  // Each invoke returns the WHOLE thread; `seen` is the cursor past what's already collected.
-  let seen = 0;
   let finalText = "";
   let pausedAtEnd = false;
+
+  const multiThread = (testCase.threads?.length ?? 0) > 0;
+  const threadCaptures: ThreadCapture[] = [];
+  const conversation: ConversationTurn[] = [];
 
   // Separate from the per-turn budget: a conversation of unknown length would otherwise abort
   // mid-flight and surface as a throw, i.e. as an agent crash.
   const deadline = AbortSignal.timeout(LIMITS.conversationTimeoutMs);
 
-  /** One user message in, the agent's reply out, approval interrupts settled. Shared by both paths. */
-  async function send(text: string): Promise<string> {
-    const config = {
-      configurable: { thread_id: threadId },
-      recursionLimit: LIMITS.recursionLimit,
-      signal: AbortSignal.any([deadline, AbortSignal.timeout(LIMITS.timeoutMs)]),
+  /** One conversation on its own thread. Returns why it was inconclusive, if it was. */
+  async function runThread(
+    opening: string,
+    user: SimulatedUser | undefined,
+    index: number,
+  ): Promise<Inconclusive | undefined> {
+    const threadId = `${testCase.id}-${index + 1}-${randomUUID()}`;
+    const scoped: ThreadCapture = {
+      finalText: "",
+      trajectory: [],
+      toolResults: [],
+      interrupts: [],
     };
+    threadCaptures.push(scoped);
 
-    let result = await agent.invoke({ messages: [new HumanMessage(text)] }, config);
-    let fresh = result.messages.slice(seen);
-    collect(fresh, trajectory, toolResults);
-    seen = result.messages.length;
-    finalText = lastAssistantText(fresh) || finalText;
-    let turnText = lastAssistantText(fresh);
+    // Each invoke returns the WHOLE thread; `seen` is the cursor past what's already collected.
+    let seen = 0;
 
-    // With `approval` set the middleware is live, so a mutating call pauses instead of running.
-    if (testCase.approval) {
-      let batch = await pendingBatch(agent, threadId);
-      const record = () => {
-        if (batch.actionRequests.length === 0) return;
-        interrupts.push(...callsOf(batch));
-        interruptBatches.push(callsOf(batch));
-      };
-      record();
-
-      // A turn can pause more than once — keep resuming until nothing is pending.
-      // See "Approval cases" in eval/README.md for why answering only the first breaks a case.
-      for (
-        let guard = 0;
-        batch.actionRequests.length > 0 && guard < LIMITS.recursionLimit;
-        guard++
-      ) {
-        result = await agent.invoke(resumeFor(testCase.approval, batch), config);
-        fresh = result.messages.slice(seen);
-        collect(fresh, trajectory, toolResults);
-        seen = result.messages.length;
-        finalText = lastAssistantText(fresh) || finalText;
-        turnText = lastAssistantText(fresh) || turnText;
-
-        batch = await pendingBatch(agent, threadId);
-        record();
-      }
-
-      // Still pending: the agent is waiting, not finished — a distinction `trajectory` can't make.
-      pausedAtEnd = batch.actionRequests.length > 0;
+    /** Collect `fresh` into the run's capture and this thread's. */
+    function take(fresh: BaseMessage[]): void {
+      collect(fresh, trajectory, toolResults);
+      collect(fresh, scoped.trajectory, scoped.toolResults);
+      const text = lastAssistantText(fresh);
+      finalText = text || finalText;
+      scoped.finalText = text || scoped.finalText;
     }
 
-    return turnText;
-  }
+    /** One user message in, the agent's reply out, approval interrupts settled. */
+    async function send(text: string): Promise<string> {
+      const agent = await agentFor();
+      const config = {
+        configurable: { thread_id: threadId },
+        recursionLimit: LIMITS.recursionLimit,
+        signal: AbortSignal.any([deadline, AbortSignal.timeout(LIMITS.timeoutMs)]),
+      };
 
-  try {
-    let conversation: ConversationTurn[] | undefined;
-    let inconclusive: Inconclusive | undefined;
+      let result = await agent.invoke({ messages: [new HumanMessage(text)] }, config);
+      let fresh = result.messages.slice(seen);
+      take(fresh);
+      seen = result.messages.length;
+      let turnText = lastAssistantText(fresh);
 
-    if (testCase.user) {
+      // With `approval` set the middleware is live, so a gated call pauses instead of running.
+      if (testCase.approval) {
+        let batch = await pendingBatch(agent, threadId);
+        const record = () => {
+          if (batch.actionRequests.length === 0) return;
+          interrupts.push(...callsOf(batch));
+          scoped.interrupts.push(...callsOf(batch));
+          interruptBatches.push(callsOf(batch));
+        };
+        record();
+
+        // A turn can pause more than once — keep resuming until nothing is pending.
+        // See "Approval cases" in eval/README.md for why answering only the first breaks a case.
+        for (
+          let guard = 0;
+          batch.actionRequests.length > 0 && guard < LIMITS.recursionLimit;
+          guard++
+        ) {
+          result = await agent.invoke(resumeFor(testCase.approval, batch), config);
+          fresh = result.messages.slice(seen);
+          take(fresh);
+          seen = result.messages.length;
+          turnText = lastAssistantText(fresh) || turnText;
+
+          batch = await pendingBatch(agent, threadId);
+          record();
+        }
+
+        // Still pending: the agent is waiting, not finished — a distinction `trajectory` can't make.
+        pausedAtEnd = batch.actionRequests.length > 0;
+      }
+
+      return turnText;
+    }
+
+    const mark = (turns: ConversationTurn[]) =>
+      multiThread ? turns.map((t) => ({ ...t, thread: index + 1 })) : turns;
+
+    if (user) {
       const simulated = await runSimulatedConversation({
-        user: testCase.user,
-        opening: testCase.prompt,
+        user,
+        opening,
         hooks: { send },
         threadId,
       });
-      conversation = simulated.conversation;
-      inconclusive = simulated.inconclusive;
-    } else {
-      await send(testCase.prompt);
+      conversation.push(...mark(simulated.conversation));
+      return simulated.inconclusive;
     }
 
-    return {
-      finalText,
-      trajectory,
-      toolResults,
-      interrupts,
-      interruptBatches,
-      pausedAtEnd,
-      ...(conversation ? { conversation } : {}),
-      ...(inconclusive ? { inconclusive } : {}),
-    };
+    const reply = await send(opening);
+    // A single-turn first thread is already shown as the case's `prompt`; later threads are not.
+    if (multiThread) {
+      conversation.push(
+        ...mark([
+          { role: "user", text: opening, source: "fixed" },
+          { role: "assistant", text: reply },
+        ]),
+      );
+    }
+    return undefined;
+  }
+
+  const base = () => ({
+    finalText,
+    trajectory,
+    toolResults,
+    interrupts,
+    interruptBatches,
+    pausedAtEnd,
+    ...(conversation.length ? { conversation } : {}),
+    ...(multiThread ? { threads: threadCaptures } : {}),
+  });
+
+  try {
+    const plan = [{ prompt: testCase.prompt, user: testCase.user }, ...(testCase.threads ?? [])];
+    for (const [index, thread] of plan.entries()) {
+      const inconclusive = await runThread(thread.prompt, thread.user, index);
+      // A later thread tests what survived this one; without its evidence there's nothing to grade.
+      if (inconclusive) return { ...base(), inconclusive };
+    }
+    return base();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     // Running out of the conversation budget is the harness giving up, not the agent crashing.
-    if (testCase.user && deadline.aborted) {
+    if (deadline.aborted && hasSimulatedUser(testCase)) {
       return {
-        finalText,
-        trajectory,
-        toolResults,
-        interrupts,
-        pausedAtEnd,
+        ...base(),
         inconclusive: {
           reason: "conversation-timeout",
           detail: `the conversation exceeded ${LIMITS.conversationTimeoutMs / 1000}s`,
         },
       };
     }
-    return {
-      finalText,
-      trajectory,
-      toolResults,
-      interrupts,
-      interruptBatches,
-      pausedAtEnd,
-      error: message,
-    };
+    return { ...base(), error: message };
   }
+}
+
+/** Whether any thread is a simulated conversation (only those have an open-ended length). */
+function hasSimulatedUser(testCase: EvalCase): boolean {
+  return Boolean(testCase.user) || (testCase.threads ?? []).some((t) => t.user);
 }
