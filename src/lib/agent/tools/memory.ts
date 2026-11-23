@@ -178,12 +178,18 @@ export const forget = tool(
   async (input) => {
     const wanted = [...new Set(input.ids)];
     const forgotten = await memoryRepo.removeMany(wanted);
-    const gone = new Set(forgotten);
-    return JSON.stringify({
-      ok: true,
-      forgotten,
-      missing: wanted.filter((id) => !gone.has(id)),
-    });
+    const gone = new Set(forgotten.map((m) => m.id));
+    const missing = wanted.filter((id) => !gone.has(id));
+    if (forgotten.length === 0) {
+      return JSON.stringify({
+        ok: false,
+        error: "not_found",
+        message:
+          "None of these ids exist, so nothing was deleted. Check them in recall's description.",
+        missing,
+      });
+    }
+    return JSON.stringify({ ok: true, forgotten, missing });
   },
   {
     name: "forget",

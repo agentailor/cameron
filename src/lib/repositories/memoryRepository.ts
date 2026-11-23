@@ -109,12 +109,11 @@ export async function update(
   }
 }
 
-/** Delete these memories. Returns the ids actually removed; the caller reports the rest. */
-export async function removeMany(ids: string[]): Promise<string[]> {
+/** Delete these memories. Returns the ones actually removed; the caller reports the rest. */
+export async function removeMany(ids: string[]): Promise<Pick<Memory, "id" | "title">[]> {
   if (ids.length === 0) return [];
-  const rows = await db
+  return db
     .delete(memories)
     .where(inArray(memories.id, ids))
-    .returning({ id: memories.id });
-  return rows.map((r) => r.id);
+    .returning({ id: memories.id, title: memories.title });
 }

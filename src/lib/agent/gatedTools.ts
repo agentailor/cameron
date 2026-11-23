@@ -17,6 +17,12 @@ export const GATED_TOOL_NAMES = [
   "log_from_document",
 ] as const;
 
+/**
+ * Writes that are NOT gated: they change what Cameron knows, not the records, and the chat shows
+ * each one as it happens (docs/MEMORY.md). Never also in GATED_TOOL_NAMES.
+ */
+export const ANNOUNCED_TOOL_NAMES = ["remember", "forget"] as const;
+
 export function isGatedTool(name: string): boolean {
   return (GATED_TOOL_NAMES as readonly string[]).includes(name);
 }

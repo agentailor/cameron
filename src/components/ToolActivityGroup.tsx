@@ -32,6 +32,18 @@ const contentOf = (activity: ToolActivity): string => {
   return typeof content === "string" ? content : JSON.stringify(content, null, 2);
 };
 
+/** Whether a result is shown outside the collapse (`open` in the renderer config). */
+function isShown(activity: ToolActivity): boolean {
+  const { open } = renderersFor(activity.name);
+  if (!activity.result || !open) return false;
+  if (open === true) return true;
+  try {
+    return (JSON.parse(contentOf(activity)) as { ok?: unknown }).ok === true;
+  } catch {
+    return false;
+  }
+}
+
 /** The chart an activity should draw outside the collapse, if any. */
 function chartOf(activity: ToolActivity): ChartPayload | null {
   if (renderersFor(activity.name).result !== "chart") return null;
@@ -189,7 +201,7 @@ export const ToolActivityGroupCard = ({
   const isGated = (a: ToolActivity) => a.isPending && a.isGated;
   const gated = approvalCallbacks ? activities.filter(isGated) : [];
   // A result the user is asked to review (a delete preview) is not machinery either.
-  const shown = activities.filter((a) => a.result && renderersFor(a.name).open);
+  const shown = activities.filter((a) => isShown(a));
   const shownIds = new Set(shown.map((a) => a.callId));
   const collapsible = activities.filter(
     (a) => !isGated(a) && !drawn.has(a.callId) && !shownIds.has(a.callId),

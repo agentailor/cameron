@@ -1,4 +1,4 @@
-import { ShieldCheck } from "lucide-react";
+import { Bookmark, ShieldCheck } from "lucide-react";
 import { listCapabilities } from "@/lib/agent/capabilities";
 import { BackToChat } from "@/components/BackToChat";
 import { ConnectedServersLink } from "@/components/connections/ConnectedServersLink";
@@ -17,7 +17,9 @@ export default function CapabilitiesPage() {
         <h1 className="text-foreground text-2xl font-semibold">What Cameron can do</h1>
         <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
           These are Cameron&apos;s built-in tools. Anything that changes your ledger stops and asks
-          you first — Cameron never writes without your approval.
+          you first — Cameron never writes to it without your approval. Preferences Cameron
+          remembers are shown in the chat as they&apos;re saved, and you can forget them there or on
+          the memory page.
         </p>
         <ConnectedServersLink />
 
@@ -39,6 +41,11 @@ export default function CapabilitiesPage() {
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
                           <ShieldCheck size={12} />
                           Needs approval
+                        </span>
+                      ) : c.announced ? (
+                        <span className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium">
+                          <Bookmark size={12} />
+                          Shown when it runs
                         </span>
                       ) : (
                         <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-medium">

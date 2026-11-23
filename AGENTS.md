@@ -269,6 +269,10 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
     read) and a CHART (it is the answer, not a detail — and it renders with no JSON receipt under
     it). A drawn chart leaves the collapsed list entirely.
   - There is no global "hide tools" toggle any more; collapsing per card replaced it.
+  - **A result can also escape the collapse** with `open` in the renderer config: `true` always
+    (a delete preview the user reviews), `"ok"` only when the payload has `ok: true` (the memory
+    notice for `remember` / `forget`, whose failures the agent retries unseen). See
+    [docs/MEMORY.md](docs/MEMORY.md).
 - **Design tokens** (`src/app/globals.css`): paper ground / ink text / one amber `--brand`, mapped
   ONTO shadcn's semantic names so `ui/*` inherits them. Amber marks the approval boundary and
   each page's primary CTA (Save / Add — `primaryButton` in `src/components/ui/formStyles.ts`, which
@@ -477,7 +481,8 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
 - Stream endpoints use `dynamic = "force-dynamic"` and `runtime = "nodejs"`
 - Query params for streaming: `content`, `threadId`, `model`, `provider`, `decisions`
   (deliberately NO approval-bypass param — see the approval workflow above)
-- MCP server CRUD follows REST patterns in `/api/mcp-servers/route.ts`
+- MCP server CRUD follows REST patterns in `/api/mcp-servers/route.ts`; `/api/memories` follows the
+  same shape (`GET` lists, `DELETE ?id=` forgets) for the `/memory` page
 - File upload endpoint: `/api/agent/upload` accepts multipart/form-data, returns file metadata
 
 ### Streaming Architecture

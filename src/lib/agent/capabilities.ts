@@ -5,7 +5,7 @@ import { categoryTools } from "./tools/categories";
 import { configTools } from "./tools/config";
 import { chartTools } from "./tools/charts";
 import { createMemoryTools } from "./tools/memory";
-import { GATED_TOOL_NAMES as GATED_TOOL_NAMES_LOCAL } from "./gatedTools";
+import { ANNOUNCED_TOOL_NAMES, GATED_TOOL_NAMES as GATED_TOOL_NAMES_LOCAL } from "./gatedTools";
 
 /**
  * Built-in tools for the /capabilities page, derived from the arrays agent/index.ts registers.
@@ -81,6 +81,8 @@ export interface Capability {
   description: string;
   /** Gated tools pause for human approval; everything else runs unattended. */
   gated: boolean;
+  /** An ungated write, shown in the chat as it happens (the memory tools). */
+  announced: boolean;
   group: string;
 }
 
@@ -98,6 +100,7 @@ const GROUPS: { label: string; tools: { name: string; description: string }[] }[
 ];
 
 const gated = new Set<string>(GATED_TOOL_NAMES_LOCAL);
+const announced = new Set<string>(ANNOUNCED_TOOL_NAMES);
 
 export function listCapabilities(): Capability[] {
   return GROUPS.flatMap(({ label, tools }) =>
@@ -105,6 +108,7 @@ export function listCapabilities(): Capability[] {
       name: t.name,
       description: t.description,
       gated: gated.has(t.name),
+      announced: announced.has(t.name),
       group: label,
     })),
   );

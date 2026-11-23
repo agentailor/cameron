@@ -7,6 +7,7 @@ import "@/app/api/agent/upload/schema";
 import "@/app/api/files/[key]/schema";
 import "@/app/api/agent/history/[threadId]/schema";
 import "@/app/api/mcp-servers/schema";
+import "@/app/api/memories/schema";
 import "@/app/api/mcp-servers/[id]/tools/schema";
 import "@/app/api/mcp-servers/[id]/catalog/schema";
 import "@/app/api/oauth/check/[serverId]/schema";

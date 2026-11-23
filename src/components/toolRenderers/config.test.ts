@@ -29,6 +29,13 @@ describe("TOOL_RENDERERS", () => {
     expect(renderersFor("run_sql").args).toBe("sql");
   });
 
+  // Not gated, so the notice is how the owner learns of them; a failed attempt the agent retries.
+  it("shows memory writes outside the collapse only when they succeed", () => {
+    for (const name of ["remember", "forget"]) {
+      expect(renderersFor(name)).toMatchObject({ result: "memory", open: "ok" });
+    }
+  });
+
   it("gives every mutating tool a receipt", () => {
     for (const name of ["log_expense", "create_category", "import_transactions_csv"]) {
       expect(renderersFor(name).result).toBe("receipt");
