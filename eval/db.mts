@@ -2,7 +2,7 @@ import { execSync } from "node:child_process";
 import { Client } from "pg";
 import { DATABASE } from "./config.mts";
 import { seed } from "./seed.mts";
-import type { LedgerRow } from "./types.mts";
+import type { LedgerRow, MemorySeed } from "./types.mts";
 
 /** Puts the sandbox database in a known state. Isolation itself is `compose.eval.yaml`'s job. */
 
@@ -283,5 +283,30 @@ export async function documentLogs(): Promise<
        FROM transaction WHERE source = 'document' ORDER BY created_at`,
     );
     return rows.map((r) => ({ ...r, amount: Number(r.amount) }));
+  });
+}
+
+/** Memories for a case about USING a stored preference, written after the reset. */
+export async function seedMemories(memories: readonly MemorySeed[]): Promise<void> {
+  assertEvalDatabase();
+  await withClient(async (c) => {
+    for (const m of memories) {
+      await c.query(
+        `INSERT INTO memory (id, title, content, created_at, updated_at)
+         VALUES (gen_random_uuid()::text, $1, $2, NOW(), NOW())`,
+        [m.title, m.content],
+      );
+    }
+  });
+}
+
+/** Every saved memory, oldest first: what a memory grader checks. */
+export async function memoryRows(): Promise<{ title: string; content: string }[]> {
+  assertEvalDatabase();
+  return withClient(async (c) => {
+    const { rows } = await c.query<{ title: string; content: string }>(
+      "SELECT title, content FROM memory ORDER BY created_at, id",
+    );
+    return rows;
   });
 }

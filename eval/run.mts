@@ -7,7 +7,7 @@ import {
   SIMULATED_DEFAULT,
   SIMULATOR_MODEL,
 } from "./config.mts";
-import { prepareDatabase, resetToFixture, seedConfig, seedLedger } from "./db.mts";
+import { prepareDatabase, resetToFixture, seedConfig, seedLedger, seedMemories } from "./db.mts";
 import { mockResolveTool, mockServers } from "./mcpMocks.mts";
 import { seed } from "./seed.mts";
 import { runCase } from "./runner.mts";
@@ -156,21 +156,24 @@ async function main() {
         // After the reset, or the seeded settings would be wiped by it.
         if (testCase.config) await seedConfig(testCase.config);
         if (testCase.ledger) await seedLedger(testCase.ledger);
+        if (testCase.memories) await seedMemories(testCase.memories);
 
-        // A fresh agent per run: no checkpointer state leaks between runs.
+        // A fresh agent per MESSAGE, as in the app: tools such as `recall` read the database when
+        // the agent is built. Threads are unique per run, so no checkpointer state leaks between runs.
         // `bypassApprovalForEval` omits the HITL middleware entirely — it is the harness-only
         // escape hatch (no HTTP path can set it), so a case testing the gate must NOT set it.
-        const agent = await getAgent({
-          provider: MODEL.provider,
-          model: MODEL.name,
-          baseUrl: MODEL.baseUrl,
-          bypassApprovalForEval: !testCase.approval,
-          ...(testCase.mcp
-            ? { mcpForEval: { servers: mockServers, resolveTool: mockResolveTool } }
-            : {}),
-        });
+        const agentFor = () =>
+          getAgent({
+            provider: MODEL.provider,
+            model: MODEL.name,
+            baseUrl: MODEL.baseUrl,
+            bypassApprovalForEval: !testCase.approval,
+            ...(testCase.mcp
+              ? { mcpForEval: { servers: mockServers, resolveTool: mockResolveTool } }
+              : {}),
+          });
         const t0 = Date.now();
-        const capture = await runCase(agent as never, testCase);
+        const capture = await runCase(agentFor as never, testCase);
         const secs = ((Date.now() - t0) / 1000).toFixed(1);
 
         // An invoke that threw is a HARNESS problem until proven otherwise — say so loudly

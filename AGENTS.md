@@ -635,6 +635,12 @@ pnpm typecheck:eval                         # free — the root tsc misses this 
 - **Order is graded, not just membership**: `toolCalledBefore(before, after)` exists because
   `toolCalled` is a set check — "asked, saved, then logged" and "logged under a guess, then saved"
   leave the same rows in the same tables, and only the order says which happened.
+- **Multi-thread cases** (`threads: [{ prompt, user? }]`) run later conversations on NEW threads,
+  in order; the database carries over, the conversation doesn't. `inThread(n, grader)` scopes any
+  grader to one thread. **The agent is rebuilt per message** (`run.mts` passes the runner a
+  factory), as in the app: `recall`'s description lists the memories present at build time, so one
+  agent per run would hide a memory saved in thread 1 from thread 2. `memories: [...]` seeds
+  stored preferences after the reset; `memorySaved` / `memoryCount` grade the table.
 - **Approval cases** set `approval: "allow" | "deny"`, which keeps the HITL middleware live (plain
   `bypassApprovalForEval` omits it entirely). Paused calls land on `RunCapture.interrupts` — the only
   evidence the gate fired, since `trajectory` looks identical either way. These cases mutate, so the

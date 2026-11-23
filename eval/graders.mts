@@ -10,6 +10,7 @@ import {
   importedCurrencies,
   importedMonths,
   loggedCurrencies,
+  memoryRows,
   transactionsWithNote,
   type CountableTable,
 } from "./db.mts";
@@ -698,6 +699,79 @@ export function loggedFromDocument(expected: {
         }
       }
       return result(id, true);
+    },
+  };
+}
+
+/**
+ * Grade ONE thread of a multi-thread case (1-based; thread 1 is `prompt`'s). The wrapped grader
+ * sees that thread's trajectory, results, interrupts and final answer, so "recall ran in the new
+ * thread" can't pass on a recall made back in the first. Database graders are unaffected: the
+ * database is shared, and they read it as it stands at the end of the run.
+ */
+export function inThread(thread: number, grader: Grader): Grader {
+  const id = `${grader.id}@thread${thread}`;
+  return {
+    id,
+    grade: async (c: RunCapture) => {
+      const scoped = c.threads?.[thread - 1];
+      if (!scoped) {
+        return result(id, false, `the run has ${c.threads?.length ?? 1} thread(s), not ${thread}`);
+      }
+      const verdict = await grader.grade({
+        ...c,
+        ...scoped,
+        interruptBatches: undefined,
+        threads: undefined,
+      });
+      return { ...verdict, graderId: id };
+    },
+  };
+}
+
+/**
+ * A saved memory's title or content matches `pattern`. Graded on the `memory` table, not on the
+ * agent saying "noted": a claim to remember has many spellings, a row has one.
+ */
+export function memorySaved(pattern: RegExp): Grader {
+  const id = `memorySaved(${pattern})`;
+  return {
+    id,
+    grade: async () => {
+      const rows = await memoryRows();
+      const hit = rows.some((m) => pattern.test(`${m.title}\n${m.content}`));
+      return result(
+        id,
+        hit,
+        hit
+          ? undefined
+          : rows.length
+            ? `no memory matches; saved: ${rows.map((m) => JSON.stringify(m.title)).join(", ")}`
+            : "no memories were saved",
+      );
+    },
+  };
+}
+
+/**
+ * Exactly `expected` memories exist. With 0 it is a NEGATIVE grader ("nothing was remembered"),
+ * which passes on a run that did nothing: always pair it with one proving the task was done.
+ */
+export function memoryCount(expected: number): Grader {
+  const id = `memoryCount(${expected})`;
+  return {
+    id,
+    grade: async () => {
+      const rows = await memoryRows();
+      return result(
+        id,
+        rows.length === expected,
+        rows.length === expected
+          ? undefined
+          : `${rows.length} memories saved, expected ${expected}: ${rows
+              .map((m) => JSON.stringify(m.title))
+              .join(", ")}`,
+      );
     },
   };
 }

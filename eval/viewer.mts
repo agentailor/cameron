@@ -45,10 +45,16 @@ function renderTrajectory(trajectory: string[], interrupts: string[]): string {
  */
 function renderConversation(conversation: ConversationTurn[]): string {
   const turns = conversation
-    .map((t) => {
+    .map((t, i) => {
       const sim = t.role === "user" && t.source === "simulated";
       const who = t.role === "user" ? `user${sim ? ' <em>sim</em>' : ""}` : "Cameron";
+      // A multi-thread run: mark where each new conversation starts.
+      const thread =
+        t.thread && t.thread !== conversation[i - 1]?.thread
+          ? `<div class="thread">thread ${t.thread}</div>`
+          : "";
       return (
+        thread +
         `<div class="turn ${esc(t.role)}${sim ? " sim" : ""}">` +
         `<span class="who">${who}</span><pre>${esc(t.text)}</pre></div>`
       );
@@ -184,6 +190,7 @@ const STYLE = `
   .convo .who { flex: 0 0 5.5rem; color: var(--muted); font-size: .8em; text-align: right; }
   .convo .who em { color: var(--warn); font-style: normal; }
   .convo pre { margin: 0; flex: 1; white-space: pre-wrap; }
+  .convo .thread { margin: .8rem 0 .3rem; color: var(--muted); font-size: .75em; text-transform: uppercase; letter-spacing: .08em; border-top: 1px dashed var(--muted); padding-top: .4rem; }
 `;
 
 /** Failures (0) before inconclusive (1) before passes (2). */
