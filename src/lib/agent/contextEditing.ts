@@ -10,6 +10,7 @@ export const CONTEXT_KEEP_RESULTS = 5;
 /** Results the agent keeps acting on: instructions, preferences, validations, the schema. */
 export const NEVER_CLEARED_TOOLS = [
   "load_skill",
+  "recall",
   "validate_csv_import",
   "validate_transaction_update",
   "validate_transaction_delete",

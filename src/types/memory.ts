@@ -23,3 +23,8 @@ export interface CreateMemoryInput {
 export type CreateMemoryResult =
   | { ok: true; memory: Memory }
   | { ok: false; reason: "duplicate_title"; existing: Memory };
+
+export type UpdateMemoryResult =
+  | { ok: true; memory: Memory }
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "duplicate_title"; existing: Memory };

@@ -159,6 +159,12 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
       `linkPreviews` (`src/services/editPreview.ts`) pairs a pending edit with the latest earlier
       validator result with identical arguments — the server's own rule, so it cannot preview a
       different plan than the one that runs.
+  - `src/lib/agent/tools/memory.ts` — `remember`, `recall`, `forget`: owner preferences kept across
+    threads, full detail in [docs/MEMORY.md](docs/MEMORY.md). **None is gated** — memories change
+    what Cameron knows, not the records, and any effect on the records still passes a gated write.
+    `recall`'s description lists every memory's `id · title`, rebuilt per message by
+    `createMemoryTools(await memoryRepo.list())`; the system prompt is untouched. When to remember
+    lives in `remember`'s description only, until experiments show it isn't enough.
   - `src/lib/agent/tools/skills.ts` — `load_skill` (read-only): returns one skill's full instructions
     by name. Auto-approves — reading a skill approves nothing it tells you to do. `name` is a plain
     string, not an enum, because the skill names are already in the prompt verbatim: a wrong name is
@@ -173,13 +179,13 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
 - **Tool Approval**: Human-in-the-loop via `humanInTheLoopMiddleware`. Approval is gated **per-tool**
   through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
   `import_transactions_csv`, `create_category`, `set_config`, `update_transaction`,
-  `delete_transaction`, `log_from_document`); read tools (incl. `run_sql`), MCP tools and `load_tools` (which only changes
+  `delete_transaction`, `log_from_document`); read tools (incl. `run_sql`), MCP tools, the memory tools and `load_tools` (which only changes
   what the model sees) auto-approve. **The gate cannot be switched off from the product**: no UI control, no query
   param, and nothing on `MessageOptions` can disable it — `bypassApprovalForEval` omits the
   middleware for the eval harness alone, which calls the agent factory in-process and has no human
   to answer an interrupt (`approvalGate.test.ts` pins that boundary). Decisions: `allow`→approve,
-  `deny`→reject (with an explanatory follow-up). `MUTATING_TOOL_NAMES` lives in
-  `src/lib/agent/mutatingTools.ts` — a **zero-import leaf**; `index.ts` and `capabilities.ts` both
+  `deny`→reject (with an explanatory follow-up). `GATED_TOOL_NAMES` lives in
+  `src/lib/agent/gatedTools.ts` — a **zero-import leaf**; `index.ts` and `capabilities.ts` both
   re-use it from there. It is its own module because **client components need it** (the approval
   gate styles itself from it) and `capabilities.ts` reaches `pg` through the tool modules, so
   importing that from the browser pulls Postgres into the bundle. `tsc` does not catch this — the
@@ -421,7 +427,7 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   `decisions={"<callId>":"allow"|"deny",…}` (empty content); the SSE contract is otherwise unchanged. Position in the message list is NOT a pending signal:
   tool results and later AI text both arrive after the call, so "is it last?" is wrong in both
   directions — it hid the gate on a real pause and offered APPROVE on read-only tools.
-- `ToolActivityGroup` additionally requires `isMutatingTool(name)` before rendering the amber panel.
+- `ToolActivityGroup` additionally requires `isGatedTool(name)` before rendering the amber panel.
   Two independent conditions, because that panel claims "this writes to your data".
 - **One decision per call, never one for the batch (#45).** The middleware batches every gated call
   of one model step into one interrupt and aligns decisions by POSITION; its `actionRequests` carry

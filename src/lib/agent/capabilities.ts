@@ -4,7 +4,8 @@ import { analyticsTools } from "./tools/analytics";
 import { categoryTools } from "./tools/categories";
 import { configTools } from "./tools/config";
 import { chartTools } from "./tools/charts";
-import { MUTATING_TOOL_NAMES as MUTATING_TOOL_NAMES_LOCAL } from "./mutatingTools";
+import { createMemoryTools } from "./tools/memory";
+import { GATED_TOOL_NAMES as GATED_TOOL_NAMES_LOCAL } from "./gatedTools";
 
 /**
  * Built-in tools for the /capabilities page, derived from the arrays agent/index.ts registers.
@@ -73,13 +74,13 @@ const DOCUMENT_CAPABILITIES = [
 ];
 
 /** Tools that mutate the ledger and pause for approval. Names must match ./tools/*. */
-export { MUTATING_TOOL_NAMES } from "./mutatingTools";
+export { GATED_TOOL_NAMES } from "./gatedTools";
 
 export interface Capability {
   name: string;
   description: string;
-  /** Mutating tools pause for human approval; reads run unattended. */
-  mutating: boolean;
+  /** Gated tools pause for human approval; everything else runs unattended. */
+  gated: boolean;
   group: string;
 }
 
@@ -92,16 +93,18 @@ const GROUPS: { label: string; tools: { name: string; description: string }[] }[
   { label: "Settings", tools: configTools },
   { label: "Charts", tools: chartTools },
   { label: "Skills", tools: SKILL_CAPABILITIES },
+  // Built with no memories: the page lists the tools, not what is saved.
+  { label: "Memory", tools: createMemoryTools([]) },
 ];
 
-const mutating = new Set<string>(MUTATING_TOOL_NAMES_LOCAL);
+const gated = new Set<string>(GATED_TOOL_NAMES_LOCAL);
 
 export function listCapabilities(): Capability[] {
   return GROUPS.flatMap(({ label, tools }) =>
     tools.map((t) => ({
       name: t.name,
       description: t.description,
-      mutating: mutating.has(t.name),
+      gated: gated.has(t.name),
       group: label,
     })),
   );

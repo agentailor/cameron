@@ -186,7 +186,7 @@ export const ToolActivityGroupCard = ({
     .map((activity) => ({ activity, chart: chartOf(activity) }))
     .filter((c): c is { activity: ToolActivity; chart: ChartPayload } => c.chart !== null);
   const drawn = new Set(charts.map((c) => c.activity.callId));
-  const isGated = (a: ToolActivity) => a.isPending && a.isMutating;
+  const isGated = (a: ToolActivity) => a.isPending && a.isGated;
   const gated = approvalCallbacks ? activities.filter(isGated) : [];
   // A result the user is asked to review (a delete preview) is not machinery either.
   const shown = activities.filter((a) => a.result && renderersFor(a.name).open);

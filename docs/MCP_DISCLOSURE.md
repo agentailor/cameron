@@ -303,7 +303,7 @@ its own calls, as error results.
 ## Approval
 
 `load_tools` is not gated. It only changes what the model can see, and
-`MUTATING_TOOL_NAMES` is unchanged. MCP tools still auto-approve as before; cached
+`GATED_TOOL_NAMES` is unchanged. MCP tools still auto-approve as before; cached
 `annotations` (`readOnlyHint`, …) are stored but not used for approval.
 
 ## Evals

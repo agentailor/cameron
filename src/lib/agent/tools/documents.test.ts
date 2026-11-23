@@ -303,8 +303,8 @@ describe("log_from_document", () => {
   });
 
   it("is gated", async () => {
-    const { isMutatingTool } = await import("../mutatingTools");
-    expect(isMutatingTool("log_from_document")).toBe(true);
+    const { isGatedTool } = await import("../gatedTools");
+    expect(isGatedTool("log_from_document")).toBe(true);
   });
 
   it("writes an expense linked to the file's content hash, and echoes what was written", async () => {

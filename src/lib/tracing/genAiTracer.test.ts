@@ -289,11 +289,11 @@ describe("GenAiTracer span tree", () => {
     tracer.handleChainEnd({}, "root");
 
     expect(byName("execute_tool log_expense").attributes).toMatchObject({
-      "cameron.tool.mutating": true,
+      "cameron.tool.gated": true,
       "gen_ai.tool.call.id": "call-t1",
       "gen_ai.tool.type": "function",
     });
-    expect(byName("execute_tool list_categories").attributes["cameron.tool.mutating"]).toBe(false);
+    expect(byName("execute_tool list_categories").attributes["cameron.tool.gated"]).toBe(false);
   });
 });
 

@@ -105,14 +105,14 @@ prebuilt ReAct agent that runs on LangGraph (`model` node → `tools` node loop)
 import { createAgent, humanInTheLoopMiddleware } from "langchain";
 
 // Only mutating tools pause for approval; reads and MCP tools auto-approve.
-const MUTATING_TOOL_NAMES = ["log_expense", "import_transactions_csv"] as const;
+const GATED_TOOL_NAMES = ["log_expense", "import_transactions_csv"] as const;
 
 async function buildAgent(cfg?: AgentConfigOptions) {
   const llm = createChatModel({ provider, model: modelName, temperature: 1 });
   const allTools = [...builtinTools, ...configTools, ...mcpTools];
 
   const interruptOn = Object.fromEntries(
-    MUTATING_TOOL_NAMES.map((name) => [name, { allowedDecisions: ["approve", "reject"] }]),
+    GATED_TOOL_NAMES.map((name) => [name, { allowedDecisions: ["approve", "reject"] }]),
   );
   // bypassApprovalForEval omits the middleware entirely, so no interrupt is ever created. It is
   // reachable ONLY from the eval harness — no request can set it.
@@ -438,7 +438,7 @@ client sends one decision per call id (`decisions={"<callId>":"allow"|"deny"}`),
 `src/services/approvalDecisions.ts` turns that into the positional array:
 
 - `readPendingBatch(snapshot)` reads the interrupt's action requests and the paused AI message's gated
-  calls (filtered by `MUTATING_TOOL_NAMES`) — the same order the middleware used.
+  calls (filtered by `GATED_TOOL_NAMES`) — the same order the middleware used.
 - `resolveDecisions(...)` checks the two line up (name + args), then refuses on any missing, unknown
   or invalid id. It never defaults a decision or copies one to another call.
 - If any call is denied, the middleware drops approved siblings and returns to the model, so those are
@@ -925,7 +925,7 @@ drizzle/                      # Generated migrations (committed)
 | Agent factory & middleware | `src/lib/agent/index.ts`                      |
 | Persona and hard rules     | `src/lib/agent/prompt.ts`                     |
 | Built-in tools             | `src/lib/agent/tools/`                        |
-| Gated tool names           | `src/lib/agent/mutatingTools.ts`              |
+| Gated tool names           | `src/lib/agent/gatedTools.ts`              |
 | Capabilities page data     | `src/lib/agent/capabilities.ts`               |
 | Streaming + HITL resume    | `src/services/agentService.ts`                |
 | Raw-SQL boundary           | `src/lib/repositories/analyticsRepository.ts` |
@@ -943,7 +943,7 @@ Two boundaries worth knowing:
 
 - `capabilities.ts` imports the tool modules, which reach the repositories and `pg`. **Never import
   it from a client component** — it pulls Postgres into the browser bundle. Client code that needs
-  the gated tool names imports `mutatingTools.ts`, a leaf with no imports.
+  the gated tool names imports `gatedTools.ts`, a leaf with no imports.
 - `capabilities.ts` must not import `agent/index.ts`; the dependency runs the other way.
 
 ---
