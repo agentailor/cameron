@@ -12,9 +12,10 @@ const SEEDED_TABLES = ["transaction", "category"] as const;
 /**
  * Everything wiped between runs. `config` is not seeded but MUST be cleared: a case that sets the
  * owner's currency would otherwise leave it set, and the next case — whose whole point is an
- * unestablished setting — would start already answered. `document` holds which files were logged.
+ * unestablished setting — would start already answered. `document` holds which files were logged;
+ * `memory`, what the owner asked Cameron to remember.
  */
-const RESET_TABLES = [...SEEDED_TABLES, "config", "document"] as const;
+const RESET_TABLES = [...SEEDED_TABLES, "config", "document", "memory"] as const;
 
 /** Tables a grader is allowed to count. Keeps an arbitrary string out of an interpolated query. */
 export type CountableTable = (typeof SEEDED_TABLES)[number];

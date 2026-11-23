@@ -110,7 +110,7 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     — the one sanctioned raw-SQL site — which runs every query inside a `BEGIN TRANSACTION READ ONLY`
     - `statement_timeout`, **as the `cameron_analytics` role** (`SET LOCAL ROLE`), always rolls
       back, and hard-caps returned rows. The role can SELECT only `transaction` and `category`, so
-      Postgres refuses `mcp_server` (OAuth tokens/env/headers, encrypted but still not the agent's), the checkpoints, `config`
+      Postgres refuses `mcp_server` (OAuth tokens/env/headers, encrypted but still not the agent's), the checkpoints, `config`, `memory`
       and `thread`; a `42501` comes back as an "isn't available to `run_sql`" payload. Why
       `set_config` is revoked from PUBLIC (it is `SET ROLE` as a function):
       [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#what-run_sql-can-read). Both tools auto-approve.
@@ -279,9 +279,9 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   `drizzle.config.ts`.
 - **Repository seam**: application code NEVER imports Drizzle directly. All DB access goes through
   the `src/lib/repositories/` files (`threadRepository`, `mcpServerRepository`, `transactionRepository`,
-  `categoryRepository`, `analyticsRepository`, `configRepository`, `mcpServerCatalogRepository`), which return **plain domain objects**
+  `categoryRepository`, `analyticsRepository`, `configRepository`, `mcpServerCatalogRepository`, `memoryRepository`), which return **plain domain objects**
   (`ThreadRecord`, `MCPServer` in `src/types/mcp.ts`; `Transaction`, `Category` in
-  `src/types/finance.ts`; `ConfigEntry` in `src/types/config.ts`), not Drizzle row types. This keeps the persistence layer swappable — replacing the ORM touches only these files.
+  `src/types/finance.ts`; `ConfigEntry` in `src/types/config.ts`; `Memory` in `src/types/memory.ts`), not Drizzle row types. This keeps the persistence layer swappable — replacing the ORM touches only these files.
   Add new DB access as repository functions, not inline queries.
 - **Sanctioned raw-SQL exception**: `analyticsRepository.runReadOnlyQuery` runs agent-authored SQL for
   the `run_sql` tool. It is the ONE place raw SQL executes; it runs inside a Drizzle `db.transaction`
@@ -339,6 +339,12 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   column, because that varies per key, not per install, and no code would read it. Absent from
   `describe_finance_schema` and not granted to `cameron_analytics`, so `run_sql` cannot read it;
   still, don't put credentials there.
+- **`memory` holds owner preferences no code reads** (v7, [docs/MEMORY.md](docs/MEMORY.md)):
+  `title` is unique ignoring case (`memory_title_key` on `lower(title)`), and a duplicate is a
+  result, not an error: `memoryRepository.create` returns `duplicate_title` with the memory holding
+  it, so the caller can replace it. `source_thread_id` has no FK, so deleting a thread keeps its
+  memories. Limits (length, count) belong to the tool, not the repository. Not granted to
+  `cameron_analytics`, and wiped between eval runs (`RESET_TABLES`).
 - **Tables**: `thread` (minimal metadata; actual history in LangGraph checkpoints) and `mcp_server`
   (stdio/http with conditional fields + OAuth token/state columns; JSON columns for flexible config).
   `drizzle.config.ts`'s `tablesFilter` must list every app table, or drizzle-kit ignores it.
