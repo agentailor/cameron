@@ -81,7 +81,6 @@ export const cases: EvalCase[] = [
       agenda: [`No, eating out for me is ${D} and ${G}: most of my ${G} spending is ready meals.`],
       until: async () => (await memoryRows()).length > 0,
     },
-    // "eating-out" with a hyphen is a common title spelling (GPT-6 Luna used it every run).
     graders: [toolCalled("remember"), memorySaved(/eating[\s-]?out/i)],
     tags: ["memory", "multi-turn", "simulated"],
   },
