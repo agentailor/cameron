@@ -1,7 +1,36 @@
 # Memory
 
-How Cameron keeps a long thread within the model's context. (Preferences that persist across
-threads will be documented here as well.)
+Two things: preferences Cameron remembers across threads, and how it keeps a long thread within
+the model's context.
+
+## Preferences
+
+Facts the owner stated that no code reads ("Costco counts as groceries", "paid on the 25th").
+Anything the application reads is a `config` catalog key instead (`currency`).
+
+### Storage
+
+`memory` (migration `0008_memory.sql`), accessed only through `memoryRepository`:
+
+| Column             | Notes                                                                       |
+| ------------------ | --------------------------------------------------------------------------- |
+| `id`               | text uuid                                                                   |
+| `title`            | what the agent will see in its prompt; unique ignoring case                 |
+| `content`          | the preference itself                                                       |
+| `source_thread_id` | the thread it was saved in. No FK: deleting a thread keeps its memories     |
+| `created_at`       | lists are oldest first, so adding a memory only changes the end of the list |
+| `updated_at`       |                                                                             |
+
+- **A duplicate title is a result, not an error.** `create` returns
+  `{ ok: false, reason: "duplicate_title", existing }`, so the caller can replace the memory
+  instead of saving a near-copy.
+- **Missing ids are the caller's to report.** `getMany` and `removeMany` return what exists or
+  was removed, and the caller names the rest.
+- **Limits belong to the tool**, not the repository.
+- **`run_sql` can't read it**: not granted to `cameron_analytics`, and absent from
+  `describe_finance_schema`.
+- **Wiped between eval runs** (`RESET_TABLES` in `eval/db.mts`), so a remembered fact can't leak
+  into the next case.
 
 ## Context editing
 

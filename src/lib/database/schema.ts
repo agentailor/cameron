@@ -179,3 +179,24 @@ export const configs = pgTable("config", {
   value: text("value").notNull(),
   updatedAt: timestamp("updated_at", { precision: 3, mode: "string" }).notNull(),
 });
+
+// --- Memory (v7) ---
+// Preferences the owner stated that no code reads ("Costco counts as groceries"). The agent sees
+// titles in its prompt and reads content on request. Not granted to `cameron_analytics`.
+export const memories = pgTable(
+  "memory",
+  {
+    id: text("id").primaryKey().notNull(),
+    // What the agent sees in its prompt: names when the memory applies.
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    // The thread it was saved in. No FK (like category_id): a deleted thread keeps its memories.
+    sourceThreadId: text("source_thread_id"),
+    createdAt: timestamp("created_at", { precision: 3, mode: "string" })
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { precision: 3, mode: "string" }).notNull(),
+  },
+  // Case-insensitive, so "Costco" and "costco" can't be two memories.
+  (table) => [uniqueIndex("memory_title_key").on(sql`lower(${table.title})`)],
+);

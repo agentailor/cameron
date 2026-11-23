@@ -23,5 +23,6 @@ export default defineConfig({
     "transaction",
     "config",
     "document",
+    "memory",
   ],
 });
