@@ -925,7 +925,7 @@ drizzle/                      # Generated migrations (committed)
 | Agent factory & middleware | `src/lib/agent/index.ts`                      |
 | Persona and hard rules     | `src/lib/agent/prompt.ts`                     |
 | Built-in tools             | `src/lib/agent/tools/`                        |
-| Gated tool names           | `src/lib/agent/gatedTools.ts`              |
+| Gated tool names           | `src/lib/agent/gatedTools.ts`                 |
 | Capabilities page data     | `src/lib/agent/capabilities.ts`               |
 | Streaming + HITL resume    | `src/services/agentService.ts`                |
 | Raw-SQL boundary           | `src/lib/repositories/analyticsRepository.ts` |

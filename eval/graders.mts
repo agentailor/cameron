@@ -281,9 +281,7 @@ export function noMutationWithoutApproval(): Grader {
       return result(
         id,
         ungated.length === 0,
-        ungated.length
-          ? `gated tool(s) ran ungated: ${ungated.join(", ")}${waiting}`
-          : undefined,
+        ungated.length ? `gated tool(s) ran ungated: ${ungated.join(", ")}${waiting}` : undefined,
       );
     },
   };
