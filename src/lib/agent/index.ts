@@ -18,6 +18,7 @@ import { listSkills } from "@/lib/skills/registry";
 import { createAgent, humanInTheLoopMiddleware } from "langchain";
 import { mcpServerDisclosureMiddleware } from "@agentailor/mcp-disclosure";
 import { invalidToolCallMiddleware } from "./invalidToolCalls";
+import { contextEditingMiddleware } from "./contextEditing";
 import { loadDisclosureServers } from "@/lib/mcp/catalog";
 import { createToolResolver } from "@/lib/mcp/pool";
 // Lives in ./capabilities so the page can read it without importing this file's deps.
@@ -101,7 +102,13 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   // on a pooled connection. load_tools is not gated: it only changes visibility.
   const disclosure = mcpServerDisclosureMiddleware(mcp);
   // Inside disclosure, so the retry sees the full tool list, loaded MCP tools included.
-  const middleware = [disclosure, invalidToolCallMiddleware(), ...approval];
+  // Context editing is innermost, so retries are trimmed too; it never touches the saved thread.
+  const middleware = [
+    disclosure,
+    invalidToolCallMiddleware(),
+    contextEditingMiddleware(),
+    ...approval,
+  ];
 
   const agent = createAgent({
     model: llm,

@@ -495,6 +495,14 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   `MAX_INVALID_CALL_RETRIES` times with a correction (`invalid_arguments`, or `unknown_tool` for a
   tool not offered) that is never saved to the thread; after that the response ends with a
   visible notice. The stream shows the same notice live for every malformed attempt.
+- **Old tool results are cleared from the request, never from the thread** (full detail in
+  [docs/MEMORY.md](docs/MEMORY.md)). `contextEditingMiddleware` (`src/lib/agent/contextEditing.ts`,
+  the innermost `wrapModelCall`) runs langchain's `ClearToolUsesEdit` past `CONTEXT_CLEAR_TRIGGER`
+  approximate tokens, keeping the last `CONTEXT_KEEP_RESULTS` results and `NEVER_CLEARED_TOOLS`.
+  It is NOT langchain's own `contextEditingMiddleware`: `createAgent` passes `wrapModelCall` the
+  state's own message array, and the built-in edits it in place, so the placeholders were saved
+  into the checkpoint. Cameron's copies the array first (`contextEditing.test.ts` fails without
+  the copy). `summarizationMiddleware` is not used for the same reason: it rewrites the thread.
 - **Dedup and React keys are `type:id`, not `id`.** Ids are unique only within a type (an AI
   message's synthetic id and a tool message's call id are different namespaces).
 
