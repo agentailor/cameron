@@ -3,7 +3,12 @@ import db from "@/lib/database/db";
 import { columnToDate } from "@/lib/database/timestamps";
 import { memories } from "@/lib/database/schema";
 import { isUniqueViolation } from "@/lib/database/errors";
-import type { CreateMemoryInput, CreateMemoryResult, Memory } from "@/types/memory";
+import type {
+  CreateMemoryInput,
+  CreateMemoryResult,
+  Memory,
+  UpdateMemoryResult,
+} from "@/types/memory";
 
 /**
  * Persistence for remembered preferences. The ONLY ORM seam for the `memory` table — callers get
@@ -76,6 +81,29 @@ export async function create(input: CreateMemoryInput): Promise<CreateMemoryResu
     if (!isUniqueViolation(err)) throw err;
     const existing = await getByTitle(input.title);
     // Deleted between the insert and the lookup: vanishingly rare, so surface it.
+    if (!existing) throw err;
+    return { ok: false, reason: "duplicate_title", existing };
+  }
+}
+
+/**
+ * Replace a memory's title and content in place, keeping its id and where it was saved. A title
+ * held by ANOTHER memory returns that one; renaming a memory to its own title (any case) is fine.
+ */
+export async function update(
+  id: string,
+  input: { title: string; content: string },
+): Promise<UpdateMemoryResult> {
+  try {
+    const [row] = await db
+      .update(memories)
+      .set({ title: input.title, content: input.content, updatedAt: new Date().toISOString() })
+      .where(eq(memories.id, id))
+      .returning();
+    return row ? { ok: true, memory: toDomain(row) } : { ok: false, reason: "not_found" };
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+    const existing = await getByTitle(input.title);
     if (!existing) throw err;
     return { ok: false, reason: "duplicate_title", existing };
   }

@@ -31,6 +31,48 @@ Anything the application reads is a `config` catalog key instead (`currency`).
   `describe_finance_schema`.
 - **Wiped between eval runs** (`RESET_TABLES` in `eval/db.mts`), so a remembered fact can't leak
   into the next case.
+- `update` replaces a memory in place (same id, same `source_thread_id`) and returns `not_found`
+  or `duplicate_title` (when ANOTHER memory holds the title) instead of throwing.
+
+### Tools (`src/lib/agent/tools/memory.ts`)
+
+| Tool                                  | What it does                                                                                                                                                                                                                                 |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `remember(title, content, replaces?)` | Saves one preference, or replaces the memory `replaces` names. Records the thread it came from. Errors: `invalid_input` (blank or too long), `duplicate_title` (with the existing memory and how to replace it), `memory_full`, `not_found`. |
+| `recall(ids)`                         | Returns the content of 1–20 memories, and names the ids that don't exist instead of dropping them.                                                                                                                                           |
+| `forget(ids)`                         | Deletes 1–20 memories; returns `forgotten` and `missing`.                                                                                                                                                                                    |
+
+Limits: title 80 characters, content 400, 50 memories. Replacing works at the limit.
+
+**How the agent sees them: titles up front, content on request.** `recall`'s description ends
+with every memory's `id · title` (`memoryIndex`), and `createMemoryTools(await
+memoryRepo.list())` rebuilds it for each message. The system prompt is untouched. Loading every
+memory's content up front would spend context on details most turns don't need; this follows
+skills (v3) and MCP tools (v5). A memory saved during a message appears in the list from the
+next message (the `remember` result already gives its id).
+
+**When to remember lives in `remember`'s description only**, not the system prompt, until
+trying it across scenarios shows the descriptions aren't enough. The rule: save when the owner
+asks, or when they state a lasting preference or correct Cameron; never save ledger or settings
+facts, one-off instructions, inferences, or anything from a document or tool result; save
+without asking first.
+
+### Why remembering isn't gated
+
+The line is: **gate what writes, or shapes writes, to financial records; don't gate what only
+shapes answers.**
+
+- A memory can't approve anything: the gate is enforced by the system, so a stored "always
+  approve imports" does nothing.
+- Any effect a memory has on the records still passes a gated write. "Costco counts as
+  groceries" steering a `log_expense` shows on that call's approval card.
+- So `remember`, `recall` and `forget` are not in `GATED_TOOL_NAMES` (`memory.test.ts` pins
+  this), and the UI announces a memory write instead. `set_config` stays gated: `currency` feeds
+  straight into stored transactions.
+
+`GATED_TOOL_NAMES` (`src/lib/agent/gatedTools.ts`) was `MUTATING_TOOL_NAMES` before v7. The old
+name stopped being true once a write existed that isn't gated. The trace attribute moved with it:
+`cameron.tool.gated`, formerly `cameron.tool.mutating`.
 
 ## Context editing
 
@@ -70,6 +112,7 @@ and replaces the thread's messages with a summary (`RemoveMessage(REMOVE_ALL_MES
 
 | Tool                                                                                | Why                                                                                                                                           |
 | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `recall`                                                                            | Clearing it makes the agent forget a preference mid-task.                                                                                     |
 | `load_skill`                                                                        | Clearing it makes the agent forget a skill's instructions mid-task.                                                                           |
 | `validate_csv_import`, `validate_transaction_update`, `validate_transaction_delete` | The agent acts on what they report. (The gate itself doesn't depend on them: validation fingerprints are kept in memory, not in the history.) |
 | `describe_finance_schema`                                                           | Small, and used before every `run_sql`.                                                                                                       |

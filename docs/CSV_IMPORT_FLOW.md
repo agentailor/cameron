@@ -46,11 +46,11 @@ the date format is a new plan and must be validated again. The gate checks state
 recorded, never an argument the model asserts.
 
 It is a separate tool rather than a `dryRun` flag because **approval is keyed by tool name**:
-`interruptOn` (`agent/index.ts`) is built from `MUTATING_TOOL_NAMES`. A flag would force either
+`interruptOn` (`agent/index.ts`) is built from `GATED_TOOL_NAMES`. A flag would force either
 approving a step that writes nothing — training the user to click through the amber panel that
 guards the real write — or making auto-approval depend on a model-authored boolean, where a mis-set
 flag writes hundreds of rows unattended. As a separate tool the property is structural: it simply
-is not in `MUTATING_TOOL_NAMES`. `approvalGate.test.ts` pins that validation auto-approves and the
+is not in `GATED_TOOL_NAMES`. `approvalGate.test.ts` pins that validation auto-approves and the
 import never does.
 
 Both tools share one parse/classify function, so a validated prediction cannot differ from what the

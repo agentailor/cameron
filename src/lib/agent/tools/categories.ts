@@ -5,7 +5,7 @@ import { ConflictError } from "@/lib/database/errors";
 
 /**
  * Category tools for interactive flows (manual logging, ad-hoc management). `create_category` is
- * gated (in MUTATING_TOOL_NAMES). These are NOT used by CSV import — imports resolve categories
+ * gated (in GATED_TOOL_NAMES). These are NOT used by CSV import — imports resolve categories
  * server-side from the mapped column (see transactionRepository.importWithCategories); the agent
  * never sees the file's category values.
  */

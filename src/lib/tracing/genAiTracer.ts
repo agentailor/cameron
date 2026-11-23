@@ -15,7 +15,7 @@ import {
   type Span,
   type Tracer,
 } from "@opentelemetry/api";
-import { isMutatingTool } from "@/lib/agent/mutatingTools";
+import { isGatedTool } from "@/lib/agent/gatedTools";
 import { captureContent } from "./config";
 import { toSemconvInput, toSemconvOutput, toSemconvToolDefinitions } from "./messages";
 import { AGENT_NAME, CAMERON, ERROR_TYPE, GEN_AI, OPERATION, toProviderName } from "./semconv";
@@ -183,7 +183,7 @@ export class GenAiTracer extends BaseCallbackHandler {
       [GEN_AI.OPERATION_NAME]: OPERATION.EXECUTE_TOOL,
       [GEN_AI.TOOL_NAME]: toolName,
       [GEN_AI.TOOL_TYPE]: "function",
-      [CAMERON.TOOL_MUTATING]: isMutatingTool(toolName),
+      [CAMERON.TOOL_GATED]: isGatedTool(toolName),
       ...(toolCallId ? { [GEN_AI.TOOL_CALL_ID]: toolCallId } : {}),
       ...(this.capture ? { [GEN_AI.TOOL_CALL_ARGUMENTS]: input } : {}),
     };

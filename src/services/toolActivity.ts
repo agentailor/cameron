@@ -1,5 +1,5 @@
 import type { MessageResponse, ToolCall } from "@/types/message";
-import { isMutatingTool } from "@/lib/agent/mutatingTools";
+import { isGatedTool } from "@/lib/agent/gatedTools";
 import { linkPreviews } from "./editPreview";
 import { linkDocumentReadings } from "./documentPreview";
 import {
@@ -26,8 +26,8 @@ export interface ToolActivity {
   result: MessageResponse | null;
   /** Held at the approval gate: the user must decide before anything runs. */
   isPending: boolean;
-  /** Writes, per `MUTATING_TOOL_NAMES`. Its arguments are always shown. */
-  isMutating: boolean;
+  /** Writes, per `GATED_TOOL_NAMES`. Its arguments are always shown. */
+  isGated: boolean;
   /**
    * For a transaction edit: the validation result previewing exactly this plan, or null if there
    * is none. Unset for every other tool. See editPreview.ts.
@@ -151,7 +151,7 @@ export function buildThreadItems(input: MessageResponse[]): ThreadItem[] {
           args: {},
           result: message,
           isPending: false,
-          isMutating: isMutatingTool(message.data.name),
+          isGated: isGatedTool(message.data.name),
         },
         `tools-${message.data.id || index}`,
       );
@@ -204,7 +204,7 @@ function toActivity(
     result,
     // A result settles the question: a call that ran is no longer awaiting a decision.
     isPending: result === null && pending.has(call.id),
-    isMutating: isMutatingTool(call.name),
+    isGated: isGatedTool(call.name),
   };
 }
 
@@ -212,6 +212,6 @@ function toActivity(
 export function pendingApprovalIds(messages: MessageResponse[]): string[] {
   return buildThreadItems(messages)
     .flatMap((i) => (i.kind === "tools" ? i.activities : []))
-    .filter((a) => a.isPending && a.isMutating)
+    .filter((a) => a.isPending && a.isGated)
     .map((a) => a.callId);
 }

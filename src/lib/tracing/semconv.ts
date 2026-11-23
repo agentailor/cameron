@@ -36,7 +36,7 @@ export const CAMERON = {
   RUN_RESUMED: "cameron.run.resumed",
   APPROVALS_APPROVED: "cameron.approval.approved",
   APPROVALS_REJECTED: "cameron.approval.rejected",
-  TOOL_MUTATING: "cameron.tool.mutating",
+  TOOL_GATED: "cameron.tool.gated",
   SPAN_UNFINISHED: "cameron.span.unfinished",
   APPROVAL_REQUESTED_EVENT: "cameron.approval.requested",
   APPROVAL_TOOLS: "cameron.approval.tools",

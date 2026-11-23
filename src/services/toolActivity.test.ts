@@ -100,7 +100,7 @@ describe("buildThreadItems", () => {
     expect(group.activities[0]).toMatchObject({
       callId: "c1",
       isPending: true,
-      isMutating: true,
+      isGated: true,
       result: null,
     });
   });
@@ -203,7 +203,7 @@ describe("summarizeActivities", () => {
     args: {},
     result: toolResult("c1", "run_sql", '{"rowCount":37}'),
     isPending: false,
-    isMutating: false,
+    isGated: false,
     ...over,
   });
 

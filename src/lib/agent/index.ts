@@ -14,6 +14,8 @@ import { configTools as settingsTools } from "./tools/config";
 import { chartTools } from "./tools/charts";
 import { skillTools } from "./tools/skills";
 import { createDocumentTools } from "./tools/documents";
+import { createMemoryTools } from "./tools/memory";
+import * as memoryRepo from "@/lib/repositories/memoryRepository";
 import { listSkills } from "@/lib/skills/registry";
 import { createAgent, humanInTheLoopMiddleware } from "langchain";
 import { mcpServerDisclosureMiddleware } from "@agentailor/mcp-disclosure";
@@ -22,7 +24,7 @@ import { contextEditingMiddleware } from "./contextEditing";
 import { loadDisclosureServers } from "@/lib/mcp/catalog";
 import { createToolResolver } from "@/lib/mcp/pool";
 // Lives in ./capabilities so the page can read it without importing this file's deps.
-import { MUTATING_TOOL_NAMES } from "./capabilities";
+import { GATED_TOOL_NAMES } from "./capabilities";
 
 async function loadStoredMcp() {
   const { servers, records, catalogs } = await loadDisclosureServers();
@@ -72,6 +74,8 @@ async function buildAgent(cfg?: AgentConfigOptions) {
     ...chartTools,
     // Documents are read by the agent's own model: the provider the owner chose.
     ...createDocumentTools({ model: llm, readWith: `${provider}:${modelName}` }),
+    // recall's description lists the memories saved when this message started.
+    ...createMemoryTools(await memoryRepo.list()),
   ];
   const builtinTools = (needsSchemaSanitizing(provider)
     ? builtin.map((t) => sanitizeTool(t as unknown as DynamicStructuredTool))
@@ -85,7 +89,7 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   // user-facing switch to turn the gate off. `bypassApprovalForEval` omits it for the eval
   // harness alone, which has no human to answer an interrupt (see AgentConfigOptions).
   const interruptOn = Object.fromEntries(
-    MUTATING_TOOL_NAMES.map((name) => [
+    GATED_TOOL_NAMES.map((name) => [
       name,
       { allowedDecisions: ["approve", "reject"] as ("approve" | "reject")[] },
     ]),

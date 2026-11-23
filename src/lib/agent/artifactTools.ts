@@ -2,7 +2,7 @@
  * The tools that return a client-only artifact alongside their model-facing content
  * (`responseFormat: "content_and_artifact"` — see `agent/tools/charts.ts`).
  *
- * This lives in its own module — with NO imports — for the same reason as `mutatingTools.ts`:
+ * This lives in its own module — with NO imports — for the same reason as `gatedTools.ts`:
  * the SSE layer needs to know which tools to wait on, and importing the tool module drags the
  * repositories and `pg` along with it.
  *

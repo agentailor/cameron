@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { linkPreviews, VALIDATOR_FOR } from "./editPreview";
 import { buildThreadItems, type ToolActivity, type ToolActivityGroup } from "./toolActivity";
-import { listCapabilities, MUTATING_TOOL_NAMES } from "@/lib/agent/capabilities";
+import { listCapabilities, GATED_TOOL_NAMES } from "@/lib/agent/capabilities";
 import type { MessageResponse, ToolCall } from "@/types/message";
 
 /**
@@ -148,8 +148,8 @@ describe("VALIDATOR_FOR", () => {
   it("pairs real gated tools with real read-only validators", () => {
     const caps = new Map(listCapabilities().map((c) => [c.name, c]));
     for (const [edit, validator] of Object.entries(VALIDATOR_FOR)) {
-      expect(MUTATING_TOOL_NAMES, edit).toContain(edit);
-      expect(caps.get(validator)?.mutating, validator).toBe(false);
+      expect(GATED_TOOL_NAMES, edit).toContain(edit);
+      expect(caps.get(validator)?.gated, validator).toBe(false);
     }
   });
 });

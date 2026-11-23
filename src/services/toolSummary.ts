@@ -1,6 +1,6 @@
 import type { MessageResponse } from "@/types/message";
 import type { ToolActivity } from "./toolActivity";
-import { isMutatingTool } from "@/lib/agent/mutatingTools";
+import { isGatedTool } from "@/lib/agent/gatedTools";
 
 /**
  * The one-line gist shown on a collapsed tool card.
@@ -32,7 +32,7 @@ export function summarizeResult(content: string, toolName?: string): string | nu
         ? `${p.matched} transactions`
         : `${p.returned} of ${p.matched} transactions`;
     }
-    if (p.ok === true) return toolName && !isMutatingTool(toolName) ? "ok" : "written";
+    if (p.ok === true) return toolName && !isGatedTool(toolName) ? "ok" : "written";
     return null;
   } catch {
     return null;

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it, vi } from "vitest";
-import { listCapabilities, MUTATING_TOOL_NAMES } from "./capabilities";
+import { listCapabilities, GATED_TOOL_NAMES } from "./capabilities";
 
 /**
  * The /capabilities page is only honest if it matches the tools actually registered. Most groups
@@ -31,10 +31,10 @@ describe("listCapabilities", () => {
 
   it("flags exactly the gated tools as needing approval", () => {
     const gated = listCapabilities()
-      .filter((c) => c.mutating)
+      .filter((c) => c.gated)
       .map((c) => c.name)
       .sort();
-    expect(gated).toEqual([...MUTATING_TOOL_NAMES].sort());
+    expect(gated).toEqual([...GATED_TOOL_NAMES].sort());
   });
 
   it("lists the same CSV tools the agent registers", () => {
@@ -103,7 +103,7 @@ describe("listCapabilities", () => {
 
   it("names only tools that exist", () => {
     const names = new Set(listCapabilities().map((c) => c.name));
-    for (const gated of MUTATING_TOOL_NAMES) {
+    for (const gated of GATED_TOOL_NAMES) {
       expect(names, `${gated} is gated but not listed`).toContain(gated);
     }
   });

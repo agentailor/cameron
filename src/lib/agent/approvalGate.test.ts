@@ -74,30 +74,30 @@ describe("the approval gate is not reachable from a request", () => {
 
   it("every mutating tool is listed in interruptOn", async () => {
     const factory = await read("./index.ts");
-    const { MUTATING_TOOL_NAMES } = await import("./mutatingTools");
-    // interruptOn is built from MUTATING_TOOL_NAMES, so the gate covers a new mutating tool
+    const { GATED_TOOL_NAMES } = await import("./gatedTools");
+    // interruptOn is built from GATED_TOOL_NAMES, so the gate covers a new mutating tool
     // automatically — pin that derivation rather than a hand-written list.
-    expect(factory).toContain("MUTATING_TOOL_NAMES.map");
-    expect(MUTATING_TOOL_NAMES.length).toBeGreaterThan(0);
+    expect(factory).toContain("GATED_TOOL_NAMES.map");
+    expect(GATED_TOOL_NAMES.length).toBeGreaterThan(0);
   });
 
   it("validation auto-approves while the import stays gated", async () => {
-    const { MUTATING_TOOL_NAMES, isMutatingTool } = await import("./mutatingTools");
+    const { GATED_TOOL_NAMES, isGatedTool } = await import("./gatedTools");
 
-    expect(MUTATING_TOOL_NAMES).toContain("import_transactions_csv");
-    expect(MUTATING_TOOL_NAMES).not.toContain("validate_csv_import");
-    expect(MUTATING_TOOL_NAMES).not.toContain("read_csv_rows");
-    expect(isMutatingTool("validate_csv_import")).toBe(false);
-    expect(isMutatingTool("read_csv_rows")).toBe(false);
+    expect(GATED_TOOL_NAMES).toContain("import_transactions_csv");
+    expect(GATED_TOOL_NAMES).not.toContain("validate_csv_import");
+    expect(GATED_TOOL_NAMES).not.toContain("read_csv_rows");
+    expect(isGatedTool("validate_csv_import")).toBe(false);
+    expect(isGatedTool("read_csv_rows")).toBe(false);
   });
 
   it("edit validators auto-approve while the edits stay gated", async () => {
-    const { MUTATING_TOOL_NAMES, isMutatingTool } = await import("./mutatingTools");
+    const { GATED_TOOL_NAMES, isGatedTool } = await import("./gatedTools");
 
-    expect(MUTATING_TOOL_NAMES).toContain("update_transaction");
-    expect(MUTATING_TOOL_NAMES).toContain("delete_transaction");
-    expect(isMutatingTool("validate_transaction_update")).toBe(false);
-    expect(isMutatingTool("validate_transaction_delete")).toBe(false);
+    expect(GATED_TOOL_NAMES).toContain("update_transaction");
+    expect(GATED_TOOL_NAMES).toContain("delete_transaction");
+    expect(isGatedTool("validate_transaction_update")).toBe(false);
+    expect(isGatedTool("validate_transaction_delete")).toBe(false);
   });
 
   it("a resume never builds its decisions by repeating one value (#45)", async () => {
@@ -115,9 +115,9 @@ describe("the approval gate is not reachable from a request", () => {
 
   it("approval never depends on a tool's arguments", async () => {
     const factory = await read("./index.ts");
-    const leaf = await read("./mutatingTools.ts");
+    const leaf = await read("./gatedTools.ts");
     for (const flag of ["dryRun", "args.", "input."]) {
-      expect(leaf, "mutatingTools.ts").not.toContain(flag);
+      expect(leaf, "gatedTools.ts").not.toContain(flag);
     }
     expect(factory).not.toContain("dryRun");
   });
