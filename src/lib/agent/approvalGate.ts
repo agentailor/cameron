@@ -29,8 +29,6 @@ function gateFor(names: string[]): Hook {
  * missing from it run unreviewed — such as an MCP tool loaded mid-thread. See docs/MCP_DISCLOSURE.md.
  */
 export function approvalGateMiddleware() {
-  // Checked when the agent is built, not on the first gated call.
-  gateFor(["log_expense"]);
   return createMiddleware({
     name: "ApprovalGate",
     afterModel: {
