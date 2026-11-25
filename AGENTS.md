@@ -210,6 +210,20 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
   so they can't drift.
   Deliberately minimal — the design is expected to change.
 
+### Scheduled tasks (`packages/agent-tasks`, v8 in progress)
+
+The generic half of v8 Autonomy, as a workspace package like `mcp-disclosure`: `TASK.md` files
+(closed frontmatter: `name`, `description`, `schedule`, `timezone`; the body is the brief), cron
+slot math, the run lifecycle (`running → paused | done | failed`) and the scheduler loop. Full
+rules in [packages/agent-tasks/README.md](packages/agent-tasks/README.md).
+
+- **It must not import app code, a database client or LangChain.** Cameron supplies a `TaskStore`
+  (a repository) and a `TaskExecutor` (runs the same agent on a new thread) — not wired yet.
+- **A slot runs at most once** because `claimRun` is atomic on `(taskName, slot)`; there is no lock.
+  Only the latest due slot runs, and never one from before the task was enabled.
+- **The package never resumes a run.** Resuming is the ordinary chat path; the app records the
+  result with `scheduler.update`.
+
 ### Skills (`skills/` + `src/lib/skills/`)
 
 Instructions loaded on demand, in the standard `SKILL.md` format — full detail in
