@@ -30,6 +30,17 @@ export const getHistory = async (threadId: string): Promise<BaseMessage[]> => {
 };
 
 /**
+ * The interrupts a thread is paused on, read from the latest checkpoint's pending writes. Lets a
+ * reloaded thread show its approval card without building the agent.
+ */
+export const getPendingInterrupts = async (threadId: string): Promise<{ value: unknown }[]> => {
+  const tuple = await postgresCheckpointer.getTuple({ configurable: { thread_id: threadId } });
+  return (tuple?.pendingWrites ?? [])
+    .filter(([, channel]) => channel === "__interrupt__")
+    .flatMap(([, , value]) => (Array.isArray(value) ? value : [value])) as { value: unknown }[];
+};
+
+/**
  * Deletes a thread's conversation history (`checkpoints`, `checkpoint_blobs`, `checkpoint_writes`).
  *
  * These tables are owned by the checkpointer, not Drizzle, so deleting a thread must clear them

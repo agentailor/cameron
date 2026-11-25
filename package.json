@@ -24,6 +24,7 @@
     "db:seed": "tsx src/lib/database/seed.ts"
   },
   "dependencies": {
+    "@agentailor/agent-tasks": "workspace:*",
     "@agentailor/mcp-disclosure": "workspace:*",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@aws-sdk/client-s3": "^3.1075.0",

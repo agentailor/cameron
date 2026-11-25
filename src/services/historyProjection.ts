@@ -77,3 +77,26 @@ export function projectHistory(messages: BaseMessage[]): MessageResponse[] {
 
 /** Exported for tests, which feed plain `toDict()` output. */
 export const __projectMessage = projectMessage;
+
+/**
+ * Mark the calls a reloaded thread is paused on, as the live stream does. History holds only
+ * messages; without this, a paused thread opened later shows no approval card.
+ */
+export function markPendingCalls(
+  messages: MessageResponse[],
+  pendingCallIds: string[],
+): MessageResponse[] {
+  if (pendingCallIds.length === 0) return messages;
+  const pending = new Set(pendingCallIds);
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.type !== "ai") continue;
+    const data = m.data as AIMessageData;
+    const ids = (data.tool_calls ?? []).map((c) => c.id).filter((id) => id && pending.has(id));
+    if (ids.length === 0) return messages;
+    const copy = [...messages];
+    copy[i] = { ...m, data: { ...data, pendingToolCallIds: ids as string[] } };
+    return copy;
+  }
+  return messages;
+}

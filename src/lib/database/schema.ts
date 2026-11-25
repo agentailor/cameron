@@ -200,3 +200,34 @@ export const memories = pgTable(
   // Case-insensitive, so "Costco" and "costco" can't be two memories.
   (table) => [uniqueIndex("memory_title_key").on(sql`lower(${table.title})`)],
 );
+
+// --- Scheduled tasks (v8) ---
+// Task definitions are files (`tasks/<name>/TASK.md`); these hold only what the owner decided and
+// what ran. Not granted to `cameron_analytics`.
+
+/** Whether the owner turned a task on, and since when: slots before `enabled_at` never run. */
+export const taskSettings = pgTable("task_setting", {
+  taskName: text("task_name").primaryKey().notNull(),
+  enabled: boolean("enabled").notNull(),
+  enabledAt: timestamp("enabled_at", { precision: 3, mode: "string" }),
+  updatedAt: timestamp("updated_at", { precision: 3, mode: "string" }).notNull(),
+});
+
+/** One run of a task. `(task_name, slot)` is unique: that is what stops a slot running twice. */
+export const taskRuns = pgTable(
+  "task_run",
+  {
+    id: text("id").primaryKey().notNull(),
+    taskName: text("task_name").notNull(),
+    slot: timestamp("slot", { precision: 3, mode: "string" }).notNull(),
+    trigger: text("trigger").notNull(),
+    status: text("status").notNull(),
+    pauseReason: text("pause_reason"),
+    error: text("error"),
+    // The thread the run wrote to. No FK: deleting the thread keeps the run's record.
+    threadId: text("thread_id"),
+    startedAt: timestamp("started_at", { precision: 3, mode: "string" }).notNull(),
+    finishedAt: timestamp("finished_at", { precision: 3, mode: "string" }),
+  },
+  (table) => [uniqueIndex("task_run_slot_key").on(table.taskName, table.slot)],
+);

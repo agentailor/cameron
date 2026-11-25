@@ -114,4 +114,4 @@ stateDiagram-v2
 - `schedule.ts`: cron validation, latest due slot, next slot
 - `lifecycle.ts`: allowed transitions and the status write for each
 - `scheduler.ts`: the loop, `runNow`, `update`
-- `testing.ts`: `MemoryTaskStore`, `FakeClock`, `makeTask` (tests only)
+- `testing.ts`: `MemoryTaskStore`, `FakeClock`, `makeTask`, exported as `@agentailor/agent-tasks/testing` (tests only)

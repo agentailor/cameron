@@ -12,3 +12,6 @@ import "@/app/api/mcp-servers/[id]/tools/schema";
 import "@/app/api/mcp-servers/[id]/catalog/schema";
 import "@/app/api/oauth/check/[serverId]/schema";
 import "@/app/api/oauth/callback/[serverId]/schema";
+import "@/app/api/tasks/schema";
+import "@/app/api/tasks/[name]/schema";
+import "@/app/api/tasks/[name]/run/schema";
