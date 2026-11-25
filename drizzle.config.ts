@@ -24,5 +24,7 @@ export default defineConfig({
     "config",
     "document",
     "memory",
+    "task_setting",
+    "task_run",
   ],
 });

@@ -1,13 +1,14 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bookmark, LayoutGrid, Plug, Settings, type LucideIcon } from "lucide-react";
+import { Bookmark, CalendarClock, LayoutGrid, Plug, Settings, type LucideIcon } from "lucide-react";
 import { RETURN_TO_KEY } from "./BackToChat";
 
 const ITEMS: { href: string; label: string; Icon: LucideIcon }[] = [
   { href: "/capabilities", label: "capabilities", Icon: LayoutGrid },
   { href: "/connections", label: "connections", Icon: Plug },
   { href: "/memory", label: "memory", Icon: Bookmark },
+  { href: "/tasks", label: "tasks", Icon: CalendarClock },
   { href: "/settings", label: "settings", Icon: Settings },
 ];
 

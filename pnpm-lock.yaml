@@ -15,6 +15,9 @@ importers:
 
   .:
     dependencies:
+      '@agentailor/agent-tasks':
+        specifier: workspace:*
+        version: link:packages/agent-tasks
       '@agentailor/mcp-disclosure':
         specifier: workspace:*
         version: link:packages/mcp-disclosure

@@ -14,6 +14,7 @@ RUN corepack enable
 # Only the manifests, so this layer busts on a dependency change rather than on every edit.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/mcp-disclosure/package.json ./packages/mcp-disclosure/
+COPY packages/agent-tasks/package.json ./packages/agent-tasks/
 RUN pnpm install --frozen-lockfile
 
 # ── build ────────────────────────────────────────────────────────────────────────────────────────
@@ -24,6 +25,7 @@ RUN corepack enable
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages/mcp-disclosure/node_modules ./packages/mcp-disclosure/node_modules
+COPY --from=deps /app/packages/agent-tasks/node_modules ./packages/agent-tasks/node_modules
 COPY . .
 
 # `next build` runs the app's own code (route modules are evaluated to collect metadata), and
@@ -63,10 +65,11 @@ ENV NODE_ENV=production \
 RUN addgroup -g 1001 -S nodejs && adduser -u 1001 -S nextjs -G nodejs
 
 # `standalone` omits these by design — they are served from disk, not traced as imports. The
-# skills are read from disk at startup, so without this COPY the image runs with zero skills and
-# says nothing about it.
+# skills and tasks are read from disk at startup, so without these COPYs the image runs with none
+# and says nothing about it.
 COPY --from=build --chown=nextjs:nodejs /app/public ./public
 COPY --from=build --chown=nextjs:nodejs /app/skills ./skills
+COPY --from=build --chown=nextjs:nodejs /app/tasks ./tasks
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 

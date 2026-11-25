@@ -210,19 +210,27 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
   so they can't drift.
   Deliberately minimal — the design is expected to change.
 
-### Scheduled tasks (`packages/agent-tasks`, v8 in progress)
+### Scheduled tasks (`tasks/` + `src/lib/tasks/` + `packages/agent-tasks`)
 
-The generic half of v8 Autonomy, as a workspace package like `mcp-disclosure`: `TASK.md` files
-(closed frontmatter: `name`, `description`, `schedule`, `timezone`; the body is the brief), cron
-slot math, the run lifecycle (`running → paused | done | failed`) and the scheduler loop. Full
-rules in [packages/agent-tasks/README.md](packages/agent-tasks/README.md).
+Work Cameron does on a schedule while the owner is away — full detail in
+[docs/TASKS.md](docs/TASKS.md). The generic half (task files, cron slots, run lifecycle, the loop)
+is the workspace package `packages/agent-tasks`
+([README](packages/agent-tasks/README.md)), which must not import app code, a database client or
+LangChain.
 
-- **It must not import app code, a database client or LangChain.** Cameron supplies a `TaskStore`
-  (a repository) and a `TaskExecutor` (runs the same agent on a new thread) — not wired yet.
-- **A slot runs at most once** because `claimRun` is atomic on `(taskName, slot)`; there is no lock.
-  Only the latest due slot runs, and never one from before the task was enabled.
-- **The package never resumes a run.** Resuming is the ordinary chat path; the app records the
-  result with `scheduler.update`.
+- **A task is `tasks/<name>/TASK.md`** (closed frontmatter `name`, `description`, `schedule`,
+  `timezone`; the body is the brief), read once at startup like skills.
+- **Off until the owner enables it** (`task_setting`); slots before `enabled_at` never run. Run now
+  works either way. `/tasks` lists tasks, runs, and runs **waiting for you**.
+- **A run is the same agent and approval gate on a new thread** (`executeTask` in
+  `src/lib/tasks/scheduler.ts`). A pending approval leaves it `paused`; the owner approves in the
+  thread as usual, and `streamResponse` → `syncTaskRun` records the result. The package never
+  resumes a run.
+- **A slot runs at most once** because `task_run` is unique on `(task_name, slot)`; there is no
+  lock. The loop starts in `instrumentation.node.ts`, one scheduler per process on `globalThis`.
+- **A reloaded paused thread shows its approval card**: `fetchThreadHistory` rebuilds
+  `pendingToolCallIds` from the checkpoint's pending interrupt. Before, only the live stream had them.
+- `task_setting` / `task_run` are not granted to `cameron_analytics`.
 
 ### Skills (`skills/` + `src/lib/skills/`)
 
@@ -311,7 +319,7 @@ Instructions loaded on demand, in the standard `SKILL.md` format — full detail
   `drizzle.config.ts`.
 - **Repository seam**: application code NEVER imports Drizzle directly. All DB access goes through
   the `src/lib/repositories/` files (`threadRepository`, `mcpServerRepository`, `transactionRepository`,
-  `categoryRepository`, `analyticsRepository`, `configRepository`, `mcpServerCatalogRepository`, `memoryRepository`), which return **plain domain objects**
+  `categoryRepository`, `analyticsRepository`, `configRepository`, `mcpServerCatalogRepository`, `memoryRepository`, `taskRepository`), which return **plain domain objects**
   (`ThreadRecord`, `MCPServer` in `src/types/mcp.ts`; `Transaction`, `Category` in
   `src/types/finance.ts`; `ConfigEntry` in `src/types/config.ts`; `Memory` in `src/types/memory.ts`), not Drizzle row types. This keeps the persistence layer swappable — replacing the ORM touches only these files.
   Add new DB access as repository functions, not inline queries.

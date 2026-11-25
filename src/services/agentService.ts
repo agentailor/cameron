@@ -2,15 +2,16 @@ import { ensureAgent } from "@/lib/agent";
 import { ensureThread } from "@/lib/thread";
 import type { ApprovalDecision, MessageOptions, MessageResponse } from "@/types/message";
 import * as threadRepo from "@/lib/repositories/threadRepository";
-import { getHistory } from "@/lib/agent/memory";
+import { getHistory, getPendingInterrupts } from "@/lib/agent/memory";
 import { HumanMessage } from "@langchain/core/messages";
 import type { Command } from "@langchain/langgraph";
 import { readPendingBatch, resolveDecisions, toResumeCommand } from "./approvalDecisions";
 import { processAttachmentsForAI } from "@/lib/storage/content";
 import { streamMessages, type AgentRun } from "./messageStream";
-import { projectHistory } from "./historyProjection";
+import { markPendingCalls, projectHistory } from "./historyProjection";
 import { GenAiTracer } from "@/lib/tracing/genAiTracer";
 import { tracingEnabled } from "@/lib/tracing/config";
+import { syncTaskRun } from "@/lib/tasks/scheduler";
 
 /** Stream a turn (or resume a paused one) as MessageResponse chunks for the SSE route. */
 export async function streamResponse(params: {
@@ -43,7 +44,22 @@ export async function streamResponse(params: {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const run = (await agent.streamEvents(inputs as any, config)) as unknown as AgentRun;
-  return streamMessages(run);
+  return withTaskSync(streamMessages(run), agent, threadId);
+}
+
+/** Once the turn has streamed, a task run whose thread this is records where it now stands. */
+async function* withTaskSync<T>(
+  messages: AsyncGenerator<T>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  agent: any,
+  threadId: string,
+): AsyncGenerator<T> {
+  yield* messages;
+  try {
+    await syncTaskRun(agent, threadId);
+  } catch (error) {
+    console.error("[tasks] Could not record the run after this turn:", error);
+  }
 }
 
 /** Combine user text with any processed attachments into a message content payload. */
@@ -79,8 +95,13 @@ export async function fetchThreadHistory(threadId: string): Promise<MessageRespo
   const thread = await threadRepo.getById(threadId);
   if (!thread) return [];
   try {
-    const history = await getHistory(threadId);
-    return projectHistory(history);
+    const [history, interrupts] = await Promise.all([
+      getHistory(threadId),
+      getPendingInterrupts(threadId),
+    ]);
+    const batch = readPendingBatch({ tasks: [{ interrupts }], values: { messages: history } });
+    const pendingIds = batch.actionRequests.length > 0 ? batch.pausedCalls.map((c) => c.id) : [];
+    return markPendingCalls(projectHistory(history), pendingIds);
   } catch (e) {
     console.error("fetchThreadHistory error", e);
     return [];

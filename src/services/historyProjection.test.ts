@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { __projectMessage } from "./historyProjection";
-import type { AIMessageData, BasicMessageData, ToolMessageData } from "@/types/message";
+import { __projectMessage, markPendingCalls } from "./historyProjection";
+import type {
+  AIMessageData,
+  BasicMessageData,
+  MessageResponse,
+  ToolMessageData,
+} from "@/types/message";
 
 // `toDict()` output as the checkpoint really returns it — provider fields included.
 const aiWithToolCall = {
@@ -119,5 +124,37 @@ describe("projectMessage", () => {
     const out = __projectMessage({ type: "human", data: { id: "h-1", content } });
     expect(out.type).toBe("human");
     expect((out.data as BasicMessageData).content).toEqual(content);
+  });
+});
+
+describe("markPendingCalls", () => {
+  const ai = (id: string, calls: string[]): MessageResponse => ({
+    type: "ai",
+    data: {
+      id,
+      content: "",
+      tool_calls: calls.map((c) => ({
+        id: c,
+        name: "log_expense",
+        args: {},
+        type: "tool_call" as const,
+      })),
+    },
+  });
+
+  it("marks the paused calls on the last AI message", () => {
+    const out = markPendingCalls([ai("a1", ["c0"]), ai("a2", ["c1", "c2"])], ["c2"]);
+    expect((out[1].data as { pendingToolCallIds?: string[] }).pendingToolCallIds).toEqual(["c2"]);
+    expect((out[0].data as { pendingToolCallIds?: string[] }).pendingToolCallIds).toBeUndefined();
+  });
+
+  it("changes nothing when nothing is pending", () => {
+    const messages = [ai("a1", ["c1"])];
+    expect(markPendingCalls(messages, [])).toBe(messages);
+  });
+
+  it("changes nothing when the ids aren't on the last AI message", () => {
+    const messages = [ai("a1", ["c1"]), ai("a2", ["c2"])];
+    expect(markPendingCalls(messages, ["c1"])).toBe(messages);
   });
 });
