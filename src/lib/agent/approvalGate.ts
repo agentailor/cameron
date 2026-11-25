@@ -14,8 +14,13 @@ function gateFor(names: string[]): Hook {
     ) as Record<string, { allowedDecisions: ("approve" | "reject")[] }>,
     descriptionPrefix: DESCRIPTION_PREFIX,
   });
-  const after = hitl.afterModel as unknown as Hook | { hook: Hook };
-  return typeof after === "function" ? after : after.hook;
+  const after = hitl.afterModel as unknown as Hook | { hook?: Hook } | undefined;
+  const hook = typeof after === "function" ? after : after?.hook;
+  // Reaches into langchain's middleware shape, which no type guarantees: fail loud, never open.
+  if (typeof hook !== "function") {
+    throw new Error("humanInTheLoopMiddleware has no afterModel hook; the approval gate can't run");
+  }
+  return hook;
 }
 
 /**
@@ -24,6 +29,8 @@ function gateFor(names: string[]): Hook {
  * missing from it run unreviewed — such as an MCP tool loaded mid-thread. See docs/MCP_DISCLOSURE.md.
  */
 export function approvalGateMiddleware() {
+  // Checked when the agent is built, not on the first gated call.
+  gateFor(["log_expense"]);
   return createMiddleware({
     name: "ApprovalGate",
     afterModel: {

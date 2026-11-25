@@ -654,7 +654,7 @@ pnpm typecheck:eval                         # free — the root tsc misses this 
   factory), as in the app: `recall`'s description lists the memories present at build time, so one
   agent per run would hide a memory saved in thread 1 from thread 2. `memories: [...]` seeds
   stored preferences after the reset; `memorySaved` / `memoryCount` grade the table.
-- **Approval cases** set `approval: "allow" | "deny"`, which keeps the HITL middleware live (plain
+- **Approval cases** set `approval: "allow" | "deny"`, which keeps `approvalGateMiddleware` live (plain
   `bypassApprovalForEval` omits it entirely). Paused calls land on `RunCapture.interrupts` — the only
   evidence the gate fired, since `trajectory` looks identical either way. These cases mutate, so the
   fixture is re-seeded before each run.

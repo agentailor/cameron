@@ -160,7 +160,7 @@ async function main() {
 
         // A fresh agent per MESSAGE, as in the app: tools such as `recall` read the database when
         // the agent is built. Threads are unique per run, so no checkpointer state leaks between runs.
-        // `bypassApprovalForEval` omits the HITL middleware entirely — it is the harness-only
+        // `bypassApprovalForEval` omits `approvalGateMiddleware` entirely — it is the harness-only
         // escape hatch (no HTTP path can set it), so a case testing the gate must NOT set it.
         const agentFor = () =>
           getAgent({
