@@ -226,8 +226,10 @@ export const taskRuns = pgTable(
     error: text("error"),
     // The thread the run wrote to. No FK: deleting the thread keeps the run's record.
     threadId: text("thread_id"),
+    // When the current attempt started; a retry or a recovery after a restart moves it.
     startedAt: timestamp("started_at", { precision: 3, mode: "string" }).notNull(),
     finishedAt: timestamp("finished_at", { precision: 3, mode: "string" }),
+    attempts: integer("attempts").default(1).notNull(),
   },
   (table) => [uniqueIndex("task_run_slot_key").on(table.taskName, table.slot)],
 );

@@ -34,8 +34,11 @@ export interface TaskRun {
   error?: string;
   /** App-defined pointer to what the run produced, e.g. a thread id. */
   ref?: string;
+  /** When the current attempt started. */
   startedAt: Date;
   finishedAt?: Date;
+  /** 1 for the first attempt; a retry or a recovery after a restart adds one. */
+  attempts: number;
 }
 
 /** What an executor reports when it returns. */
@@ -50,6 +53,15 @@ export type RunUpdate = { status: "running" } | ExecutionOutcome;
 export interface ExecutionContext {
   /** Record `ref` on the run now, so it survives an executor that later throws. */
   attachRef(ref: string): Promise<void>;
+  /** Aborted when the attempt times out or the scheduler stops. Pass it to anything cancellable. */
+  signal: AbortSignal;
+  /** 1 for the first attempt. */
+  attempt: number;
+  /**
+   * The ref an earlier attempt attached, when this attempt is a retry or a recovery after a
+   * restart. The executor decides whether to continue from it or start over.
+   */
+  previousRef?: string;
 }
 
 export type TaskExecutor = (
@@ -71,6 +83,16 @@ export interface NewRun {
   startedAt: Date;
 }
 
+/** How one task runs. Defaults in `DEFAULT_TASK_POLICY`; the app overrides per task. */
+export interface TaskPolicy {
+  /** An attempt still going after this is aborted and the run failed. */
+  timeoutMs: number;
+  /** Extra attempts after a retryable error (see `isRetryable`). 0 = never retry. */
+  maxRetries: number;
+  /** `skip`: don't start a slot while the task has a run still running or paused. */
+  overlap: "skip" | "allow";
+}
+
 /** Fields written with a status change. `undefined` clears a field. */
 export interface StatusWrite {
   status: RunStatus;
@@ -87,8 +109,19 @@ export interface TaskStore {
   attachRef(runId: string, ref: string): Promise<void>;
   /** Compare-and-set: write only if the run's status is one of `from`. False otherwise. */
   updateStatus(runId: string, from: readonly RunStatus[], write: StatusWrite): Promise<boolean>;
-  /** Fail every `running` run started before `before`. Returns how many. */
-  failStaleRuns(before: Date, write: { error: string; finishedAt: Date }): Promise<number>;
+  /** Whether the task has a run that is `running` or `paused`. */
+  hasOpenRun(taskName: string): Promise<boolean>;
+  /** Every `running` run, oldest first. */
+  listRunning(): Promise<TaskRun[]>;
+  /**
+   * Start a new attempt: compare-and-set on the run still being `running` with this
+   * `startedAt`, so two callers can't both take it over. False otherwise.
+   */
+  restartRun(
+    runId: string,
+    expectedStartedAt: Date,
+    write: { startedAt: Date; attempts: number },
+  ): Promise<boolean>;
 }
 
 export interface Clock {

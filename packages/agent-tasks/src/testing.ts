@@ -28,7 +28,7 @@ export class MemoryTaskStore implements TaskStore {
       (r) => r.taskName === input.taskName && r.slot.getTime() === input.slot.getTime(),
     );
     if (taken) return null;
-    const run: TaskRun = { id: `run-${++this.seq}`, status: "running", ...input };
+    const run: TaskRun = { id: `run-${++this.seq}`, status: "running", attempts: 1, ...input };
     this.runs.push(run);
     return { ...run };
   }
@@ -45,15 +45,43 @@ export class MemoryTaskStore implements TaskStore {
     return true;
   }
 
-  async failStaleRuns(before: Date, write: { error: string; finishedAt: Date }) {
-    let count = 0;
-    for (const run of this.runs) {
-      if (run.status === "running" && run.startedAt.getTime() < before.getTime()) {
-        Object.assign(run, { status: "failed", ...write });
-        count++;
-      }
-    }
-    return count;
+  async hasOpenRun(taskName: string) {
+    return this.runs.some(
+      (r) => r.taskName === taskName && (r.status === "running" || r.status === "paused"),
+    );
+  }
+
+  async listRunning() {
+    return this.runs
+      .filter((r) => r.status === "running")
+      .sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime())
+      .map((r) => ({ ...r }));
+  }
+
+  async restartRun(
+    runId: string,
+    expectedStartedAt: Date,
+    write: { startedAt: Date; attempts: number },
+  ) {
+    const run = this.runs.find((r) => r.id === runId);
+    if (!run || run.status !== "running") return false;
+    if (run.startedAt.getTime() !== expectedStartedAt.getTime()) return false;
+    Object.assign(run, write);
+    return true;
+  }
+
+  /** A run as a previous process might have left it. */
+  seed(run: Partial<TaskRun> & Pick<TaskRun, "taskName" | "startedAt">): TaskRun {
+    const full: TaskRun = {
+      id: `run-${++this.seq}`,
+      slot: run.startedAt,
+      trigger: "schedule",
+      status: "running",
+      attempts: 1,
+      ...run,
+    };
+    this.runs.push(full);
+    return full;
   }
 }
 

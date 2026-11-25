@@ -71,6 +71,13 @@
       "when": 1795634508450,
       "tag": "0009_task",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795639551258,
+      "tag": "0010_task_run_attempts",
+      "breakpoints": true
     }
   ]
 }

@@ -48,6 +48,7 @@ describe("taskThreadTitle", () => {
       trigger: "schedule" as const,
       status: "running" as const,
       startedAt: new Date(),
+      attempts: 1,
     };
     expect(taskThreadTitle(makeTask(), run)).toBe("weekly-digest · 2026-11-23");
   });
