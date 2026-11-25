@@ -105,6 +105,20 @@ describe("buildThreadItems", () => {
     });
   });
 
+  it("shows the approval gate for a paused MCP call, and not for a built-in read", () => {
+    const messages = [
+      ai("a1", "", [call("bank_get_balance", "c1"), call("run_sql", "c2")]),
+      pendingAi("a1", ["c1", "c2"]),
+    ];
+
+    const [group] = groups(buildThreadItems(messages));
+    expect(group.activities.map((a) => [a.name, a.isGated])).toEqual([
+      ["bank_get_balance", true],
+      ["run_sql", false],
+    ]);
+    expect(pendingApprovalIds(messages)).toEqual(["c1"]);
+  });
+
   it("clears pending once the call has actually run", () => {
     const items = buildThreadItems([
       ai("a1", "", [call("log_expense", "c1")]),

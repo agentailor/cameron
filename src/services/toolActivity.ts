@@ -1,5 +1,5 @@
 import type { MessageResponse, ToolCall } from "@/types/message";
-import { isGatedTool } from "@/lib/agent/gatedTools";
+import { requiresApproval } from "@/lib/agent/gatedTools";
 import { linkPreviews } from "./editPreview";
 import { linkDocumentReadings } from "./documentPreview";
 import {
@@ -26,7 +26,7 @@ export interface ToolActivity {
   result: MessageResponse | null;
   /** Held at the approval gate: the user must decide before anything runs. */
   isPending: boolean;
-  /** Writes, per `GATED_TOOL_NAMES`. Its arguments are always shown. */
+  /** Pauses for approval, per `requiresApproval`: built-in writes and every MCP tool. */
   isGated: boolean;
   /**
    * For a transaction edit: the validation result previewing exactly this plan, or null if there
@@ -151,7 +151,7 @@ export function buildThreadItems(input: MessageResponse[]): ThreadItem[] {
           args: {},
           result: message,
           isPending: false,
-          isGated: isGatedTool(message.data.name),
+          isGated: requiresApproval(message.data.name),
         },
         `tools-${message.data.id || index}`,
       );
@@ -204,7 +204,7 @@ function toActivity(
     result,
     // A result settles the question: a call that ran is no longer awaiting a decision.
     isPending: result === null && pending.has(call.id),
-    isGated: isGatedTool(call.name),
+    isGated: requiresApproval(call.name),
   };
 }
 

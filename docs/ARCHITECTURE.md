@@ -99,38 +99,29 @@ This document provides a comprehensive overview of the LangGraph.js AI Agent Tem
 
 The heart of the AI agent system. It builds the agent with LangChain v1's `createAgent` — a
 prebuilt ReAct agent that runs on LangGraph (`model` node → `tools` node loop) — and installs
-`humanInTheLoopMiddleware` to gate mutating tools for human approval.
+`approvalGateMiddleware` (over langchain's `humanInTheLoopMiddleware`) to gate built-in writes and
+every MCP tool for human approval.
 
 ```typescript
-import { createAgent, humanInTheLoopMiddleware } from "langchain";
-
-// Only mutating tools pause for approval; reads and MCP tools auto-approve.
-const GATED_TOOL_NAMES = ["log_expense", "import_transactions_csv"] as const;
+import { createAgent } from "langchain";
+import { approvalGateMiddleware } from "./approvalGate";
 
 async function buildAgent(cfg?: AgentConfigOptions) {
   const llm = createChatModel({ provider, model: modelName, temperature: 1 });
-  const allTools = [...builtinTools, ...configTools, ...mcpTools];
+  // MCP tools are not registered: the disclosure middleware offers them once loaded.
+  const allTools = [...builtinTools, ...configTools];
 
-  const interruptOn = Object.fromEntries(
-    GATED_TOOL_NAMES.map((name) => [name, { allowedDecisions: ["approve", "reject"] }]),
-  );
-  // bypassApprovalForEval omits the middleware entirely, so no interrupt is ever created. It is
+  // Built-in writes and every MCP tool pause for approval (`requiresApproval` in gatedTools.ts).
+  // bypassApprovalForEval omits the gate entirely, so no interrupt is ever created. It is
   // reachable ONLY from the eval harness — no request can set it.
-  const middleware = cfg?.bypassApprovalForEval
-    ? []
-    : [
-        humanInTheLoopMiddleware({
-          interruptOn,
-          descriptionPrefix: "This action needs your approval",
-        }),
-      ];
+  const approval = cfg?.bypassApprovalForEval ? [] : [approvalGateMiddleware()];
 
   return createAgent({
     model: llm,
     tools: allTools,
     systemPrompt: cfg?.systemPrompt || SYSTEM_PROMPT,
     checkpointer: postgresCheckpointer,
-    middleware,
+    middleware: [disclosure, invalidToolCallMiddleware(), contextEditingMiddleware(), ...approval],
   }).withConfig({ recursionLimit: 50 });
 }
 ```
@@ -138,7 +129,7 @@ async function buildAgent(cfg?: AgentConfigOptions) {
 **Key Responsibilities:**
 
 - Agent construction via `createAgent` (prebuilt ReAct agent over LangGraph)
-- Per-tool human-in-the-loop approval via `humanInTheLoopMiddleware` (mutations only)
+- Human-in-the-loop approval via `approvalGateMiddleware` (built-in writes and every MCP tool)
 - Model configuration (`createChatModel`) and system prompt
 - Checkpointer integration for persistence
 
@@ -382,8 +373,8 @@ can still call `set_config` or read `mcp_server`. Migrations must therefore run 
 
 `createAgent` compiles the standard ReAct loop: a `model` node calls the LLM (with the system
 prompt and bound tools), and a `tools` node executes any tool calls, looping back to `model` until
-there are no more tool calls. `humanInTheLoopMiddleware` runs after the `model` node and, for a
-**mutating** tool call, raises an interrupt (pause) before the `tools` node runs.
+there are no more tool calls. The approval gate runs after the `model` node and, for a built-in
+write or any MCP tool call, raises an interrupt (pause) before the `tools` node runs.
 
 ```
     START
@@ -415,12 +406,14 @@ there are no more tool calls. `humanInTheLoopMiddleware` runs after the `model` 
 - **Process**: `createAgent` injects the system prompt, binds tools, and generates a response
 - **Output**: AI message (text and/or tool calls)
 
-#### Human-in-the-Loop Middleware (afterModel)
+#### Approval Gate Middleware (afterModel)
 
 - **Input**: AI message with tool calls
 - **Process**:
-  - For tools listed in `interruptOn` (mutations only), batch them into one `HITLRequest` and interrupt
-  - Non-listed tools (reads, MCP) auto-approve and proceed
+  - For calls `requiresApproval` names (built-in writes and every MCP tool), batch them into one
+    `HITLRequest` and interrupt. `interruptOn` is built from the calls on each step, because MCP
+    tool names are only known mid-thread
+  - Built-in reads, the memory tools and `load_tools` proceed without pausing
   - When resumed, apply each decision: **approve** (run as-is) or **reject** (inject a tool result and return to the model)
 - **Output**: Proceeds to the `tools` node, or back to `model` on reject
 
@@ -438,7 +431,7 @@ client sends one decision per call id (`decisions={"<callId>":"allow"|"deny"}`),
 `src/services/approvalDecisions.ts` turns that into the positional array:
 
 - `readPendingBatch(snapshot)` reads the interrupt's action requests and the paused AI message's gated
-  calls (filtered by `GATED_TOOL_NAMES`) — the same order the middleware used.
+  calls (filtered by `requiresApproval`) — the same order the middleware used.
 - `resolveDecisions(...)` checks the two line up (name + args), then refuses on any missing, unknown
   or invalid id. It never defaults a decision or copies one to another call.
 - If any call is denied, the middleware drops approved siblings and returns to the model, so those are
@@ -582,8 +575,8 @@ The storage layer uses AWS SDK v3, which works with any S3-compatible service. T
 Tool Call Detected → Approval UI Rendered → User Decision → Command Sent → Agent Resumes
 ```
 
-Only **mutating** tools (`log_expense`, `import_transactions_csv`) trigger this flow; read-only and
-MCP tools run without pausing.
+Built-in writes (`GATED_TOOL_NAMES`) and **every MCP tool** trigger this flow; built-in reads, the
+memory tools and `load_tools` run without pausing.
 
 ### Approval Options
 

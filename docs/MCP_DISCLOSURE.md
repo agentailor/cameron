@@ -16,12 +16,13 @@ The logic lives in the workspace package [`packages/mcp-disclosure`](../packages
 (`@agentailor/mcp-disclosure`). It imports nothing from the app and **nothing from the MCP client
 library** — only MCP protocol shapes (`tools/list`) and LangChain tool types. The app supplies:
 
-| App file                   | Role                                                               |
-| -------------------------- | ------------------------------------------------------------------ |
-| `src/lib/mcp/connector.ts` | The only file using `@langchain/mcp-adapters`: one session         |
-| `src/lib/mcp/pool.ts`      | The process-wide pool singleton and the middleware's `resolveTool` |
-| `src/lib/mcp/catalog.ts`   | Catalog refresh and loading, through the connector                 |
-| `src/lib/agent/index.ts`   | Registers core tools only, plus the middleware                     |
+| App file                        | Role                                                               |
+| ------------------------------- | ------------------------------------------------------------------ |
+| `src/lib/mcp/connector.ts`      | The only file using `@langchain/mcp-adapters`: one session         |
+| `src/lib/mcp/pool.ts`           | The process-wide pool singleton and the middleware's `resolveTool` |
+| `src/lib/mcp/catalog.ts`        | Catalog refresh and loading, through the connector                 |
+| `src/lib/agent/index.ts`        | Registers core tools only, plus the middleware                     |
+| `src/lib/agent/approvalGate.ts` | Gates every MCP call for approval (see Approval)                   |
 
 Moving to another MCP client means rewriting `connector.ts`; the catalog rows, the pool and the
 middleware are unaffected. The Connections page's "list tools" probe (`listServerTools`) opens a
@@ -85,6 +86,7 @@ sequenceDiagram
   M-->>A: matches loaded
   Note over M: no connection yet
   A->>M: notion_search(...)
+  Note over M: approval gate pauses — the user approves
   M->>P: resolveTool
   P->>S: connect (first call)
   M->>S: run tool
@@ -120,7 +122,8 @@ sequenceDiagram
 
 3. **The model calls `load_tools({ query })`**, with no connection made. The best matches (5 by
    default) are added to the end of `tools` from the next step on, for the rest of the thread.
-4. **The model calls a tool**; its server is connected then, through the pool.
+4. **The model calls a tool**; the call pauses for the user's approval (see Approval), and its
+   server is connected once approved, through the pool.
 
 With no server available, neither `load_tools` nor the list is added.
 
@@ -302,9 +305,26 @@ its own calls, as error results.
 
 ## Approval
 
-`load_tools` is not gated. It only changes what the model can see, and
-`GATED_TOOL_NAMES` is unchanged. MCP tools still auto-approve as before; cached
-`annotations` (`readOnlyHint`, …) are stored but not used for approval.
+**Every MCP tool call pauses for approval**, like a built-in write. `load_tools` does not: it only
+changes what the model can see.
+
+The gate is keyed by name, and no MCP tool name is known when the agent is built: it is loaded
+mid-thread, kept in `toolDefinitions` after its server is gone, or guessed and auto-loaded. A
+fixed `interruptOn` map would miss all three, and langchain's `humanInTheLoopMiddleware` runs any
+name missing from its map without review. So the rule is an **allowlist**: `requiresApproval()`
+in `src/lib/agent/gatedTools.ts` lets through only `UNGATED_TOOL_NAMES` (built-in reads, memory,
+`load_tools`), and `approvalGateMiddleware` (`src/lib/agent/approvalGate.ts`) builds `interruptOn`
+on each model step from the names actually called. Any name it does not know is gated, whoever
+offered it.
+
+The gate runs after the model and before any tool is resolved, so a call this middleware answers
+itself (`server_unavailable`, `unknown_tool`, `auth_required`, `tool_not_loaded`) is approved
+first and then gets that result. Nothing connects to a server before the approval.
+
+Cached `annotations` (`readOnlyHint`, …) are stored but not used for approval: they are the
+server's own claim. Pre-approving read-only tools belongs to the owner, per run (v8 scheduled
+tasks): such a grant narrows `requiresApproval` in `approvalGateMiddleware`, the one place the
+rule is applied.
 
 ## Evals
 
@@ -313,6 +333,8 @@ reaching the right tool from different words, loading nothing for a question abo
 ledger, and reporting a capability that needs sign-in. They use in-process mock servers
 (`eval/mcpMocks.mts`, opt in with `mcp: true`): they test whether the model finds and uses a
 capability, so real servers would only add MCP plumbing. Other cases see no MCP servers.
+None sets `approval`, so they run with the gate omitted (`bypassApprovalForEval`); that MCP
+calls pause is pinned by `src/lib/agent/approvalGate.test.ts`, offline.
 
 ## Debug log
 

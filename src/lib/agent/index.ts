@@ -17,14 +17,13 @@ import { createDocumentTools } from "./tools/documents";
 import { createMemoryTools } from "./tools/memory";
 import * as memoryRepo from "@/lib/repositories/memoryRepository";
 import { listSkills } from "@/lib/skills/registry";
-import { createAgent, humanInTheLoopMiddleware } from "langchain";
+import { createAgent } from "langchain";
 import { mcpServerDisclosureMiddleware } from "@agentailor/mcp-disclosure";
 import { invalidToolCallMiddleware } from "./invalidToolCalls";
 import { contextEditingMiddleware } from "./contextEditing";
 import { loadDisclosureServers } from "@/lib/mcp/catalog";
 import { createToolResolver } from "@/lib/mcp/pool";
-// Lives in ./capabilities so the page can read it without importing this file's deps.
-import { GATED_TOOL_NAMES } from "./capabilities";
+import { approvalGateMiddleware } from "./approvalGate";
 
 async function loadStoredMcp() {
   const { servers, records, catalogs } = await loadDisclosureServers();
@@ -57,7 +56,7 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   // Built-in finance tools are registered here (server-side) so they are always present and
   // cannot be omitted by the client. MCP tools are NOT registered: the disclosure middleware shows
   // them from the cached catalog and connects to a server only when one of its tools is called.
-  // Approval is enforced per-tool by the HITL middleware below (mutations only).
+  // Approval is enforced by the gate below: built-in writes and every MCP tool.
   const mcp = cfg?.mcpForEval ?? (await loadStoredMcp());
   // Per-request tools supplied by the caller — not ./tools/config, which is `settingsTools`.
   const configTools = (cfg?.tools || []) as StructuredToolInterface[];
@@ -82,26 +81,13 @@ async function buildAgent(cfg?: AgentConfigOptions) {
     : builtin) as unknown as StructuredToolInterface[];
   const allTools = [...builtinTools, ...configTools] as DynamicTool[];
 
-  // Human-in-the-loop approval: mutating tools pause for an approve/reject decision; everything
-  // else (reads, MCP) auto-approves because it isn't listed in `interruptOn`.
+  // Human-in-the-loop approval: built-in writes and every MCP tool pause for approve/reject
+  // (`requiresApproval` in ./gatedTools); built-in reads, memory and load_tools run.
   //
   // The middleware is ALWAYS installed for anything reachable from a request — there is no
   // user-facing switch to turn the gate off. `bypassApprovalForEval` omits it for the eval
   // harness alone, which has no human to answer an interrupt (see AgentConfigOptions).
-  const interruptOn = Object.fromEntries(
-    GATED_TOOL_NAMES.map((name) => [
-      name,
-      { allowedDecisions: ["approve", "reject"] as ("approve" | "reject")[] },
-    ]),
-  );
-  const approval = cfg?.bypassApprovalForEval
-    ? []
-    : [
-        humanInTheLoopMiddleware({
-          interruptOn,
-          descriptionPrefix: "This action needs your approval",
-        }),
-      ];
+  const approval = cfg?.bypassApprovalForEval ? [] : [approvalGateMiddleware()];
   // Shows the model a list of capabilities and a tool once a search has loaded it, and runs a call
   // on a pooled connection. load_tools is not gated: it only changes visibility.
   const disclosure = mcpServerDisclosureMiddleware(mcp);
