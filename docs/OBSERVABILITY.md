@@ -98,6 +98,11 @@ attributes Cameron sets:
 When the approval gate pauses a run, the `invoke_agent` span gets a `cameron.approval.requested`
 event listing the gated **tool names** — never their arguments. A pause is not an error.
 
+`cameron.tool.gated` is `requiresApproval(name)` (`src/lib/agent/gatedTools.ts`): the rule, not
+whether the gate was installed for that run, so it stays true in eval runs that omit the gate.
+Since the MCP approval change (PR #78) it is true for every MCP tool too, so it differs from older
+traces for MCP calls.
+
 **With content capture on**, Cameron adds `gen_ai.system_instructions`, `gen_ai.input.messages`,
 `gen_ai.output.messages`, `gen_ai.tool.definitions`, `gen_ai.tool.call.arguments`,
 `gen_ai.tool.call.result`, the error message and the exception event.

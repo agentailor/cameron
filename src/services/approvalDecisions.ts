@@ -2,7 +2,7 @@ import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
 import type { Decision, HITLRequest, HITLResponse } from "langchain";
 import type { ApprovalDecision } from "@/types/message";
-import { isGatedTool } from "@/lib/agent/gatedTools";
+import { requiresApproval } from "@/lib/agent/gatedTools";
 
 /**
  * Turns the client's per-call decisions into the middleware's positional `decisions` array.
@@ -69,7 +69,7 @@ export function readPendingBatch(snapshot: GraphSnapshot): PendingBatch {
   return {
     actionRequests: (pending?.actionRequests ?? []).map((a) => ({ name: a.name, args: a.args })),
     pausedCalls: (paused?.tool_calls ?? [])
-      .filter((c) => isGatedTool(c.name))
+      .filter((c) => requiresApproval(c.name))
       .map((c) => ({ id: c.id ?? "", name: c.name, args: c.args })),
   };
 }

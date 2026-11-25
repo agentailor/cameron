@@ -177,17 +177,24 @@ This is a Next.js 15 fullstack AI agent chat application using LangGraph.js with
     `skills/receipts` skill driving it. The reader, its prompt, its evals (`pnpm eval:reader`),
     the logging flow and the untrusted-document rule are all in
     [docs/DOCUMENTS.md](docs/DOCUMENTS.md) — read it before changing `src/lib/documents/`.
-- **Tool Approval**: Human-in-the-loop via `humanInTheLoopMiddleware`. Approval is gated **per-tool**
-  through an `interruptOn` map that lists only **mutating** tools (`log_expense`,
-  `import_transactions_csv`, `create_category`, `set_config`, `update_transaction`,
-  `delete_transaction`, `log_from_document`); read tools (incl. `run_sql`), MCP tools, the memory tools and `load_tools` (which only changes
-  what the model sees) auto-approve. **The gate cannot be switched off from the product**: no UI control, no query
+- **Tool Approval**: Human-in-the-loop via `approvalGateMiddleware` (`src/lib/agent/approvalGate.ts`),
+  which wraps langchain's `humanInTheLoopMiddleware`. **Built-in writes and every MCP tool pause**;
+  the rest runs. The rule is one function, `requiresApproval(name)` in
+  `src/lib/agent/gatedTools.ts`: a name pauses unless it is in `UNGATED_TOOL_NAMES`, an
+  **allowlist** of built-in reads (incl. `run_sql`), the memory tools and `load_tools` (which only
+  changes what the model sees). `GATED_TOOL_NAMES` (`log_expense`, `import_transactions_csv`,
+  `create_category`, `set_config`, `update_transaction`, `delete_transaction`,
+  `log_from_document`) still names the built-in writes. An allowlist because `interruptOn` is
+  keyed by name and a name missing from it runs unreviewed — and MCP tool names are only known
+  mid-thread (`load_tools`, saved `toolDefinitions`), so the wrapper builds `interruptOn` per model
+  step from the names actually called. `capabilities.test.ts` pins the two lists to the registered
+  tools, so a new built-in read is gated until it is listed. **The gate cannot be switched off from the product**: no UI control, no query
   param, and nothing on `MessageOptions` can disable it — `bypassApprovalForEval` omits the
   middleware for the eval harness alone, which calls the agent factory in-process and has no human
   to answer an interrupt (`approvalGate.test.ts` pins that boundary). Decisions: `allow`→approve,
-  `deny`→reject (with an explanatory follow-up). `GATED_TOOL_NAMES` lives in
-  `src/lib/agent/gatedTools.ts` — a **zero-import leaf**; `index.ts` and `capabilities.ts` both
-  re-use it from there. It is its own module because **client components need it** (the approval
+  `deny`→reject (with an explanatory follow-up). `gatedTools.ts` is a **zero-import leaf**; the
+  gate, the resume mapping (`approvalDecisions.ts`), the tracer and the chat UI all read it. It is
+  its own module because **client components need it** (the approval
   gate styles itself from it) and `capabilities.ts` reaches `pg` through the tool modules, so
   importing that from the browser pulls Postgres into the bundle. `tsc` does not catch this — the
   production build does.
@@ -423,8 +430,11 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
 
 ### Tool Approval Workflow
 
-- `humanInTheLoopMiddleware` (configured in `src/lib/agent/index.ts`) pauses on a **mutating** tool
-  call and emits a batched `HITLRequest` interrupt; read/MCP tools run without pausing.
+- `approvalGateMiddleware` (installed in `src/lib/agent/index.ts`) pauses on every call
+  `requiresApproval` names — a built-in write or any MCP tool — and emits langchain's batched
+  `HITLRequest` interrupt; built-in reads, memory and `load_tools` run without pausing. A call the
+  disclosure middleware answers itself (`server_unavailable`, `unknown_tool`, `auth_required`) is
+  still approved first: the gate runs after the model, before any tool is resolved.
 - **The server says which calls are pending; the client never infers it.** Once a run settles,
   `streamMessages` re-emits the AI message carrying `pendingToolCallIds` — the calls the model
   requested that never executed, which is exactly what the gate paused. The frontend shows the
@@ -432,8 +442,10 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   `decisions={"<callId>":"allow"|"deny",…}` (empty content); the SSE contract is otherwise unchanged. Position in the message list is NOT a pending signal:
   tool results and later AI text both arrive after the call, so "is it last?" is wrong in both
   directions — it hid the gate on a real pause and offered APPROVE on read-only tools.
-- `ToolActivityGroup` additionally requires `isGatedTool(name)` before rendering the amber panel.
-  Two independent conditions, because that panel claims "this writes to your data".
+- `ToolActivityGroup` additionally requires `requiresApproval(name)` (`isGated` on the activity)
+  before rendering the amber panel. Two independent conditions, because that panel claims the call
+  needs your decision. Its copy says "writes to your data" for a built-in write (`isGatedTool`) and
+  "a tool from a connected server" for an MCP call.
 - **One decision per call, never one for the batch (#45).** The middleware batches every gated call
   of one model step into one interrupt and aligns decisions by POSITION; its `actionRequests` carry
   no call id. Each card records its own decision in `useChatThread` ("waiting for N more", with a
@@ -642,7 +654,7 @@ pnpm typecheck:eval                         # free — the root tsc misses this 
   factory), as in the app: `recall`'s description lists the memories present at build time, so one
   agent per run would hide a memory saved in thread 1 from thread 2. `memories: [...]` seeds
   stored preferences after the reset; `memorySaved` / `memoryCount` grade the table.
-- **Approval cases** set `approval: "allow" | "deny"`, which keeps the HITL middleware live (plain
+- **Approval cases** set `approval: "allow" | "deny"`, which keeps `approvalGateMiddleware` live (plain
   `bypassApprovalForEval` omits it entirely). Paused calls land on `RunCapture.interrupts` — the only
   evidence the gate fired, since `trajectory` looks identical either way. These cases mutate, so the
   fixture is re-seeded before each run.

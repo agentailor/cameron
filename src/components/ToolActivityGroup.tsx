@@ -7,6 +7,7 @@ import type { ToolActivity } from "@/services/toolActivity";
 import { summarizeActivities, summarizeResult } from "@/services/toolSummary";
 import { ToolArgs, ToolResult, renderersFor } from "./toolRenderers";
 import { Chart } from "./charts/Chart";
+import { isGatedTool } from "@/lib/agent/gatedTools";
 import type { ChartPayload } from "./charts/types";
 
 /**
@@ -16,7 +17,8 @@ import type { ChartPayload } from "./charts/types";
  *
  * Collapsed by default: for most tools the arguments and the payload are machinery, not answers.
  * Three things are never hidden, because hiding them would hide the product:
- *   - a GATED call's arguments — you cannot approve what you cannot read;
+ *   - a GATED call's arguments (a built-in write or any MCP tool) — you cannot approve what
+ *     you cannot read;
  *   - a CHART — it is the answer itself, not a detail of one;
  *   - a result the user is asked to review (`open` in the renderer config) — a delete preview.
  */
@@ -52,10 +54,11 @@ function chartOf(activity: ToolActivity): ChartPayload | null {
 }
 
 /** What a decided gate says in place of its buttons. */
-function decisionStatus(recorded: RecordedDecision, undecided: number): string {
+function decisionStatus(recorded: RecordedDecision, undecided: number, writes: boolean): string {
   if (recorded.heldBack)
     return "not run: another call in this step was denied — Cameron will ask again";
-  if (recorded.sent) return recorded.decision === "allow" ? "sent" : "nothing was written";
+  if (recorded.sent)
+    return recorded.decision === "allow" ? "sent" : writes ? "nothing was written" : "nothing ran";
   return `waiting for ${undecided} more ${undecided === 1 ? "decision" : "decisions"}`;
 }
 
@@ -70,6 +73,8 @@ const ApprovalGate = ({
   // Decisions live in the hook, per call: one card never decides for its siblings.
   const recorded = callbacks.decisions[activity.callId];
   const batched = callbacks.batchSize > 1;
+  // Built-in writes say so; anything else gated is a connected server's tool (MCP).
+  const writes = isGatedTool(activity.name);
 
   return (
     <div className="border-brand bg-card overflow-hidden rounded-lg border shadow-[0_0_0_4px_var(--brand-soft)]">
@@ -85,8 +90,17 @@ const ApprovalGate = ({
 
       <div className="px-4 py-4">
         <div className="text-muted-foreground mb-3 text-sm">
-          Cameron wants to run a tool that{" "}
-          <span className="text-brand-dim font-medium">writes</span> to your data.
+          {writes ? (
+            <>
+              Cameron wants to run a tool that{" "}
+              <span className="text-brand-dim font-medium">writes</span> to your data.
+            </>
+          ) : (
+            <>
+              Cameron wants to run a tool from a{" "}
+              <span className="text-brand-dim font-medium">connected server</span>.
+            </>
+          )}
         </div>
 
         {/* Never collapsed — the arguments ARE the thing being approved. */}
@@ -109,7 +123,7 @@ const ApprovalGate = ({
               {recorded.decision === "allow" ? "APPROVED" : "DENIED"}
             </span>
             <span className="text-muted-foreground font-mono text-[11px]">
-              {decisionStatus(recorded, callbacks.undecided)}
+              {decisionStatus(recorded, callbacks.undecided, writes)}
             </span>
             {!recorded.sent && (
               <button
@@ -139,7 +153,9 @@ const ApprovalGate = ({
             <span className="text-muted-foreground ml-auto font-mono text-[10px]">
               {batched
                 ? "nothing runs until every call here is decided · a denial sends them all back"
-                : "nothing is written until you approve"}
+                : writes
+                  ? "nothing is written until you approve"
+                  : "nothing runs until you approve"}
             </span>
           </div>
         )}

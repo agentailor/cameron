@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it, vi } from "vitest";
 import { listCapabilities, GATED_TOOL_NAMES } from "./capabilities";
-import { ANNOUNCED_TOOL_NAMES } from "./gatedTools";
+import { ANNOUNCED_TOOL_NAMES, LOAD_TOOLS_TOOL_NAME, UNGATED_TOOL_NAMES } from "./gatedTools";
 
 /**
  * The /capabilities page is only honest if it matches the tools actually registered. Most groups
@@ -47,6 +47,18 @@ describe("listCapabilities", () => {
       .map((c) => c.name)
       .sort();
     expect(gated).toEqual([...GATED_TOOL_NAMES].sort());
+  });
+
+  it("classes every built-in tool as gated or ungated, never both (any other name is gated)", () => {
+    const builtin = listCapabilities()
+      .map((c) => c.name)
+      .sort();
+    const ungated = new Set<string>(UNGATED_TOOL_NAMES);
+    expect(GATED_TOOL_NAMES.filter((n) => ungated.has(n))).toEqual([]);
+    // A built-in read missing here would pause for approval; an extra name would let one through.
+    expect([...GATED_TOOL_NAMES, ...UNGATED_TOOL_NAMES].sort()).toEqual(
+      [...builtin, LOAD_TOOLS_TOOL_NAME].sort(),
+    );
   });
 
   it("lists the same CSV tools the agent registers", () => {
