@@ -38,6 +38,56 @@ timezone: Europe/Paris
 The brief the agent is given.
 ```
 
+## How it works
+
+The package owns everything inside the box. The app plugs in the store and the executor, and
+resumes paused runs on its own path.
+
+```mermaid
+flowchart TD
+  files["tasks/{name}/TASK.md"] -->|loadTasks| defs[Task definitions]
+  timer["start(): every intervalMs"] --> tick
+  runNow["runNow(name)"] -->|"slot = now, trigger: manual"| claim
+
+  subgraph pkg ["@agentailor/agent-tasks"]
+    defs --> tick["tick()"]
+    tick --> stale["failStaleRuns: running past runTimeoutMs → failed"]
+    stale --> enabled["listEnablements"]
+    enabled --> slot{"latestDueSlot<br/>at or after enabledAt?"}
+    slot -->|no| skip[Skip]
+    slot -->|yes| claim{"claimRun(task, slot)<br/>atomic, unique"}
+    claim -->|already taken| skip
+    claim -->|claimed: running| exec["execute(task, run, ctx)<br/>in the background"]
+    exec -->|"returns outcome / throws → failed"| record["updateStatus<br/>compare-and-set"]
+  end
+
+  store[("TaskStore<br/>(app's database)")]
+  executor["TaskExecutor<br/>(app: runs the agent)"]
+  stale -.-> store
+  enabled -.-> store
+  claim -.-> store
+  record -.-> store
+  exec -.-> executor
+  executor -.->|"ctx.attachRef(threadId)"| store
+  app["App resumes a paused run<br/>(e.g. approval in chat)"] -->|"scheduler.update(runId, …)"| record
+```
+
+A run's status:
+
+```mermaid
+stateDiagram-v2
+  [*] --> running: claimRun
+  running --> paused: executor returns paused(reason)
+  running --> done: executor returns done
+  running --> failed: executor throws / fails / times out
+  paused --> running: app resumes (update)
+  paused --> done: update
+  paused --> failed: update
+  paused --> paused: update (paused again)
+  done --> [*]
+  failed --> [*]
+```
+
 ## Rules it enforces
 
 - **A slot runs at most once.** `claimRun` must be atomic on `(taskName, slot)`, a unique key in
