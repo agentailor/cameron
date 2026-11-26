@@ -10,6 +10,12 @@ export async function POST(_request: Request, { params }: { params: Promise<{ na
   const { name } = await params;
   try {
     const result = await getScheduler().runNow(name);
+    if (!result.ok && result.error === "busy") {
+      return NextResponse.json(
+        { error: "busy", message: "The limit of runs at once is reached. Try again shortly." },
+        { status: 409 },
+      );
+    }
     if (!result.ok) return NextResponse.json({ error: "Task not found" }, { status: 404 });
     return NextResponse.json(toRunView(result.run), { status: 202 });
   } catch (error) {

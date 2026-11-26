@@ -24,6 +24,7 @@ import { contextEditingMiddleware } from "./contextEditing";
 import { loadDisclosureServers } from "@/lib/mcp/catalog";
 import { createToolResolver } from "@/lib/mcp/pool";
 import { approvalGateMiddleware } from "./approvalGate";
+import { AGENT_RECURSION_LIMIT } from "./recursion";
 
 async function loadStoredMcp() {
   const { servers, records, catalogs } = await loadDisclosureServers();
@@ -106,8 +107,7 @@ async function buildAgent(cfg?: AgentConfigOptions) {
     systemPrompt: cfg?.systemPrompt || buildSystemPrompt(listSkills()),
     checkpointer: postgresCheckpointer,
     middleware,
-    // Counts graph steps, not tool calls: each model → tool round takes several.
-  }).withConfig({ recursionLimit: 50 });
+  }).withConfig({ recursionLimit: AGENT_RECURSION_LIMIT });
 
   return agent;
 }

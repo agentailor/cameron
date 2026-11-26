@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { AIMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { makeTask } from "@agentailor/agent-tasks/testing";
-import { outcomeOf, taskMessage, taskThreadTitle } from "./outcome";
+import { continuationOf, outcomeOf, taskMessage, taskThreadTitle } from "./outcome";
 import type { GraphSnapshot } from "@/services/approvalDecisions";
 
 const pausedOn = (name: string): GraphSnapshot => ({
@@ -51,5 +51,24 @@ describe("taskThreadTitle", () => {
       attempts: 1,
     };
     expect(taskThreadTitle(makeTask(), run)).toBe("weekly-digest · 2026-11-23");
+  });
+});
+
+describe("continuationOf", () => {
+  const brief = new HumanMessage("Scheduled task: weekly-digest.");
+
+  it("starts over when nothing was saved", () => {
+    expect(continuationOf({ values: { messages: [] }, next: [] })).toBe("start");
+    expect(continuationOf({})).toBe("start");
+  });
+
+  it("resumes when the graph stopped between steps", () => {
+    expect(continuationOf({ values: { messages: [brief] }, next: ["model"] })).toBe("resume");
+  });
+
+  it("only records the outcome when it already finished or paused", () => {
+    const done = { values: { messages: [brief, new AIMessage("Digest.")] }, next: [] };
+    expect(continuationOf(done)).toBe("settled");
+    expect(continuationOf({ ...pausedOn("log_expense"), next: ["tools"] })).toBe("settled");
   });
 });

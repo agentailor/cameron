@@ -14,6 +14,21 @@ export function outcomeOf(snapshot: GraphSnapshot): ExecutionOutcome {
   return interrupted ? { status: "paused", reason: "interrupt" } : { status: "done" };
 }
 
+/** A checkpoint snapshot, with the nodes the graph would run next. */
+export type RunSnapshot = GraphSnapshot & { next?: readonly string[] };
+
+/**
+ * What a retry or a recovered run does with the thread an earlier attempt left:
+ * - `start`: nothing was saved (it failed before the first step), so send the brief;
+ * - `resume`: the graph stopped between steps, so continue from the last checkpoint;
+ * - `settled`: it already finished or paused; only the outcome is left to record.
+ */
+export function continuationOf(snapshot: RunSnapshot): "start" | "resume" | "settled" {
+  if ((snapshot.values?.messages ?? []).length === 0) return "start";
+  if (snapshot.tasks?.some((t) => (t.interrupts ?? []).length > 0)) return "settled";
+  return (snapshot.next ?? []).length > 0 ? "resume" : "settled";
+}
+
 /** The first message of a task's thread: who is (not) there, then the task's own brief. */
 export function taskMessage(task: TaskDefinition): string {
   return [

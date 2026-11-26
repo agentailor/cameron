@@ -42,8 +42,48 @@ enabled.
    before calling the model, so a run that fails still links to what it wrote;
 2. sends one message: a short framing (`taskMessage` in `outcome.ts`: the owner is away, approvals
    wait, don't ask questions, say what's missing and stop) followed by the brief verbatim;
-3. runs the agent to completion with `invoke`, then reads the checkpoint: a pending approval is
-   `paused` (`reason: "approval"`), anything else `done`. An exception is `failed`.
+3. runs the agent to completion with `invoke`, passing the attempt's `signal` so a timeout or a
+   shutdown really stops it, then reads the checkpoint: a pending approval is `paused`
+   (`reason: "approval"`), anything else `done`. An exception is `failed`, or retried (below).
+
+The model is resolved first, so a missing model setup fails the run before any thread is made.
+
+## Retries and recovery
+
+A retry, or a run recovered after a restart, gets the earlier attempt's thread (`previousRef`)
+and continues it instead of opening a new one. `continuationOf` reads that thread's checkpoint:
+
+- nothing saved (it failed before the first step): send the brief again;
+- stopped between steps: `invoke(null)`, which continues from the last checkpoint;
+- already finished or paused: just record the outcome.
+
+If the owner deleted that thread, the attempt starts on a new one.
+
+`isRetryableTaskError` (`errors.ts`) decides what is worth another attempt. Never: running out
+of steps (shown as "Ran out of steps (limit 50)."), a missing model setup, an abort, and client
+errors (400, 401, 403, 404, 422). A rate limit (429), a server error or a dropped connection is
+retried. Errors are matched by name and status, not `instanceof`, because LangGraph can load twice.
+
+## Limits
+
+Set on `/tasks`: **runs at once**, and the **timeout** (minutes) and **retries** every task
+inherits; each task can override its own timeout and retries. An empty field means the next
+layer down: task, then the global value, then the package default (3 runs, 10 min, 1 retry;
+`limits.test.ts` pins Cameron's copy to the package). They are read when a run starts, so a
+change applies from the next run without a restart.
+
+The global values live in `config` (`tasks_*` keys), deliberately **outside the agent's settings
+catalog**, like the model settings: Cameron can't read or change its own limits. A task's
+overrides are `task_setting.timeout_minutes` / `max_retries`. API: `PUT /api/tasks` (global) and
+`PUT /api/tasks/{name}` (one task; `null` clears). Run now returns 409 `busy` at the limit.
+
+## Shutdown
+
+In the Docker image, `NEXT_MANUAL_SIG_HANDLE=true` stops Next.js exiting on its own at SIGTERM.
+`instrumentation.node.ts` then stops the scheduler: runs get 8 s (`STOP_GRACE_MS`, under
+Docker's 10 s) to finish, the rest are aborted and left `running`, and the process exits. The
+next start recovers them without counting the interrupted attempt. Under `pnpm dev` the variable
+isn't set, so a stopped dev server leaves its runs as if it had crashed (recovered, but counted).
 
 There is no approval bypass and no separate tool set: the run sees exactly the tools chat does.
 
@@ -66,10 +106,8 @@ separately. It ticks every minute. A slot runs at most once because `task_run` i
 `(task_name, slot)`, so even a second process sharing the database can't run a slot twice.
 Recovering interrupted runs is different: it assumes **one scheduler process per database**, since
 a second live process could take over a run the first is still executing. Only the latest
-due slot runs after downtime. The package defaults apply (10 min timeout, 1 retry, at most 3 runs at
-once, no overlapping runs of one task), and a run left `running` by a restart is recovered on the
-next tick. Cameron does not yet pass the abort signal to the agent, continue a retry from its thread,
-or let the owner change these limits: that is the next change.
+due slot runs after downtime, a slot isn't started while the task's previous run is still open,
+and a run left `running` by a restart is recovered on the next tick.
 
 ## Not yet
 
