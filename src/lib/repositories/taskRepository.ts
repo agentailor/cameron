@@ -41,19 +41,41 @@ function column(date: Date): string {
   return toColumnTimestamp(date.toISOString())!;
 }
 
+/** A task's own overrides; absent uses the value for all tasks. */
+export interface TaskLimits {
+  timeoutMinutes?: number;
+  maxRetries?: number;
+}
+
 export interface TaskSetting {
   taskName: string;
   enabled: boolean;
   enabledAt: Date | null;
+  /** The owner's overrides; absent uses the global value, then the default. */
+  limits: TaskLimits;
+}
+
+type SettingRow = typeof taskSettings.$inferSelect;
+
+function toSetting(row: SettingRow): TaskSetting {
+  return {
+    taskName: row.taskName,
+    enabled: row.enabled,
+    enabledAt: row.enabledAt ? columnToDate(row.enabledAt) : null,
+    limits: {
+      ...(row.timeoutMinutes !== null ? { timeoutMinutes: row.timeoutMinutes } : {}),
+      ...(row.maxRetries !== null ? { maxRetries: row.maxRetries } : {}),
+    },
+  };
 }
 
 export async function listSettings(): Promise<TaskSetting[]> {
-  const rows = await db.select().from(taskSettings);
-  return rows.map((r) => ({
-    taskName: r.taskName,
-    enabled: r.enabled,
-    enabledAt: r.enabledAt ? columnToDate(r.enabledAt) : null,
-  }));
+  return (await db.select().from(taskSettings)).map(toSetting);
+}
+
+export async function getSetting(taskName: string): Promise<TaskSetting | null> {
+  const [row] = await db.select().from(taskSettings).where(eq(taskSettings.taskName, taskName));
+  return row ? toSetting(row) : null;
 }
 
 /** Turning a task on starts its clock now, so slots missed while it was off never run. */
@@ -65,11 +87,26 @@ export async function setEnabled(taskName: string, enabled: boolean): Promise<Ta
     .values(values)
     .onConflictDoUpdate({ target: taskSettings.taskName, set: values })
     .returning();
-  return {
-    taskName: row.taskName,
-    enabled: row.enabled,
-    enabledAt: row.enabledAt ? columnToDate(row.enabledAt) : null,
+  return toSetting(row);
+}
+
+/** Set or clear (null) a task's overrides. A task never toggled is created off. */
+export async function setLimits(
+  taskName: string,
+  limits: { timeoutMinutes?: number | null; maxRetries?: number | null },
+): Promise<TaskSetting> {
+  const now = column(new Date());
+  const set = {
+    ...(limits.timeoutMinutes !== undefined ? { timeoutMinutes: limits.timeoutMinutes } : {}),
+    ...(limits.maxRetries !== undefined ? { maxRetries: limits.maxRetries } : {}),
+    updatedAt: now,
   };
+  const [row] = await db
+    .insert(taskSettings)
+    .values({ taskName, enabled: false, enabledAt: null, ...set })
+    .onConflictDoUpdate({ target: taskSettings.taskName, set })
+    .returning();
+  return toSetting(row);
 }
 
 /** Most recent first. */

@@ -192,6 +192,18 @@ describe("concurrency", () => {
     await scheduler.idle();
   });
 
+  it("a limit function returning undefined uses the default", async () => {
+    const g = gate();
+    const tasks = Array.from({ length: DEFAULT_MAX_CONCURRENT_RUNS + 1 }, (_, i) =>
+      makeTask({ name: `task-${i}` }),
+    );
+    const { scheduler } = setup({ tasks, execute: g.execute, maxConcurrentRuns: () => undefined });
+    for (let i = 0; i < DEFAULT_MAX_CONCURRENT_RUNS; i++) await scheduler.runNow(`task-${i}`);
+    expect((await scheduler.runNow(`task-${DEFAULT_MAX_CONCURRENT_RUNS}`)).ok).toBe(false);
+    g.releaseAll();
+    await scheduler.idle();
+  });
+
   it("runNow is busy at the limit", async () => {
     const g = gate();
     const { scheduler } = setup({ execute: g.execute, maxConcurrentRuns: 1 });

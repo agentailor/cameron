@@ -210,6 +210,9 @@ export const taskSettings = pgTable("task_setting", {
   taskName: text("task_name").primaryKey().notNull(),
   enabled: boolean("enabled").notNull(),
   enabledAt: timestamp("enabled_at", { precision: 3, mode: "string" }),
+  // The owner's overrides for this task; NULL uses the global value, then the default.
+  timeoutMinutes: integer("timeout_minutes"),
+  maxRetries: integer("max_retries"),
   updatedAt: timestamp("updated_at", { precision: 3, mode: "string" }).notNull(),
 });
 

@@ -18,6 +18,7 @@ registry.registerPath({
   responses: {
     202: { description: "The run, just started", ...jsonBody(TaskRunResponse) },
     404: { description: "Task not found", ...jsonBody(ErrorResponse) },
+    409: { description: "At the limit of runs at once", ...jsonBody(ErrorResponse) },
     500: { description: "Failed to start task", ...jsonBody(ErrorResponse) },
   },
 });

@@ -2,10 +2,155 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Play } from "lucide-react";
-import { TASKS_QUERY_KEY, fetchTasks, runTaskNow, setTaskEnabled } from "@/lib/tasks/client";
-import { chip, secondaryButton } from "@/components/connections/styles";
-import type { TaskRunView, TaskView } from "@/types/task";
+import { Loader2, Play, SlidersHorizontal } from "lucide-react";
+import {
+  TASKS_QUERY_KEY,
+  fetchTasks,
+  runTaskNow,
+  saveTaskLimits,
+  updateTask,
+} from "@/lib/tasks/client";
+import { chip, linkButton, secondaryButton } from "@/components/connections/styles";
+import { primaryButton } from "@/components/ui/formStyles";
+import type { TaskLimitsView, TaskRunView, TaskView } from "@/types/task";
+import { LimitInputs, toRequest, useDrafts } from "./LimitInputs";
+
+/** The global value, else the default: what a task inherits when it sets nothing. */
+function inheritedOf(limits: TaskLimitsView, field: "timeoutMinutes" | "maxRetries"): number {
+  return limits.set[field] ?? limits.defaults[field];
+}
+
+const retries = (n: number) => (n === 1 ? "1 retry" : `${n} retries`);
+
+/** A task's own timeout and retries; empty inherits the value for all tasks. */
+const TaskLimitsEditor = ({
+  task,
+  limits,
+  onDone,
+}: {
+  task: TaskView;
+  limits: TaskLimitsView;
+  onDone: () => void;
+}) => {
+  const queryClient = useQueryClient();
+  const { drafts, set } = useDrafts(task.limits);
+  const [state, setState] = useState<{ busy: boolean; error: string | null }>({
+    busy: false,
+    error: null,
+  });
+
+  async function save() {
+    setState({ busy: true, error: null });
+    const result = await updateTask(task.name, toRequest(["timeoutMinutes", "maxRetries"], drafts));
+    if (!result.ok) return setState({ busy: false, error: result.error });
+    await queryClient.invalidateQueries({ queryKey: TASKS_QUERY_KEY });
+    onDone();
+  }
+
+  return (
+    <div className="border-border mt-3 space-y-3 border-t pt-3">
+      <LimitInputs
+        idPrefix={task.name}
+        drafts={drafts}
+        onChange={set}
+        inputs={[
+          {
+            field: "timeoutMinutes",
+            label: "Timeout, minutes",
+            inherited: `${inheritedOf(limits, "timeoutMinutes")} (all tasks)`,
+          },
+          {
+            field: "maxRetries",
+            label: "Retries",
+            inherited: `${inheritedOf(limits, "maxRetries")} (all tasks)`,
+          },
+        ]}
+      />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={save}
+          disabled={state.busy}
+          className={`${secondaryButton} px-2.5 py-1 text-xs`}
+        >
+          {state.busy ? "Saving…" : "Save"}
+        </button>
+        <button type="button" onClick={onDone} className={linkButton}>
+          cancel
+        </button>
+        {state.error && <span className="text-destructive text-xs">{state.error}</span>}
+      </div>
+    </div>
+  );
+};
+
+/** Limits for every task: how many run at once, and the timeout and retries a task inherits. */
+const GlobalLimits = ({ limits }: { limits: TaskLimitsView }) => {
+  const queryClient = useQueryClient();
+  const { drafts, set } = useDrafts(limits.set);
+  const [state, setState] = useState<{ busy: boolean; message: string | null; error: boolean }>({
+    busy: false,
+    message: null,
+    error: false,
+  });
+
+  async function save() {
+    setState({ busy: true, message: null, error: false });
+    const result = await saveTaskLimits(
+      toRequest(["maxConcurrentRuns", "timeoutMinutes", "maxRetries"], drafts),
+    );
+    if (!result.ok) return setState({ busy: false, message: result.error, error: true });
+    await queryClient.invalidateQueries({ queryKey: TASKS_QUERY_KEY });
+    setState({ busy: false, message: "Saved. Applies from the next run.", error: false });
+  }
+
+  return (
+    <section className="mt-10">
+      <h2 className="text-foreground text-sm font-medium">Limits</h2>
+      <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+        For every task, unless a task sets its own. A run past its timeout is stopped. Retries are
+        for errors that may pass, like a provider being briefly down. Leave a field empty for the
+        default.
+      </p>
+      <div className="border-border mt-3 space-y-3 rounded-lg border bg-white p-4">
+        <LimitInputs
+          idPrefix="global"
+          drafts={drafts}
+          onChange={set}
+          inputs={[
+            {
+              field: "maxConcurrentRuns",
+              label: "Runs at once",
+              inherited: `${limits.defaults.maxConcurrentRuns} (default)`,
+            },
+            {
+              field: "timeoutMinutes",
+              label: "Timeout, minutes",
+              inherited: `${limits.defaults.timeoutMinutes} (default)`,
+            },
+            {
+              field: "maxRetries",
+              label: "Retries",
+              inherited: `${limits.defaults.maxRetries} (default)`,
+            },
+          ]}
+        />
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={save} disabled={state.busy} className={primaryButton}>
+            {state.busy ? "Saving…" : "Save"}
+          </button>
+          {state.message && (
+            <span
+              className={state.error ? "text-destructive text-xs" : "text-muted-foreground text-xs"}
+            >
+              {state.message}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+};
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -60,19 +205,31 @@ const WaitingForYou = ({ runs }: { runs: TaskRunView[] }) => {
   );
 };
 
-const TaskItem = ({ task, lastRun }: { task: TaskView; lastRun?: TaskRunView }) => {
+const TaskItem = ({
+  task,
+  lastRun,
+  limits,
+}: {
+  task: TaskView;
+  lastRun?: TaskRunView;
+  limits: TaskLimitsView;
+}) => {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<"toggle" | "run" | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const timeout = task.limits.timeoutMinutes ?? inheritedOf(limits, "timeoutMinutes");
+  const maxRetries = task.limits.maxRetries ?? inheritedOf(limits, "maxRetries");
+  const ownLimits = task.limits.timeoutMinutes !== null || task.limits.maxRetries !== null;
 
   async function act(kind: "toggle" | "run") {
     setBusy(kind);
     setFailed(null);
-    const ok =
+    const result =
       kind === "toggle"
-        ? await setTaskEnabled(task.name, !task.enabled)
+        ? await updateTask(task.name, { enabled: !task.enabled })
         : await runTaskNow(task.name);
-    if (!ok) setFailed(kind === "toggle" ? "Couldn't change it." : "Couldn't start it.");
+    if (!result.ok) setFailed(result.error);
     await queryClient.invalidateQueries({ queryKey: TASKS_QUERY_KEY });
     setBusy(null);
   }
@@ -92,6 +249,16 @@ const TaskItem = ({ task, lastRun }: { task: TaskView; lastRun?: TaskRunView }) 
                 last: {STATUS_LABEL[lastRun.status]} {when(lastRun.startedAt)}
               </ThreadLink>
             )}
+            <button
+              type="button"
+              onClick={() => setEditing((e) => !e)}
+              aria-expanded={editing}
+              className={linkButton}
+            >
+              <SlidersHorizontal className="h-3 w-3" />
+              {timeout} min · {retries(maxRetries)}
+              {ownLimits ? "" : " (all tasks)"}
+            </button>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-3">
@@ -130,7 +297,8 @@ const TaskItem = ({ task, lastRun }: { task: TaskView; lastRun?: TaskRunView }) 
           </label>
         </div>
       </div>
-      {failed && <p className="text-destructive mt-2 text-xs">{failed} Try again.</p>}
+      {failed && <p className="text-destructive mt-2 text-xs">{failed}</p>}
+      {editing && <TaskLimitsEditor task={task} limits={limits} onDone={() => setEditing(false)} />}
     </li>
   );
 };
@@ -151,6 +319,7 @@ const RecentRuns = ({ runs }: { runs: TaskRunView[] }) => {
             >
               {STATUS_LABEL[run.status]}
               {run.trigger === "manual" ? " · manual" : ""}
+              {run.attempts > 1 ? ` · attempt ${run.attempts}` : ""}
             </span>
             <span className="text-muted-foreground ml-auto font-mono text-[11px]">
               <ThreadLink run={run}>{when(run.startedAt)}</ThreadLink>
@@ -193,10 +362,11 @@ export const TasksView = () => {
       ) : (
         <ul className="mt-8 space-y-3">
           {data.tasks.map((t) => (
-            <TaskItem key={t.name} task={t} lastRun={lastRun.get(t.name)} />
+            <TaskItem key={t.name} task={t} lastRun={lastRun.get(t.name)} limits={data.limits} />
           ))}
         </ul>
       )}
+      <GlobalLimits limits={data.limits} />
       <RecentRuns runs={data.runs} />
     </>
   );

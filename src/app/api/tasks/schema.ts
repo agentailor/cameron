@@ -10,8 +10,57 @@ export const TaskResponse = z
     timezone: z.string(),
     enabled: z.boolean(),
     nextRunAt: z.iso.datetime().nullable(),
+    limits: z.object({
+      timeoutMinutes: z.number().int().nullable(),
+      maxRetries: z.number().int().nullable(),
+    }),
   })
   .openapi("Task");
+
+const LimitValues = z.object({
+  maxConcurrentRuns: z.number().int(),
+  timeoutMinutes: z.number().int(),
+  maxRetries: z.number().int(),
+});
+
+export const TaskLimitsResponse = z
+  .object({
+    set: z.object({
+      maxConcurrentRuns: z.number().int().nullable(),
+      timeoutMinutes: z.number().int().nullable(),
+      maxRetries: z.number().int().nullable(),
+    }),
+    defaults: LimitValues,
+  })
+  .openapi("TaskLimits");
+
+/** A limit in a request body: a whole number in bounds sets it, null clears it, absent leaves it. */
+function limit(label: string, min: number, max: number) {
+  const error = `${label} must be a whole number from ${min} to ${max}.`;
+  return z
+    .number({ error })
+    .int({ error })
+    .min(min, { error })
+    .max(max, { error })
+    .nullable()
+    .optional();
+}
+
+export const TIMEOUT_MINUTES = limit("Timeout", 1, 24 * 60);
+export const MAX_RETRIES = limit("Retries", 0, 5);
+
+export const SetTaskLimitsRequest = z
+  .object({
+    maxConcurrentRuns: limit("Runs at once", 1, 10),
+    timeoutMinutes: TIMEOUT_MINUTES,
+    maxRetries: MAX_RETRIES,
+  })
+  .openapi("SetTaskLimitsRequest");
+
+/** The first validation message, for a 400 body. */
+export function firstIssue(error: z.ZodError): string {
+  return error.issues[0]?.message ?? "Invalid body.";
+}
 
 export const TaskRunResponse = z
   .object({
@@ -20,6 +69,7 @@ export const TaskRunResponse = z
     slot: z.iso.datetime(),
     trigger: z.enum(["schedule", "manual"]),
     status: z.enum(["running", "paused", "done", "failed"]),
+    attempts: z.number().int(),
     pauseReason: z.string().nullable(),
     error: z.string().nullable(),
     threadId: z.string().nullable(),
@@ -35,13 +85,38 @@ registry.registerPath({
   path: "/api/tasks",
   operationId: "listTasks",
   summary: "List scheduled tasks and recent runs",
-  description: "Every task file with whether it is enabled, plus the 50 most recent runs.",
+  description:
+    "Every task file with whether it is enabled and its own limits, the 50 most recent runs, " +
+    "and the global limits.",
   tags: ["Tasks"],
   responses: {
     200: {
       description: "Tasks and runs",
-      ...jsonBody(z.object({ tasks: z.array(TaskResponse), runs: z.array(TaskRunResponse) })),
+      ...jsonBody(
+        z.object({
+          tasks: z.array(TaskResponse),
+          runs: z.array(TaskRunResponse),
+          limits: TaskLimitsResponse,
+        }),
+      ),
     },
     500: { description: "Failed to list tasks", ...jsonBody(ErrorResponse) },
+  },
+});
+
+registry.registerPath({
+  method: "put",
+  path: "/api/tasks",
+  operationId: "setTaskLimits",
+  summary: "Set the global task limits",
+  description:
+    "Runs at once, and the default timeout (minutes) and retries for every task. A number " +
+    "sets a limit, null clears it back to the default, and an absent field is left as it is.",
+  tags: ["Tasks"],
+  request: { body: { content: { "application/json": { schema: SetTaskLimitsRequest } } } },
+  responses: {
+    200: { description: "The limits", ...jsonBody(TaskLimitsResponse) },
+    400: { description: "A value out of bounds", ...jsonBody(ErrorResponse) },
+    500: { description: "Failed to save task limits", ...jsonBody(ErrorResponse) },
   },
 });

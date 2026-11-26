@@ -56,8 +56,10 @@ CMD ["pnpm", "exec", "drizzle-kit", "migrate"]
 FROM node:24-alpine AS runner
 WORKDIR /app
 
+# NEXT_MANUAL_SIG_HANDLE: Cameron handles SIGTERM itself, so scheduled runs stop gracefully.
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_MANUAL_SIG_HANDLE=true \
     PORT=3100 \
     HOSTNAME=0.0.0.0
 

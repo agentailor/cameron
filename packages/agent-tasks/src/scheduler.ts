@@ -43,8 +43,8 @@ export interface SchedulerOptions {
   intervalMs?: number;
   /** Overrides of {@link DEFAULT_TASK_POLICY} for one task, read each time a run starts. */
   policy?: (taskName: string) => MaybePromise<Partial<TaskPolicy> | undefined>;
-  /** Runs executing at once in this process, read on each tick. Default 3. */
-  maxConcurrentRuns?: number | (() => MaybePromise<number>);
+  /** Runs executing at once in this process, read on each tick. `undefined`: the default, 3. */
+  maxConcurrentRuns?: number | (() => MaybePromise<number | undefined>);
   /** Whether a thrown error is worth another attempt. Default: every error. */
   isRetryable?: (error: unknown) => boolean;
   /** Wait before retry N is N × this. Default 30 s. */

@@ -1,5 +1,6 @@
 import type { ExecutionOutcome, TaskDefinition, TaskRun } from "@agentailor/agent-tasks";
 import { readPendingBatch, type GraphSnapshot } from "@/services/approvalDecisions";
+import { AGENT_RECURSION_LIMIT } from "@/lib/agent/recursion";
 
 /**
  * Pure helpers for running a task on the agent. Free of I/O so they test without a database.
@@ -12,6 +13,21 @@ export function outcomeOf(snapshot: GraphSnapshot): ExecutionOutcome {
   }
   const interrupted = snapshot.tasks?.some((t) => (t.interrupts ?? []).length > 0);
   return interrupted ? { status: "paused", reason: "interrupt" } : { status: "done" };
+}
+
+/** A checkpoint snapshot, with the nodes the graph would run next. */
+export type RunSnapshot = GraphSnapshot & { next?: readonly string[] };
+
+/**
+ * What a retry or a recovered run does with the thread an earlier attempt left:
+ * - `start`: nothing was saved (it failed before the first step), so send the brief;
+ * - `resume`: the graph stopped between steps, so continue from the last checkpoint;
+ * - `settled`: it already finished or paused; only the outcome is left to record.
+ */
+export function continuationOf(snapshot: RunSnapshot): "start" | "resume" | "settled" {
+  if ((snapshot.values?.messages ?? []).length === 0) return "start";
+  if (snapshot.tasks?.some((t) => (t.interrupts ?? []).length > 0)) return "settled";
+  return (snapshot.next ?? []).length > 0 ? "resume" : "settled";
 }
 
 /** The first message of a task's thread: who is (not) there, then the task's own brief. */
@@ -27,4 +43,17 @@ export function taskMessage(task: TaskDefinition): string {
 
 export function taskThreadTitle(task: TaskDefinition, run: TaskRun): string {
   return `${task.name} · ${run.slot.toISOString().slice(0, 10)}`;
+}
+
+/**
+ * A failure another attempt would repeat, returned instead of thrown: the package retries thrown
+ * errors only. Matched by name, not `instanceof`, because LangGraph can load twice.
+ */
+export function permanentFailureOf(error: unknown): ExecutionOutcome | null {
+  if (!(error instanceof Error)) return null;
+  if (error.name === "GraphRecursionError") {
+    return { status: "failed", error: `Ran out of steps (limit ${AGENT_RECURSION_LIMIT}).` };
+  }
+  if (error.name === "ModelNotConfiguredError") return { status: "failed", error: error.message };
+  return null;
 }
