@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  DEFAULT_MAX_CONCURRENT_RUNS,
   DEFAULT_TASK_POLICY,
   TASK_GONE_ERROR,
+  noRetriesLeftError,
   createScheduler,
   formatDuration,
   type SchedulerOptions,
@@ -433,4 +435,96 @@ describe("formatDuration", () => {
     expect(formatDuration(30_000)).toBe("30 s");
     expect(formatDuration(20)).toBe("20 ms");
   });
+});
+
+describe("review fixes", () => {
+  const LEFT_AT = new Date("2026-11-25T11:58:00Z");
+
+  it("fails a left-over run that has no retries left instead of restarting it", async () => {
+    const { scheduler, store, execute } = setup();
+    store.seed({ taskName: "weekly-digest", startedAt: LEFT_AT, attempts: 2 });
+    await scheduler.tick();
+    expect(execute).not.toHaveBeenCalled();
+    expect(store.runs[0]).toMatchObject({ status: "failed", error: noRetriesLeftError(2) });
+  });
+
+  it("a run that keeps killing the process is restarted once, then failed", async () => {
+    const g = gate();
+    const store = new MemoryTaskStore();
+    const clock = new FakeClock(new Date(NOW));
+    store.seed({ taskName: "weekly-digest", startedAt: LEFT_AT });
+    const first = createScheduler({ tasks: [makeTask()], store, execute: g.execute, clock });
+    expect(await first.tick()).toHaveLength(1); // attempt 2, which then "dies" with the process
+
+    clock.set("2026-11-25T12:05:00Z");
+    const second = createScheduler({ tasks: [makeTask()], store, execute: g.execute, clock });
+    expect(await second.tick()).toEqual([]);
+    expect(store.runs[0]).toMatchObject({ status: "failed", error: noRetriesLeftError(2) });
+  });
+
+  it("an attempt a graceful stop interrupted isn't counted", async () => {
+    const g = gate();
+    const store = new MemoryTaskStore();
+    const clock = new FakeClock(new Date(NOW));
+    const opts = { tasks: [makeTask()], store, clock, policy: () => ({ maxRetries: 0 }) };
+    const first = createScheduler({ ...opts, execute: g.execute });
+    await first.runNow("weekly-digest");
+    await first.stop(10);
+    expect(store.runs[0]).toMatchObject({ status: "running", attempts: 0 });
+
+    clock.set("2026-11-25T12:05:00Z");
+    const execute = vi.fn<TaskExecutor>(async () => ({ status: "done" }));
+    const second = createScheduler({ ...opts, execute });
+    expect(await second.tick()).toHaveLength(1);
+    await second.idle();
+    expect(execute.mock.calls[0][2].attempt).toBe(1);
+    expect(store.runs[0]).toMatchObject({ status: "done", attempts: 1 });
+  });
+
+  it("stop then start on the same scheduler recovers the run stop() aborted", async () => {
+    let calls = 0;
+    const g = gate();
+    const execute: TaskExecutor = (task, run, ctx) =>
+      ++calls === 1 ? g.execute(task, run, ctx) : Promise.resolve({ status: "done" });
+    const { scheduler, store } = setup({ execute, intervalMs: 60_000 });
+    await scheduler.runNow("weekly-digest");
+    await scheduler.stop(10);
+    expect(store.runs[0].status).toBe("running");
+
+    scheduler.start();
+    await scheduler.tick();
+    await scheduler.stop();
+    expect(calls).toBe(2);
+    expect(store.runs[0].status).toBe("done");
+  });
+
+  it("a non-numeric concurrency limit falls back to the default", async () => {
+    const g = gate();
+    const tasks = Array.from({ length: DEFAULT_MAX_CONCURRENT_RUNS + 1 }, (_, i) =>
+      makeTask({ name: `task-${i}` }),
+    );
+    const { scheduler } = setup({ tasks, execute: g.execute, maxConcurrentRuns: NaN });
+    for (let i = 0; i < DEFAULT_MAX_CONCURRENT_RUNS; i++) {
+      expect((await scheduler.runNow(`task-${i}`)).ok).toBe(true);
+    }
+    expect(await scheduler.runNow(`task-${DEFAULT_MAX_CONCURRENT_RUNS}`)).toEqual({
+      ok: false,
+      error: "busy",
+    });
+    g.releaseAll();
+    await scheduler.idle();
+  });
+
+  it.each([Infinity, 2 ** 40, NaN, -5])(
+    "a timeout of %s doesn't fail the attempt at once",
+    async (timeoutMs) => {
+      const { scheduler, store } = setup({
+        policy: () => ({ timeoutMs }),
+        execute: () => new Promise((r) => setTimeout(() => r({ status: "done" }), 15)),
+      });
+      await scheduler.runNow("weekly-digest");
+      await scheduler.idle();
+      expect(store.runs[0].status).toBe("done");
+    },
+  );
 });

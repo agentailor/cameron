@@ -115,27 +115,33 @@ stateDiagram-v2
 ## Limits and failures
 
 Each task runs under a `TaskPolicy`: `DEFAULT_TASK_POLICY` merged with whatever `policy(name)`
-returns (an `undefined` value keeps the default). Policies and `maxConcurrentRuns` are read when
-they're needed, so the app can change them without a restart.
+returns. A value that isn't usable keeps the default: `undefined`, `NaN`, a negative number, an
+unknown `overlap`. Policies and `maxConcurrentRuns` are read when they're needed, so the app can
+change them without a restart.
 
-| Setting             | Default | Effect                                                                     |
-| ------------------- | ------- | -------------------------------------------------------------------------- |
-| `timeoutMs`         | 10 min  | `ctx.signal` aborts and the run fails: "Timed out after 10 min." No retry. |
-| `maxRetries`        | 1       | Extra attempts after a thrown error that `isRetryable` accepts.            |
-| `overlap`           | `skip`  | A slot isn't started while the task has a run `running` or `paused`.       |
-| `maxConcurrentRuns` | 3       | Global, per process. Due slots past it start on a later tick.              |
+| Setting             | Default | Effect                                                                                                                                                    |
+| ------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeoutMs`         | 10 min  | `ctx.signal` aborts and the run fails: "Timed out after 10 min." No retry. `Infinity` means none; values past setTimeout's limit (~24.8 days) are capped. |
+| `maxRetries`        | 1       | Extra attempts after a thrown error that `isRetryable` accepts.                                                                                           |
+| `overlap`           | `skip`  | A slot isn't started while the task has a run `running` or `paused`.                                                                                      |
+| `maxConcurrentRuns` | 3       | Global, per process. Due slots past it start on a later tick.                                                                                             |
 
 - **The executor must honour `ctx.signal`.** One that ignores it is abandoned: its run is failed,
   and whatever it returns later is dropped.
 - **Retries wait** `retryDelayMs` × the attempt number (default 30 s), then `restartRun` and call
   the executor again with `attempt` + 1 and `previousRef`.
 - **`stop(graceMs)`** stops ticking, waits up to `graceMs` (default 10 s), then aborts what is
-  left. An aborted run stays `running`.
+  left. An aborted run stays `running`, and its attempt is **given back** (`attempts` − 1, so it
+  can read 0): a restart isn't the run's fault, so it doesn't use a retry.
 - **Recovery:** a `running` run that started before this scheduler was created was left by a
   previous process. A tick takes it over with `restartRun` (compare-and-set on `startedAt`, so
   only one scheduler wins) and calls the executor with `previousRef`. If its task file is gone, it
-  fails. This assumes **one scheduler process per store**: with two live processes, one could
-  take over a run the other is still executing.
+  fails. A later `start()` of the same scheduler recovers the runs its own `stop()` aborted.
+  **Recovery counts against `maxRetries`**: a run whose process died mid-attempt (killed, out of
+  memory) never reaches the retry check, so a left-over run with no retries left is failed
+  ("The process stopped during attempt 2, and no retries are left.") instead of restarting on
+  every boot. This assumes **one scheduler process per store**: with two live processes, one
+  could take over a run the other is still executing.
 - **`runNow`** returns `busy` at the concurrency limit, and ignores `overlap`.
 - **Task files are strict.** The frontmatter keys are a closed set, values must be strings, the
   name must equal its directory, the schedule has five fields (ticks are a minute apart) and the

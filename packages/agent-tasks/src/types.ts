@@ -37,7 +37,10 @@ export interface TaskRun {
   /** When the current attempt started. */
   startedAt: Date;
   finishedAt?: Date;
-  /** 1 for the first attempt; a retry or a recovery after a restart adds one. */
+  /**
+   * Attempts counted against the run: 1 for the first, plus one per retry or recovery after a
+   * crash. An attempt a graceful `stop()` interrupted is given back (so it may briefly read 0).
+   */
   attempts: number;
 }
 

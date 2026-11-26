@@ -21,6 +21,12 @@ export const DEFAULT_INTERVAL_MS = 60_000;
 export const DEFAULT_RETRY_DELAY_MS = 30_000;
 export const DEFAULT_STOP_GRACE_MS = 10_000;
 export const TASK_GONE_ERROR = "The task's file is gone, so the run could not continue.";
+/** setTimeout fires at once for anything larger (about 24.8 days). */
+export const MAX_TIMEOUT_MS = 2 ** 31 - 1;
+
+export function noRetriesLeftError(attempts: number): string {
+  return `The process stopped during attempt ${attempts}, and no retries are left.`;
+}
 
 export type SchedulerErrorPhase = "tick" | "execute" | "record";
 
@@ -113,6 +119,8 @@ export function createScheduler(opts: SchedulerOptions): Scheduler {
   const report = opts.onError ?? (() => {});
   // Runs started before this scheduler existed, still `running`, were left by a previous process.
   const bootedAt = clock.now();
+  // Runs this scheduler's own stop() aborted: recoverable by a later start() of the same instance.
+  const interrupted = new Set<string>();
   const inFlight = new Map<string, Promise<void>>();
   let shutdown = new AbortController();
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -125,13 +133,22 @@ export function createScheduler(opts: SchedulerOptions): Scheduler {
       typeof opts.maxConcurrentRuns === "function"
         ? await opts.maxConcurrentRuns()
         : opts.maxConcurrentRuns;
-    return Math.max(1, value ?? DEFAULT_MAX_CONCURRENT_RUNS);
+    if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_MAX_CONCURRENT_RUNS;
+    return Math.max(1, Math.floor(value));
   }
 
   async function policyFor(taskName: string): Promise<TaskPolicy> {
-    const overrides = (await opts.policy?.(taskName)) ?? {};
-    const set = Object.entries(overrides).filter(([, v]) => v !== undefined);
-    return { ...DEFAULT_TASK_POLICY, ...Object.fromEntries(set) };
+    const o = (await opts.policy?.(taskName)) ?? {};
+    const d = DEFAULT_TASK_POLICY;
+    return {
+      // Infinity means no timeout; NaN, zero or negative fall back to the default.
+      timeoutMs: typeof o.timeoutMs === "number" && o.timeoutMs > 0 ? o.timeoutMs : d.timeoutMs,
+      maxRetries:
+        typeof o.maxRetries === "number" && Number.isFinite(o.maxRetries) && o.maxRetries >= 0
+          ? Math.floor(o.maxRetries)
+          : d.maxRetries,
+      overlap: o.overlap === "allow" || o.overlap === "skip" ? o.overlap : d.overlap,
+    };
   }
 
   async function record(runId: string, update: RunUpdate): Promise<boolean> {
@@ -153,7 +170,9 @@ export function createScheduler(opts: SchedulerOptions): Scheduler {
     const onShutdown = () => controller.abort(SHUTDOWN);
     if (shutdown.signal.aborted) return { kind: "shutdown" };
     shutdown.signal.addEventListener("abort", onShutdown, { once: true });
-    const deadline = setTimeout(() => controller.abort(TIMEOUT), timeoutMs);
+    const deadline = Number.isFinite(timeoutMs)
+      ? setTimeout(() => controller.abort(TIMEOUT), Math.min(timeoutMs, MAX_TIMEOUT_MS))
+      : undefined;
 
     const aborted = new Promise<AttemptResult>((resolve) =>
       controller.signal.addEventListener(
@@ -194,13 +213,21 @@ export function createScheduler(opts: SchedulerOptions): Scheduler {
     const policy = await policyFor(task.name);
     let run = first;
     let ref = first.ref;
-    // A recovered run continues from what it attached before the restart.
-    let previousRef = first.attempts > 1 ? first.ref : undefined;
+    // A fresh claim has no ref; a recovered run continues from what it attached before.
+    let previousRef = first.ref;
 
     for (;;) {
       const result = await attemptOnce(task, run, previousRef, (r) => (ref = r), policy.timeoutMs);
 
-      if (result.kind === "shutdown") return;
+      if (result.kind === "shutdown") {
+        // A restart isn't the run's fault: give the attempt back, so recovery doesn't count it.
+        await opts.store.restartRun(run.id, run.startedAt, {
+          startedAt: run.startedAt,
+          attempts: run.attempts - 1,
+        });
+        interrupted.add(run.id);
+        return;
+      }
       if (result.kind === "timeout") {
         await record(run.id, {
           status: "failed",
@@ -222,7 +249,10 @@ export function createScheduler(opts: SchedulerOptions): Scheduler {
       }
 
       await sleep(retryDelayMs * run.attempts, shutdown.signal);
-      if (shutdown.signal.aborted) return;
+      if (shutdown.signal.aborted) {
+        interrupted.add(run.id); // the failed attempt counts; the retry hasn't started
+        return;
+      }
       const startedAt = clock.now();
       const attempts = run.attempts + 1;
       if (!(await opts.store.restartRun(run.id, run.startedAt, { startedAt, attempts }))) return;
@@ -246,16 +276,24 @@ export function createScheduler(opts: SchedulerOptions): Scheduler {
     const recovered: TaskRun[] = [];
     for (const run of await opts.store.listRunning()) {
       if (recovered.length >= capacity) break;
-      if (inFlight.has(run.id) || run.startedAt.getTime() >= bootedAt.getTime()) continue;
+      if (inFlight.has(run.id)) continue;
+      const leftBehind = run.startedAt.getTime() < bootedAt.getTime() || interrupted.has(run.id);
+      if (!leftBehind) continue;
       const task = byName.get(run.taskName);
       if (!task) {
         await record(run.id, { status: "failed", error: TASK_GONE_ERROR });
+        continue;
+      }
+      // A process that dies mid-attempt never reaches drive()'s retry check, so cap it here.
+      if (run.attempts - 1 >= (await policyFor(run.taskName)).maxRetries) {
+        await record(run.id, { status: "failed", error: noRetriesLeftError(run.attempts) });
         continue;
       }
       const attempts = run.attempts + 1;
       if (!(await opts.store.restartRun(run.id, run.startedAt, { startedAt: now, attempts }))) {
         continue; // another process took it over first
       }
+      interrupted.delete(run.id);
       const resumed = { ...run, startedAt: now, attempts };
       launch(task, resumed);
       recovered.push(resumed);
