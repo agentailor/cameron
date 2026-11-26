@@ -11,7 +11,7 @@ import { streamMessages, type AgentRun } from "./messageStream";
 import { markPendingCalls, projectHistory } from "./historyProjection";
 import { GenAiTracer } from "@/lib/tracing/genAiTracer";
 import { tracingEnabled } from "@/lib/tracing/config";
-import { syncTaskRun } from "@/lib/tasks/scheduler";
+import { grantsForThread, syncTaskRun } from "@/lib/tasks/scheduler";
 
 /** Stream a turn (or resume a paused one) as MessageResponse chunks for the SSE route. */
 export async function streamResponse(params: {
@@ -29,6 +29,9 @@ export async function streamResponse(params: {
     model: opts?.model,
     provider: opts?.provider,
     tools: opts?.tools,
+    // Only a scheduled task's own thread, while its run is open; derived from the thread, never
+    // from the request.
+    preApprovedTools: await grantsForThread(threadId),
   });
 
   const config = {

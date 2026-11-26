@@ -3,7 +3,16 @@ import { validateSchedule } from "./schedule";
 import type { TaskFileResult } from "./types";
 
 /** Closed on purpose: an unknown key is a typo, and ignoring it drops the author's intent. */
-export const TASK_FRONTMATTER_KEYS = ["name", "description", "schedule", "timezone"] as const;
+export const TASK_FRONTMATTER_KEYS = [
+  "name",
+  "description",
+  "schedule",
+  "timezone",
+  "tools",
+] as const;
+
+const STRING_KEYS = ["name", "description", "schedule", "timezone"] as const;
+const TOOL_NAME = /^[A-Za-z0-9_-]+$/;
 
 export const TASK_FILE = "TASK.md";
 export const MAX_NAME_LENGTH = 64;
@@ -37,6 +46,18 @@ function stringField(fm: Record<string, unknown>, key: string): string | undefin
   return value.trim();
 }
 
+/** `tools`: a list of tool names, deduplicated. Absent is an empty list. */
+function toolList(value: unknown): string[] | Error {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) return new Error("`tools` must be a list of tool names.");
+  for (const item of value) {
+    if (typeof item !== "string" || !TOOL_NAME.test(item)) {
+      return new Error(`\`tools\` has "${String(item)}": a tool name is letters, digits, _ and -.`);
+    }
+  }
+  return [...new Set(value as string[])];
+}
+
 /** Parse and validate one `TASK.md`. `dirName` must equal the task's `name`. */
 export function parseTaskFile(dirName: string, source: string): TaskFileResult {
   const parts = split(source);
@@ -63,7 +84,7 @@ export function parseTaskFile(dirName: string, source: string): TaskFileResult {
   }
 
   const fields: Record<string, string | undefined> = {};
-  for (const key of TASK_FRONTMATTER_KEYS) {
+  for (const key of STRING_KEYS) {
     const value = stringField(record, key);
     if (value instanceof Error) return { ok: false, error: value.message };
     fields[key] = value === "" ? undefined : value;
@@ -99,10 +120,20 @@ export function parseTaskFile(dirName: string, source: string): TaskFileResult {
   const check = validateSchedule(schedule, timezone);
   if (!check.ok) return { ok: false, error: check.error };
 
+  const tools = toolList(record.tools);
+  if (tools instanceof Error) return { ok: false, error: tools.message };
+
   if (parts.body === "") return { ok: false, error: "Task body is empty: there is no brief." };
 
   return {
     ok: true,
-    task: { name, description, schedule, ...(timezone ? { timezone } : {}), brief: parts.body },
+    task: {
+      name,
+      description,
+      schedule,
+      ...(timezone ? { timezone } : {}),
+      ...(tools.length > 0 ? { tools } : {}),
+      brief: parts.body,
+    },
   };
 }

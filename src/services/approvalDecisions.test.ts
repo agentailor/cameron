@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { AIMessage } from "@langchain/core/messages";
 import {
   DENIED_MESSAGE,
   HELD_BACK_MESSAGE,
+  readPendingBatch,
   resolveDecisions,
   type PausedCall,
 } from "./approvalDecisions";
@@ -115,5 +117,39 @@ describe("resolveDecisions", () => {
       decisions: { call_a: "allow", call_c: "allow" },
     });
     expect(short.ok).toBe(false);
+  });
+});
+
+describe("readPendingBatch", () => {
+  const snapshot = (calls: PausedCall[], requested: PausedCall[]) => ({
+    tasks: [
+      { interrupts: [{ value: { actionRequests: requestsFor(requested), reviewConfigs: [] } }] },
+    ],
+    values: {
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: calls.map((c) => ({ ...c, args: c.args as Record<string, unknown> })),
+        }),
+      ],
+    },
+  });
+
+  it("takes the paused calls from the gate's requests, in order", () => {
+    const batch = readPendingBatch(snapshot([coffee, dinner], [coffee, dinner]));
+    expect(batch.pausedCalls.map((c) => c.id)).toEqual(["call_a", "call_b"]);
+  });
+
+  it("skips a call the gate didn't pause, such as one a task pre-approved", () => {
+    const granted: PausedCall = { id: "call_g", name: "gmail_search", args: { q: "receipt" } };
+    const batch = readPendingBatch(snapshot([granted, coffee], [coffee]));
+    expect(batch.pausedCalls.map((c) => c.id)).toEqual(["call_a"]);
+    expect(resolveDecisions({ ...batch, decisions: { call_a: "allow" } }).ok).toBe(true);
+  });
+
+  it("refuses to resume when a request matches no call", () => {
+    const batch = readPendingBatch(snapshot([coffee], [dinner]));
+    expect(batch.pausedCalls).toEqual([]);
+    expect(resolveDecisions({ ...batch, decisions: {} }).ok).toBe(false);
   });
 });

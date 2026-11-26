@@ -219,7 +219,15 @@ is the workspace package `packages/agent-tasks`
 LangChain.
 
 - **A task is `tasks/<name>/TASK.md`** (closed frontmatter `name`, `description`, `schedule`,
-  `timezone`; the body is the brief), read once at startup like skills.
+  `timezone`, `tools`; the body is the brief; `tools` is a declaration Cameron shows as suggested
+  grants), read once at startup like skills.
+- **Grants** ([docs/GRANTS.md](docs/GRANTS.md)): a `tool_grant` row lets a tool run without
+  pausing within a scope; only `task` scopes exist so far. Every built-in write is grantable except
+  `delete_transaction` (a hard delete, barred in `pausesFor`); MCP tools are granted one by one
+  ("all tools listed now" grants each), so a new server tool asks first. A run fixes its grants
+  when it starts (`task_run.granted_tools`) and a resumed turn on its thread reuses them; never in
+  ordinary chat, never from a request. `readPendingBatch` matches the gate's own requests, since
+  a step can mix granted and gated calls.
 - **Off until the owner enables it** (`task_setting`); slots before `enabled_at` never run. Run now
   works either way. `/tasks` lists tasks, runs, and runs **waiting for you**.
 - **A run is the same agent and approval gate on a new thread** (`executeTask` in

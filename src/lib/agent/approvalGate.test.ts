@@ -93,17 +93,33 @@ describe("the approval gate is not reachable from a request", () => {
     const factory = await read("./index.ts");
     // The gate hangs off exactly one condition, and that condition is the eval-only flag.
     expect(factory).toContain(`cfg?.${BYPASS}`);
-    expect(factory).toContain("approvalGateMiddleware()");
+    expect(factory).toContain("approvalGateMiddleware({ preApproved: cfg?.preApprovedTools })");
     expect(factory).not.toContain("humanInTheLoopMiddleware");
     expect(factory).not.toContain("approveAllTools");
   });
 
-  it("interruptOn is built from the calls, by requiresApproval", async () => {
+  it("interruptOn is built from the calls, by pausesFor", async () => {
     // A map fixed at build time misses any name absent from it, such as an MCP tool loaded later.
     const gate = await read("./approvalGate.ts");
     expect(gate).toContain("humanInTheLoopMiddleware");
-    expect(gate).toContain(".filter(requiresApproval)");
+    expect(gate).toContain(".filter((n) => pausesFor(n, preApproved))");
     expect(GATED_TOOL_NAMES.length).toBeGreaterThan(0);
+  });
+
+  it("pre-approved tools come from a task's grants, never from the request", async () => {
+    // The grants are derived from the thread's open task run; nothing on the wire can carry them.
+    for (const path of [
+      "../../app/api/agent/stream/route.ts",
+      "../../app/api/agent/stream/schema.ts",
+    ]) {
+      const source = await read(path);
+      expect(source, path).not.toContain("preApproved");
+      expect(source, path).not.toContain("grantedTools");
+    }
+    const service = await read("../../services/agentService.ts");
+    expect(service).toContain("preApprovedTools: await grantsForThread(threadId)");
+    const types = await read("../../types/message.ts");
+    expect(types).not.toContain("preApproved");
   });
 
   it("validation auto-approves while the import stays gated", async () => {
@@ -218,14 +234,18 @@ const fakeTool = (name: string) =>
   );
 const resolveTool: ResolveMcpTool = async (_id, name) => ({ ok: true, tool: fakeTool(name) });
 
-function build(replies: AIMessage[], servers: DisclosureServer[] = [bank]) {
+function build(
+  replies: AIMessage[],
+  servers: DisclosureServer[] = [bank],
+  preApproved: string[] = [],
+) {
   return createAgent({
     model: new ScriptedModel(replies),
-    tools: [fakeTool("list_categories"), fakeTool("log_expense")],
+    tools: [fakeTool("list_categories"), fakeTool("log_expense"), fakeTool("delete_transaction")],
     checkpointer: new MemorySaver(),
     middleware: [
       mcpServerDisclosureMiddleware({ servers, resolveTool, log: () => {} }),
-      approvalGateMiddleware(),
+      approvalGateMiddleware({ preApproved }),
     ],
   });
 }
@@ -253,6 +273,45 @@ const toolAnswer = (out: { messages: BaseMessage[] }, id: string) =>
 
 beforeEach(() => {
   ran.length = 0;
+});
+
+describe("a task's grants at run time", () => {
+  it("a granted MCP tool runs without pausing", async () => {
+    const agent = build([call("mcp-1", "bank_get_balance")], [bank], ["bank_get_balance"]);
+    await agent.invoke({ messages: [new HumanMessage("balance")] }, config("g1"));
+    expect(ran).toEqual(["bank_get_balance"]);
+    expect((await pausedOn(agent, "g1")).actionRequests).toEqual([]);
+  });
+
+  it("a granted built-in write runs without pausing", async () => {
+    const agent = build([call("w-1", "log_expense")], [bank], ["log_expense"]);
+    await agent.invoke({ messages: [new HumanMessage("log it")] }, config("g2"));
+    expect(ran).toEqual(["log_expense"]);
+  });
+
+  it("the hard delete pauses even when granted", async () => {
+    const agent = build([call("d-1", "delete_transaction")], [bank], ["delete_transaction"]);
+    await agent.invoke({ messages: [new HumanMessage("delete it")] }, config("g4"));
+    expect(ran).toEqual([]);
+    expect((await pausedOn(agent, "g4")).pausedCalls.map((c) => c.id)).toEqual(["d-1"]);
+  });
+
+  it("a step mixing a granted call and a gated one pauses only the gated one, and resumes", async () => {
+    const both = new AIMessage({
+      content: "",
+      tool_calls: [
+        { id: "mcp-1", name: "bank_get_balance", args: {}, type: "tool_call" },
+        { id: "w-1", name: "log_expense", args: {}, type: "tool_call" },
+      ],
+    });
+    const agent = build([both], [bank], ["bank_get_balance"]);
+    await agent.invoke({ messages: [new HumanMessage("check and log")] }, config("g3"));
+
+    const batch = await pausedOn(agent, "g3");
+    expect(batch.pausedCalls.map((c) => c.id)).toEqual(["w-1"]);
+    await agent.invoke(decide(batch, "allow"), config("g3"));
+    expect(ran.sort()).toEqual(["bank_get_balance", "log_expense"]);
+  });
 });
 
 describe("the gate at run time", () => {

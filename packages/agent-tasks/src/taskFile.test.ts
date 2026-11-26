@@ -29,9 +29,35 @@ describe("parseTaskFile", () => {
     expect(result.ok && "timezone" in result.task).toBe(false);
   });
 
-  it("rejects an unknown key rather than ignoring it", () => {
-    const result = parseTaskFile("weekly-digest", file(`${VALID}\ntools: [run_sql]`));
+  it("reads tools as a deduplicated list of tool names", () => {
+    const result = parseTaskFile(
+      "weekly-digest",
+      file(
+        `${VALID}\ntools:\n  - gmail_search_messages\n  - gmail_read-message\n  - gmail_search_messages`,
+      ),
+    );
+    expect(result.ok && result.task.tools).toEqual(["gmail_search_messages", "gmail_read-message"]);
+  });
+
+  it("leaves tools out when absent or empty", () => {
+    for (const extra of ["", "\ntools: []"]) {
+      const result = parseTaskFile("weekly-digest", file(`${VALID}${extra}`));
+      expect(result.ok && "tools" in result.task).toBe(false);
+    }
+  });
+
+  it.each([
+    ["a single string", "tools: gmail_search"],
+    ["a name with spaces", "tools: [gmail search]"],
+    ["a non-string entry", "tools: [42]"],
+  ])("rejects tools as %s", (_case, line) => {
+    const result = parseTaskFile("weekly-digest", file(`${VALID}\n${line}`));
     expect(result).toMatchObject({ ok: false, error: expect.stringContaining("tools") });
+  });
+
+  it("rejects an unknown key rather than ignoring it", () => {
+    const result = parseTaskFile("weekly-digest", file(`${VALID}\nallowed_tools: [run_sql]`));
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("allowed_tools") });
   });
 
   it.each([

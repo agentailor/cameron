@@ -16,6 +16,7 @@ export function toTaskView(
   setting: TaskSetting | undefined,
   timezone: string,
   now: Date,
+  grantedTools: string[] = [],
 ): TaskView {
   const enabled = setting?.enabled ?? false;
   const zone = task.timezone ?? timezone;
@@ -30,6 +31,9 @@ export function toTaskView(
       timeoutMinutes: setting?.limits.timeoutMinutes ?? null,
       maxRetries: setting?.limits.maxRetries ?? null,
     },
+    grantedTools,
+    // Cameron reads a task's declared tools as the ones to suggest granting.
+    suggestedGrants: task.tools ?? [],
   };
 }
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import * as taskRepo from "@/lib/repositories/taskRepository";
 import { defaultTimezone, getTask } from "@/lib/tasks/registry";
 import { toTaskView } from "@/lib/tasks/view";
+import * as grantRepo from "@/lib/repositories/toolGrantRepository";
 import { firstIssue } from "../schema";
 import { UpdateTaskRequest } from "./schema";
 
@@ -32,7 +33,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ name
     if (Object.keys(limits).length > 0) await taskRepo.setLimits(name, limits);
     if (enabled !== undefined) await taskRepo.setEnabled(name, enabled);
     const setting = await taskRepo.getSetting(name);
-    return NextResponse.json(toTaskView(task, setting ?? undefined, defaultTimezone(), new Date()));
+    const grants = await grantRepo.listTools({ kind: "task", id: name });
+    return NextResponse.json(
+      toTaskView(task, setting ?? undefined, defaultTimezone(), new Date(), grants),
+    );
   } catch (error) {
     console.error("Error updating task:", error);
     return NextResponse.json({ error: "Failed to update task" }, { status: 500 });

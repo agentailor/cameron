@@ -14,6 +14,8 @@ export const TaskResponse = z
       timeoutMinutes: z.number().int().nullable(),
       maxRetries: z.number().int().nullable(),
     }),
+    grantedTools: z.array(z.string()),
+    suggestedGrants: z.array(z.string()),
   })
   .openapi("Task");
 

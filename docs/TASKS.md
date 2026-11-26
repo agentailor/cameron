@@ -19,6 +19,8 @@ name: weekly-digest
 description: Every Monday morning, a short summary of last week's spending.
 schedule: "0 8 * * MON"
 timezone: Europe/Paris # optional
+tools: # optional: the tools it expects to use (docs/GRANTS.md)
+  - gmail_search_messages
 ---
 
 The brief: what the agent should do.
@@ -26,6 +28,14 @@ The brief: what the agent should do.
 
 A task without `timezone` uses the server's (`TZ`, else the system zone). In the Docker image that
 is UTC unless `TZ` is set.
+
+## Grants
+
+A task would stop on every write and every MCP call, like chat does, with nobody there to answer.
+The owner can **grant** tools per task on `/tasks`, so they run without asking from the next run.
+Cameron's own writes are grantable except `delete_transaction` (a hard delete); MCP tools are
+granted one by one. The file's `tools` list only marks those tools as suggested. Full detail:
+[GRANTS.md](GRANTS.md).
 
 ## Off until the owner turns it on
 
@@ -123,10 +133,10 @@ pause, but only if the model requests them in the same step. Ideas to revisit:
 - cheapest: ask, in the task framing, for independent writes to be requested together in one step;
 - collect proposed writes without pausing and present them all at the end. Harder: later steps
   can't assume an unapproved write happened, and a denial sends the whole step back by design;
-- pre-approved read-only tools per task (below) reduce pauses but never cover writes.
+- grants (above) remove pauses for granted tools, but never for built-in writes.
 
 Also not built:
 
-Per-task tool scoping, `requires` (pause when an MCP server is missing or unauthenticated), an
-`ask_owner` pause for questions, pre-approved read-only tools per task, and the agent creating
-schedules itself.
+Per-task tool scoping (a `tools:` list limiting what a run can see), `requires` (pause when an
+MCP server is missing or unauthenticated), an `ask_owner` pause for questions, and the agent
+creating schedules itself.

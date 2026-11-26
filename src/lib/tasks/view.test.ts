@@ -16,7 +16,12 @@ describe("toTaskView", () => {
   it("shows the next slot in the task's own zone when enabled", () => {
     const view = toTaskView(
       makeTask({ timezone: "Europe/Paris" }),
-      { taskName: "weekly-digest", enabled: true, enabledAt: NOW, limits: { maxRetries: 3 } },
+      {
+        taskName: "weekly-digest",
+        enabled: true,
+        enabledAt: NOW,
+        limits: { maxRetries: 3 },
+      },
       "UTC",
       NOW,
     );

@@ -64,3 +64,19 @@ export function isGatedTool(name: string): boolean {
 export function requiresApproval(name: string): boolean {
   return isGatedTool(name) || !(UNGATED_TOOL_NAMES as readonly string[]).includes(name);
 }
+
+/** Writes the owner can never pre-approve: `delete_transaction` is a hard delete, no undo. */
+export const NEVER_GRANTABLE_TOOL_NAMES = ["delete_transaction"] as const;
+
+export function isNeverGrantable(name: string): boolean {
+  return (NEVER_GRANTABLE_TOOL_NAMES as readonly string[]).includes(name);
+}
+
+/**
+ * Whether a call pauses in a run that has the owner's grants (docs/GRANTS.md). A never-grantable
+ * tool pauses whatever it is given.
+ */
+export function pausesFor(name: string, preApproved: ReadonlySet<string>): boolean {
+  if (isNeverGrantable(name)) return true;
+  return requiresApproval(name) && !preApproved.has(name);
+}

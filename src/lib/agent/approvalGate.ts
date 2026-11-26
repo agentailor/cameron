@@ -1,6 +1,6 @@
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import { createMiddleware, humanInTheLoopMiddleware } from "langchain";
-import { requiresApproval } from "./gatedTools";
+import { pausesFor } from "./gatedTools";
 
 const DESCRIPTION_PREFIX = "This action needs your approval";
 
@@ -25,10 +25,11 @@ function gateFor(names: string[]): Hook {
 
 /**
  * Cameron's approval gate: `humanInTheLoopMiddleware`, with `interruptOn` built per model step
- * from the names the model called, by {@link requiresApproval}. A fixed map would let any name
+ * from the names the model called, by {@link pausesFor} (`requiresApproval` minus a task's grants). A fixed map would let any name
  * missing from it run unreviewed — such as an MCP tool loaded mid-thread. See docs/MCP_DISCLOSURE.md.
  */
-export function approvalGateMiddleware() {
+export function approvalGateMiddleware(options: { preApproved?: readonly string[] } = {}) {
+  const preApproved: ReadonlySet<string> = new Set(options.preApproved ?? []);
   return createMiddleware({
     name: "ApprovalGate",
     afterModel: {
@@ -39,7 +40,9 @@ export function approvalGateMiddleware() {
           | AIMessage
           | undefined;
         const names = [
-          ...new Set((last?.tool_calls ?? []).map((c) => c.name).filter(requiresApproval)),
+          ...new Set(
+            (last?.tool_calls ?? []).map((c) => c.name).filter((n) => pausesFor(n, preApproved)),
+          ),
         ];
         if (names.length === 0) return;
         // Same names on resume (the node re-runs on the same message), so the interrupt matches.

@@ -26,5 +26,6 @@ export default defineConfig({
     "memory",
     "task_setting",
     "task_run",
+    "tool_grant",
   ],
 });

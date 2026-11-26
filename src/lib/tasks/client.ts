@@ -1,5 +1,11 @@
 /** Browser-side access to `/api/tasks`, for the /tasks page and the sidebar. */
-import type { TaskLimitsView, TaskRunView, TasksResponse, TaskView } from "@/types/task";
+import type {
+  GrantsView,
+  TaskLimitsView,
+  TaskRunView,
+  TasksResponse,
+  TaskView,
+} from "@/types/task";
 
 export const TASKS_QUERY_KEY = ["tasks"] as const;
 
@@ -50,4 +56,17 @@ export function saveTaskLimits(body: {
   maxRetries?: number | string | null;
 }) {
   return send<TaskLimitsView>("/api/tasks", "PUT", body);
+}
+
+export const grantsQueryKey = (name: string) => ["tasks", name, "grants"] as const;
+
+export async function fetchGrants(name: string): Promise<GrantsView> {
+  const res = await fetch(`/api/tasks/${encodeURIComponent(name)}/grants`);
+  if (!res.ok) throw new Error("Failed to load grants");
+  return res.json();
+}
+
+/** Replace the task's grants with exactly these tools. */
+export function saveGrants(name: string, tools: string[]) {
+  return send<GrantsView>(`/api/tasks/${encodeURIComponent(name)}/grants`, "PUT", { tools });
 }

@@ -14,6 +14,7 @@ import { chip, linkButton, secondaryButton } from "@/components/connections/styl
 import { primaryButton } from "@/components/ui/formStyles";
 import type { TaskLimitsView, TaskRunView, TaskView } from "@/types/task";
 import { LimitInputs, toRequest, useDrafts } from "./LimitInputs";
+import { TaskGrants } from "./TaskGrants";
 
 /** The global value, else the default: what a task inherits when it sets nothing. */
 function inheritedOf(limits: TaskLimitsView, field: "timeoutMinutes" | "maxRetries"): number {
@@ -299,6 +300,7 @@ const TaskItem = ({
       </div>
       {failed && <p className="text-destructive mt-2 text-xs">{failed}</p>}
       {editing && <TaskLimitsEditor task={task} limits={limits} onDone={() => setEditing(false)} />}
+      <TaskGrants task={task} />
     </li>
   );
 };
