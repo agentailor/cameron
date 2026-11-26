@@ -32,7 +32,8 @@ export function toTaskView(
       maxRetries: setting?.limits.maxRetries ?? null,
     },
     grantedTools,
-    suggestedGrants: task.suggestedGrants ?? [],
+    // Cameron reads a task's declared tools as the ones to suggest granting.
+    suggestedGrants: task.tools ?? [],
   };
 }
 

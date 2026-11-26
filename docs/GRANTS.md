@@ -55,8 +55,9 @@ to show it). Many servers don't set it, so the page warns rather than refuses.
 
 ## Tasks
 
-- **`suggest_grants`** in `TASK.md` is a hint: the page marks those tools "suggested". It grants
-  nothing.
+- **`tools`** in `TASK.md` declares the tools a task expects to use. The package passes it on
+  without reading it; Cameron marks those tools "suggested" in the editor. It grants nothing, and
+  it's also where limiting what a run can see would read from later.
 - **Granted on `/tasks`**, in each task's editor (`GET` / `PUT /api/tasks/{name}/grants`). `PUT`
   replaces the set; it refuses the hard delete, a tool that already runs, and a tool no server
   lists, unless it was already granted (a server turned off for a while keeps its grants).

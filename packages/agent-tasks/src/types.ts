@@ -8,10 +8,10 @@ export interface TaskDefinition {
   /** IANA time zone the schedule is read in; falls back to the scheduler's default. */
   timezone?: string;
   /**
-   * Tools the task is likely to want to run without stopping for approval (`suggest_grants`).
-   * A suggestion for the app to show; it grants nothing.
+   * The tools this task expects to use (`tools`). A declaration the package doesn't read: the
+   * app decides what it means (suggesting grants, limiting what a run sees).
    */
-  suggestedGrants?: string[];
+  tools?: string[];
   /** The file's body: the brief the agent is given. */
   brief: string;
 }

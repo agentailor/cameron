@@ -19,7 +19,7 @@ name: weekly-digest
 description: Every Monday morning, a short summary of last week's spending.
 schedule: "0 8 * * MON"
 timezone: Europe/Paris # optional
-suggest_grants: # optional: tools to offer for granting (docs/GRANTS.md)
+tools: # optional: the tools it expects to use (docs/GRANTS.md)
   - gmail_search_messages
 ---
 
@@ -34,7 +34,7 @@ is UTC unless `TZ` is set.
 A task would stop on every write and every MCP call, like chat does, with nobody there to answer.
 The owner can **grant** tools per task on `/tasks`, so they run without asking from the next run.
 Cameron's own writes are grantable except `delete_transaction` (a hard delete); MCP tools are
-granted one by one. `suggest_grants` in the file only marks tools as suggested. Full detail:
+granted one by one. The file's `tools` list only marks those tools as suggested. Full detail:
 [GRANTS.md](GRANTS.md).
 
 ## Off until the owner turns it on

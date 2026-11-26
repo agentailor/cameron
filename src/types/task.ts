@@ -13,7 +13,7 @@ export interface TaskView {
   limits: { timeoutMinutes: number | null; maxRetries: number | null };
   /** Tools the owner lets this task run without approval. */
   grantedTools: string[];
-  /** Tools the task's file suggests granting (`suggest_grants`); a hint only. */
+  /** The tools the task's file declares (`tools`), offered as suggested grants; a hint only. */
   suggestedGrants: string[];
 }
 

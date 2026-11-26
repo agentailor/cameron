@@ -219,7 +219,8 @@ is the workspace package `packages/agent-tasks`
 LangChain.
 
 - **A task is `tasks/<name>/TASK.md`** (closed frontmatter `name`, `description`, `schedule`,
-  `timezone`, `suggest_grants`; the body is the brief), read once at startup like skills.
+  `timezone`, `tools`; the body is the brief; `tools` is a declaration Cameron shows as suggested
+  grants), read once at startup like skills.
 - **Grants** ([docs/GRANTS.md](docs/GRANTS.md)): a `tool_grant` row lets a tool run without
   pausing within a scope; only `task` scopes exist so far. Every built-in write is grantable except
   `delete_transaction` (a hard delete, barred in `pausesFor`); MCP tools are granted one by one

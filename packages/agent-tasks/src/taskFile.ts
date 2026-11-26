@@ -8,7 +8,7 @@ export const TASK_FRONTMATTER_KEYS = [
   "description",
   "schedule",
   "timezone",
-  "suggest_grants",
+  "tools",
 ] as const;
 
 const STRING_KEYS = ["name", "description", "schedule", "timezone"] as const;
@@ -46,15 +46,13 @@ function stringField(fm: Record<string, unknown>, key: string): string | undefin
   return value.trim();
 }
 
-/** `suggest_grants`: a list of tool names, deduplicated. Absent is an empty list. */
+/** `tools`: a list of tool names, deduplicated. Absent is an empty list. */
 function toolList(value: unknown): string[] | Error {
   if (value === undefined || value === null) return [];
-  if (!Array.isArray(value)) return new Error("`suggest_grants` must be a list of tool names.");
+  if (!Array.isArray(value)) return new Error("`tools` must be a list of tool names.");
   for (const item of value) {
     if (typeof item !== "string" || !TOOL_NAME.test(item)) {
-      return new Error(
-        `\`suggest_grants\` has "${String(item)}": a tool name is letters, digits, _ and -.`,
-      );
+      return new Error(`\`tools\` has "${String(item)}": a tool name is letters, digits, _ and -.`);
     }
   }
   return [...new Set(value as string[])];
@@ -122,8 +120,8 @@ export function parseTaskFile(dirName: string, source: string): TaskFileResult {
   const check = validateSchedule(schedule, timezone);
   if (!check.ok) return { ok: false, error: check.error };
 
-  const suggestedGrants = toolList(record.suggest_grants);
-  if (suggestedGrants instanceof Error) return { ok: false, error: suggestedGrants.message };
+  const tools = toolList(record.tools);
+  if (tools instanceof Error) return { ok: false, error: tools.message };
 
   if (parts.body === "") return { ok: false, error: "Task body is empty: there is no brief." };
 
@@ -134,7 +132,7 @@ export function parseTaskFile(dirName: string, source: string): TaskFileResult {
       description,
       schedule,
       ...(timezone ? { timezone } : {}),
-      ...(suggestedGrants.length > 0 ? { suggestedGrants } : {}),
+      ...(tools.length > 0 ? { tools } : {}),
       brief: parts.body,
     },
   };

@@ -26,7 +26,7 @@ export async function GET(_request: Request, { params }: Params) {
   const task = getTask(name);
   if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
   try {
-    return NextResponse.json((await viewFor(name, task.suggestedGrants)).view);
+    return NextResponse.json((await viewFor(name, task.tools)).view);
   } catch (error) {
     console.error("Error listing grants:", error);
     return NextResponse.json({ error: "Failed to list grants" }, { status: 500 });
@@ -55,7 +55,7 @@ export async function PUT(request: Request, { params }: Params) {
       { kind: "task", id: name },
       withServers(parsed.data.tools, servers, grants),
     );
-    return NextResponse.json((await viewFor(name, task.suggestedGrants)).view);
+    return NextResponse.json((await viewFor(name, task.tools)).view);
   } catch (error) {
     console.error("Error saving grants:", error);
     return NextResponse.json({ error: "Failed to save grants" }, { status: 500 });
