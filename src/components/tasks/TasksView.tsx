@@ -13,7 +13,7 @@ import {
 import { chip, linkButton, secondaryButton } from "@/components/connections/styles";
 import { primaryButton } from "@/components/ui/formStyles";
 import type { TaskLimitsView, TaskRunView, TaskView } from "@/types/task";
-import { LimitInputs, parseDrafts, useDrafts } from "./LimitInputs";
+import { LimitInputs, toRequest, useDrafts } from "./LimitInputs";
 
 /** The global value, else the default: what a task inherits when it sets nothing. */
 function inheritedOf(limits: TaskLimitsView, field: "timeoutMinutes" | "maxRetries"): number {
@@ -40,10 +40,8 @@ const TaskLimitsEditor = ({
   });
 
   async function save() {
-    const parsed = parseDrafts(["timeoutMinutes", "maxRetries"], drafts);
-    if (!parsed.ok) return setState({ busy: false, error: parsed.error });
     setState({ busy: true, error: null });
-    const result = await updateTask(task.name, parsed.values);
+    const result = await updateTask(task.name, toRequest(["timeoutMinutes", "maxRetries"], drafts));
     if (!result.ok) return setState({ busy: false, error: result.error });
     await queryClient.invalidateQueries({ queryKey: TASKS_QUERY_KEY });
     onDone();
@@ -97,10 +95,10 @@ const GlobalLimits = ({ limits }: { limits: TaskLimitsView }) => {
   });
 
   async function save() {
-    const parsed = parseDrafts(["maxConcurrentRuns", "timeoutMinutes", "maxRetries"], drafts);
-    if (!parsed.ok) return setState({ busy: false, message: parsed.error, error: true });
     setState({ busy: true, message: null, error: false });
-    const result = await saveTaskLimits(parsed.values);
+    const result = await saveTaskLimits(
+      toRequest(["maxConcurrentRuns", "timeoutMinutes", "maxRetries"], drafts),
+    );
     if (!result.ok) return setState({ busy: false, message: result.error, error: true });
     await queryClient.invalidateQueries({ queryKey: TASKS_QUERY_KEY });
     setState({ busy: false, message: "Saved. Applies from the next run.", error: false });

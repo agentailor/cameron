@@ -233,8 +233,8 @@ LangChain.
 - **Limits** (runs at once; timeout and retries, globally or per task) are set on `/tasks` and
   read per run. The global ones are `config` keys kept **out of the agent's catalog**, like the model
   settings. A run gets the attempt's abort signal; a retry or recovery continues the same thread
-  from its checkpoint (`continuationOf`); `isRetryableTaskError` never retries running out of steps,
-  a missing model or a 4xx. The Docker image sets `NEXT_MANUAL_SIG_HANDLE` so SIGTERM stops runs
+  from its checkpoint (`continuationOf`); the executor **returns** (so the package
+  never retries) running out of steps and a missing model; anything it throws is retried. The Docker image sets `NEXT_MANUAL_SIG_HANDLE` so SIGTERM stops runs
   gracefully.
 - `task_setting` / `task_run` are not granted to `cameron_analytics`.
 

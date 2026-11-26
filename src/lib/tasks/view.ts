@@ -1,7 +1,13 @@
-import { nextSlot, type TaskDefinition, type TaskRun } from "@agentailor/agent-tasks";
+import {
+  DEFAULT_MAX_CONCURRENT_RUNS,
+  DEFAULT_TASK_POLICY,
+  nextSlot,
+  type TaskDefinition,
+  type TaskRun,
+} from "@agentailor/agent-tasks";
 import type { TaskSetting } from "@/lib/repositories/taskRepository";
 import type { TaskLimitsView, TaskRunView, TaskView } from "@/types/task";
-import { LIMIT_DEFAULTS, type Limits } from "./limits";
+import type { GlobalLimits } from "./settings";
 
 /** Pure projections from the package's types to the `/api/tasks` payload. */
 
@@ -27,14 +33,18 @@ export function toTaskView(
   };
 }
 
-export function toLimitsView(global: Limits): TaskLimitsView {
+export function toLimitsView(global: GlobalLimits): TaskLimitsView {
   return {
     set: {
       maxConcurrentRuns: global.maxConcurrentRuns ?? null,
       timeoutMinutes: global.timeoutMinutes ?? null,
       maxRetries: global.maxRetries ?? null,
     },
-    defaults: { ...LIMIT_DEFAULTS },
+    defaults: {
+      maxConcurrentRuns: DEFAULT_MAX_CONCURRENT_RUNS,
+      timeoutMinutes: DEFAULT_TASK_POLICY.timeoutMs / 60_000,
+      maxRetries: DEFAULT_TASK_POLICY.maxRetries,
+    },
   };
 }
 

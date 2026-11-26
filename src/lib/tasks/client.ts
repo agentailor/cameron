@@ -30,7 +30,11 @@ async function send<T>(url: string, method: string, body?: unknown): Promise<Sav
 /** Turn a task on or off, or set (number) / clear (null) its own timeout and retries. */
 export function updateTask(
   name: string,
-  body: { enabled?: boolean; timeoutMinutes?: number | null; maxRetries?: number | null },
+  body: {
+    enabled?: boolean;
+    timeoutMinutes?: number | string | null;
+    maxRetries?: number | string | null;
+  },
 ) {
   return send<TaskView>(`/api/tasks/${encodeURIComponent(name)}`, "PUT", body);
 }
@@ -39,10 +43,11 @@ export function runTaskNow(name: string) {
   return send<TaskRunView>(`/api/tasks/${encodeURIComponent(name)}/run`, "POST");
 }
 
+/** Values as typed: the server validates them and returns a readable message. */
 export function saveTaskLimits(body: {
-  maxConcurrentRuns?: number | null;
-  timeoutMinutes?: number | null;
-  maxRetries?: number | null;
+  maxConcurrentRuns?: number | string | null;
+  timeoutMinutes?: number | string | null;
+  maxRetries?: number | string | null;
 }) {
   return send<TaskLimitsView>("/api/tasks", "PUT", body);
 }

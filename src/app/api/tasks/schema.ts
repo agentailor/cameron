@@ -34,13 +34,33 @@ export const TaskLimitsResponse = z
   })
   .openapi("TaskLimits");
 
+/** A limit in a request body: a whole number in bounds sets it, null clears it, absent leaves it. */
+function limit(label: string, min: number, max: number) {
+  const error = `${label} must be a whole number from ${min} to ${max}.`;
+  return z
+    .number({ error })
+    .int({ error })
+    .min(min, { error })
+    .max(max, { error })
+    .nullable()
+    .optional();
+}
+
+export const TIMEOUT_MINUTES = limit("Timeout", 1, 24 * 60);
+export const MAX_RETRIES = limit("Retries", 0, 5);
+
 export const SetTaskLimitsRequest = z
   .object({
-    maxConcurrentRuns: z.number().int().min(1).max(10).nullable().optional(),
-    timeoutMinutes: z.number().int().min(1).max(1440).nullable().optional(),
-    maxRetries: z.number().int().min(0).max(5).nullable().optional(),
+    maxConcurrentRuns: limit("Runs at once", 1, 10),
+    timeoutMinutes: TIMEOUT_MINUTES,
+    maxRetries: MAX_RETRIES,
   })
   .openapi("SetTaskLimitsRequest");
+
+/** The first validation message, for a 400 body. */
+export function firstIssue(error: z.ZodError): string {
+  return error.issues[0]?.message ?? "Invalid body.";
+}
 
 export const TaskRunResponse = z
   .object({

@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { HumanMessage } from "@langchain/core/messages";
 import {
-  DEFAULT_MAX_CONCURRENT_RUNS,
   allowedFrom,
   createScheduler,
   toStatusWrite,
@@ -17,12 +16,11 @@ import { defaultTimezone, listTasks } from "./registry";
 import {
   continuationOf,
   outcomeOf,
+  permanentFailureOf,
   taskMessage,
   taskThreadTitle,
   type RunSnapshot,
 } from "./outcome";
-import { isRetryableTaskError, toTaskError } from "./errors";
-import { toPolicy } from "./limits";
 import { readGlobalLimits } from "./settings";
 
 /** How long a shutdown waits for runs before aborting them; under Docker's 10 s stop timeout. */
@@ -58,6 +56,17 @@ async function threadFor(
 }
 
 export const executeTask: TaskExecutor = async (task, run, ctx) => {
+  try {
+    return await runOnThread(task, run, ctx);
+  } catch (error) {
+    // Thrown errors are retried by the package; these would only fail again.
+    const failure = permanentFailureOf(error);
+    if (failure) return failure;
+    throw error;
+  }
+};
+
+async function runOnThread(...[task, run, ctx]: ExecutorArgs) {
   // First, so a missing model fails before a thread is created.
   const agent = await ensureAgent();
   const { threadId, continuing } = await threadFor(task, run, ctx);
@@ -68,17 +77,13 @@ export const executeTask: TaskExecutor = async (task, run, ctx) => {
   };
 
   const step = continuing ? continuationOf(await snapshotOf(agent, threadId)) : "start";
-  try {
-    if (step === "start") {
-      await agent.invoke({ messages: [new HumanMessage(taskMessage(task))] }, config);
-    } else if (step === "resume") {
-      await agent.invoke(null, config); // from the last checkpoint
-    }
-  } catch (error) {
-    throw toTaskError(error);
+  if (step === "start") {
+    await agent.invoke({ messages: [new HumanMessage(taskMessage(task))] }, config);
+  } else if (step === "resume") {
+    await agent.invoke(null, config); // from the last checkpoint
   }
   return outcomeOf(await snapshotOf(agent, threadId));
-};
+}
 
 // One per process, shared by instrumentation (the loop) and routes (Run now): Next.js bundles
 // them separately, so a module-level variable would make two.
@@ -92,13 +97,16 @@ export function getScheduler(): Scheduler {
     store: taskRepo.taskStore,
     execute: executeTask,
     defaultTimezone: defaultTimezone(),
+    // The task's own value, else the one for all tasks; undefined leaves the package default.
     policy: async (name) => {
       const [global, setting] = await Promise.all([readGlobalLimits(), taskRepo.getSetting(name)]);
-      return toPolicy(setting?.limits, global);
+      const minutes = setting?.limits.timeoutMinutes ?? global.timeoutMinutes;
+      return {
+        timeoutMs: minutes === undefined ? undefined : minutes * 60_000,
+        maxRetries: setting?.limits.maxRetries ?? global.maxRetries,
+      };
     },
-    maxConcurrentRuns: async () =>
-      (await readGlobalLimits()).maxConcurrentRuns ?? DEFAULT_MAX_CONCURRENT_RUNS,
-    isRetryable: isRetryableTaskError,
+    maxConcurrentRuns: async () => (await readGlobalLimits()).maxConcurrentRuns,
     onError: (error, { phase, runId }) =>
       console.error(`[tasks] ${phase} failed${runId ? ` (run ${runId})` : ""}:`, error),
   });

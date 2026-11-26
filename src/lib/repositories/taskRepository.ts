@@ -12,7 +12,6 @@ import type {
 import db from "@/lib/database/db";
 import { taskRuns, taskSettings } from "@/lib/database/schema";
 import { columnToDate, toColumnTimestamp } from "@/lib/database/timestamps";
-import type { TaskLimits } from "@/lib/tasks/limits";
 
 /**
  * Persistence for scheduled tasks: the owner's on/off choice per task, and every run. The ONLY ORM
@@ -40,6 +39,12 @@ function toDomain(row: RunRow): TaskRun {
 
 function column(date: Date): string {
   return toColumnTimestamp(date.toISOString())!;
+}
+
+/** A task's own overrides; absent uses the value for all tasks. */
+export interface TaskLimits {
+  timeoutMinutes?: number;
+  maxRetries?: number;
 }
 
 export interface TaskSetting {

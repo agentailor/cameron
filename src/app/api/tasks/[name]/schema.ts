@@ -1,13 +1,13 @@
 import { z } from "@/lib/api/openapi/zod";
 import { registry } from "@/lib/api/openapi/registry";
 import { ErrorResponse } from "@/lib/api/openapi/common";
-import { TaskResponse } from "../schema";
+import { MAX_RETRIES, TIMEOUT_MINUTES, TaskResponse } from "../schema";
 
 export const UpdateTaskRequest = z
   .object({
-    enabled: z.boolean().optional(),
-    timeoutMinutes: z.number().int().min(1).max(1440).nullable().optional(),
-    maxRetries: z.number().int().min(0).max(5).nullable().optional(),
+    enabled: z.boolean({ error: "enabled must be true or false." }).optional(),
+    timeoutMinutes: TIMEOUT_MINUTES,
+    maxRetries: MAX_RETRIES,
   })
   .openapi("UpdateTaskRequest");
 

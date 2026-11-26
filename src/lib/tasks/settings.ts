@@ -1,28 +1,42 @@
 import * as configRepo from "@/lib/repositories/configRepository";
-import { TASK_LIMIT_KEYS, parseLimit, type LimitField, type Limits } from "./limits";
 
-/** The owner's global task limits, in `config`. SERVER ONLY. */
+/**
+ * The owner's task limits for all tasks, in `config` under keys absent from the agent's catalog:
+ * Cameron can't read or change its own limits. Unset means the package default. SERVER ONLY.
+ */
 
-const FIELDS = Object.keys(TASK_LIMIT_KEYS) as LimitField[];
+export interface GlobalLimits {
+  maxConcurrentRuns?: number;
+  timeoutMinutes?: number;
+  maxRetries?: number;
+}
 
-/** Only the values the owner set; a stored value that no longer parses is ignored. */
-export async function readGlobalLimits(): Promise<Limits> {
-  const rows = await Promise.all(FIELDS.map((f) => configRepo.get(TASK_LIMIT_KEYS[f])));
-  const limits: Limits = {};
+const KEYS: Record<keyof GlobalLimits, string> = {
+  maxConcurrentRuns: "tasks_max_concurrent_runs",
+  timeoutMinutes: "tasks_timeout_minutes",
+  maxRetries: "tasks_max_retries",
+};
+const FIELDS = Object.keys(KEYS) as (keyof GlobalLimits)[];
+
+export async function readGlobalLimits(): Promise<GlobalLimits> {
+  const rows = await Promise.all(FIELDS.map((f) => configRepo.get(KEYS[f])));
+  const limits: GlobalLimits = {};
   FIELDS.forEach((field, i) => {
-    const parsed = parseLimit(field, rows[i]?.value ?? null);
-    if (parsed.ok && parsed.value !== null) limits[field] = parsed.value;
+    const value = Number(rows[i]?.value);
+    if (rows[i] && Number.isFinite(value)) limits[field] = value;
   });
   return limits;
 }
 
-/** Already-parsed values: a number sets the field, null clears it, absent leaves it. */
-export async function writeGlobalLimits(input: Partial<Record<LimitField, number | null>>) {
+/** Validated values: a number sets the field, null clears it, absent leaves it. */
+export async function writeGlobalLimits(input: {
+  [K in keyof GlobalLimits]?: number | null;
+}): Promise<GlobalLimits> {
   for (const field of FIELDS) {
     const value = input[field];
     if (value === undefined) continue;
-    if (value === null) await configRepo.remove(TASK_LIMIT_KEYS[field]);
-    else await configRepo.set(TASK_LIMIT_KEYS[field], String(value));
+    if (value === null) await configRepo.remove(KEYS[field]);
+    else await configRepo.set(KEYS[field], String(value));
   }
   return readGlobalLimits();
 }

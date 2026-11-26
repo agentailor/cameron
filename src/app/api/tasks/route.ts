@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import * as taskRepo from "@/lib/repositories/taskRepository";
 import { defaultTimezone, listTasks } from "@/lib/tasks/registry";
-import { parseLimit, type LimitField } from "@/lib/tasks/limits";
 import { readGlobalLimits, writeGlobalLimits } from "@/lib/tasks/settings";
 import { toLimitsView, toRunView, toTaskView } from "@/lib/tasks/view";
 import type { TasksResponse } from "@/types/task";
+import { SetTaskLimitsRequest, firstIssue } from "./schema";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -30,23 +30,13 @@ export async function GET() {
   }
 }
 
-const GLOBAL_FIELDS: LimitField[] = ["maxConcurrentRuns", "timeoutMinutes", "maxRetries"];
-
-/** Set (number) or clear (null) the global limits. Absent fields are left as they are. */
+/** Set (number) or clear (null) the limits for all tasks. Absent fields are left as they are. */
 export async function PUT(request: Request) {
-  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "Body must be a JSON object" }, { status: 400 });
-  }
-  const input: Partial<Record<LimitField, number | null>> = {};
-  for (const field of GLOBAL_FIELDS) {
-    if (!(field in body)) continue;
-    const parsed = parseLimit(field, body[field]);
-    if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
-    input[field] = parsed.value;
-  }
+  const parsed = SetTaskLimitsRequest.safeParse(await request.json().catch(() => null));
+  if (!parsed.success)
+    return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
   try {
-    return NextResponse.json(toLimitsView(await writeGlobalLimits(input)));
+    return NextResponse.json(toLimitsView(await writeGlobalLimits(parsed.data)));
   } catch (error) {
     console.error("Error saving task limits:", error);
     return NextResponse.json({ error: "Failed to save task limits" }, { status: 500 });

@@ -59,18 +59,21 @@ and continues it instead of opening a new one. `continuationOf` reads that threa
 
 If the owner deleted that thread, the attempt starts on a new one.
 
-`isRetryableTaskError` (`errors.ts`) decides what is worth another attempt. Never: running out
-of steps (shown as "Ran out of steps (limit 50)."), a missing model setup, an abort, and client
-errors (400, 401, 403, 404, 422). A rate limit (429), a server error or a dropped connection is
-retried. Errors are matched by name and status, not `instanceof`, because LangGraph can load twice.
+The package retries what the executor **throws** and never what it **returns**. So the executor
+returns the two failures another attempt would only repeat (`permanentFailureOf` in
+`outcome.ts`): running out of steps ("Ran out of steps (limit 50).") and a missing model setup.
+Everything else is thrown and retried. They are matched by name, not `instanceof`, because
+LangGraph can load twice.
 
 ## Limits
 
 Set on `/tasks`: **runs at once**, and the **timeout** (minutes) and **retries** every task
 inherits; each task can override its own timeout and retries. An empty field means the next
-layer down: task, then the global value, then the package default (3 runs, 10 min, 1 retry;
-`limits.test.ts` pins Cameron's copy to the package). They are read when a run starts, so a
-change applies from the next run without a restart.
+layer down: the task's value, then the one for all tasks, then the package's default (3 runs,
+10 min, 1 retry). Cameron passes `undefined` when neither is set and the package applies its
+default; the page shows the package's own constants. They are read when a run starts, so a change
+applies from the next run without a restart. The routes validate with their zod schemas (the same
+ones in the OpenAPI spec), and the page shows the server's message.
 
 The global values live in `config` (`tasks_*` keys), deliberately **outside the agent's settings
 catalog**, like the model settings: Cameron can't read or change its own limits. A task's

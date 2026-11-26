@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { makeTask } from "@agentailor/agent-tasks/testing";
-import { continuationOf, outcomeOf, taskMessage, taskThreadTitle } from "./outcome";
+import {
+  continuationOf,
+  outcomeOf,
+  permanentFailureOf,
+  taskMessage,
+  taskThreadTitle,
+} from "./outcome";
 import type { GraphSnapshot } from "@/services/approvalDecisions";
 
 const pausedOn = (name: string): GraphSnapshot => ({
@@ -70,5 +76,25 @@ describe("continuationOf", () => {
     const done = { values: { messages: [brief, new AIMessage("Digest.")] }, next: [] };
     expect(continuationOf(done)).toBe("settled");
     expect(continuationOf({ ...pausedOn("log_expense"), next: ["tools"] })).toBe("settled");
+  });
+});
+
+describe("permanentFailureOf", () => {
+  const named = (name: string, message = name) => Object.assign(new Error(message), { name });
+
+  it("returns running out of steps, and a missing model, as failures not worth retrying", () => {
+    expect(permanentFailureOf(named("GraphRecursionError"))).toEqual({
+      status: "failed",
+      error: "Ran out of steps (limit 50).",
+    });
+    expect(permanentFailureOf(named("ModelNotConfiguredError", "No model."))).toEqual({
+      status: "failed",
+      error: "No model.",
+    });
+  });
+
+  it("leaves everything else to be thrown, and retried", () => {
+    expect(permanentFailureOf(new Error("429"))).toBeNull();
+    expect(permanentFailureOf("not an error")).toBeNull();
   });
 });

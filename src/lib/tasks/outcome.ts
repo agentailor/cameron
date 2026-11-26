@@ -1,5 +1,6 @@
 import type { ExecutionOutcome, TaskDefinition, TaskRun } from "@agentailor/agent-tasks";
 import { readPendingBatch, type GraphSnapshot } from "@/services/approvalDecisions";
+import { AGENT_RECURSION_LIMIT } from "@/lib/agent/recursion";
 
 /**
  * Pure helpers for running a task on the agent. Free of I/O so they test without a database.
@@ -42,4 +43,17 @@ export function taskMessage(task: TaskDefinition): string {
 
 export function taskThreadTitle(task: TaskDefinition, run: TaskRun): string {
   return `${task.name} · ${run.slot.toISOString().slice(0, 10)}`;
+}
+
+/**
+ * A failure another attempt would repeat, returned instead of thrown: the package retries thrown
+ * errors only. Matched by name, not `instanceof`, because LangGraph can load twice.
+ */
+export function permanentFailureOf(error: unknown): ExecutionOutcome | null {
+  if (!(error instanceof Error)) return null;
+  if (error.name === "GraphRecursionError") {
+    return { status: "failed", error: `Ran out of steps (limit ${AGENT_RECURSION_LIMIT}).` };
+  }
+  if (error.name === "ModelNotConfiguredError") return { status: "failed", error: error.message };
+  return null;
 }
