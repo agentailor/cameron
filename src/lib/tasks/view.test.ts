@@ -39,6 +39,7 @@ describe("toRunView", () => {
       pauseReason: "approval",
       ref: "thread-1",
       startedAt: NOW,
+      attempts: 1,
     });
     expect(view).toMatchObject({ threadId: "thread-1", error: null, finishedAt: null });
   });

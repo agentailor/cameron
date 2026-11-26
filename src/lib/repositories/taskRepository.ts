@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type {
   NewRun,
   RunStatus,
@@ -33,6 +33,7 @@ function toDomain(row: RunRow): TaskRun {
     ...(row.threadId ? { ref: row.threadId } : {}),
     startedAt: columnToDate(row.startedAt),
     ...(row.finishedAt ? { finishedAt: columnToDate(row.finishedAt) } : {}),
+    attempts: row.attempts,
   };
 }
 
@@ -140,16 +141,41 @@ export async function updateStatus(
   return rows.length > 0;
 }
 
-export async function failStaleRuns(
-  before: Date,
-  write: { error: string; finishedAt: Date },
-): Promise<number> {
+export async function hasOpenRun(taskName: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: taskRuns.id })
+    .from(taskRuns)
+    .where(and(eq(taskRuns.taskName, taskName), inArray(taskRuns.status, ["running", "paused"])))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function listRunning(): Promise<TaskRun[]> {
+  const rows = await db
+    .select()
+    .from(taskRuns)
+    .where(eq(taskRuns.status, "running"))
+    .orderBy(asc(taskRuns.startedAt), asc(taskRuns.id));
+  return rows.map(toDomain);
+}
+
+export async function restartRun(
+  runId: string,
+  expectedStartedAt: Date,
+  write: { startedAt: Date; attempts: number },
+): Promise<boolean> {
   const rows = await db
     .update(taskRuns)
-    .set({ status: "failed", error: write.error, finishedAt: column(write.finishedAt) })
-    .where(and(eq(taskRuns.status, "running"), lt(taskRuns.startedAt, column(before))))
+    .set({ startedAt: column(write.startedAt), attempts: write.attempts })
+    .where(
+      and(
+        eq(taskRuns.id, runId),
+        eq(taskRuns.status, "running"),
+        eq(taskRuns.startedAt, column(expectedStartedAt)),
+      ),
+    )
     .returning({ id: taskRuns.id });
-  return rows.length;
+  return rows.length > 0;
 }
 
 export const taskStore: TaskStore = {
@@ -157,5 +183,7 @@ export const taskStore: TaskStore = {
   claimRun,
   attachRef,
   updateStatus,
-  failStaleRuns,
+  hasOpenRun,
+  listRunning,
+  restartRun,
 };

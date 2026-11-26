@@ -63,8 +63,13 @@ opened later had no buttons; chat threads get the same fix.
 `src/instrumentation.node.ts` starts it at server start (Node runtime only). One scheduler per
 process, kept on `globalThis` because Next.js bundles instrumentation and route handlers
 separately. It ticks every minute. A slot runs at most once because `task_run` is unique on
-`(task_name, slot)`, so the dev server and a second process can't double-run it. Only the latest
-due slot runs after downtime, and a run still `running` after 30 minutes is failed as stale.
+`(task_name, slot)`, so even a second process sharing the database can't run a slot twice.
+Recovering interrupted runs is different: it assumes **one scheduler process per database**, since
+a second live process could take over a run the first is still executing. Only the latest
+due slot runs after downtime. The package defaults apply (10 min timeout, 1 retry, at most 3 runs at
+once, no overlapping runs of one task), and a run left `running` by a restart is recovered on the
+next tick. Cameron does not yet pass the abort signal to the agent, continue a retry from its thread,
+or let the owner change these limits: that is the next change.
 
 ## Not yet
 
