@@ -29,6 +29,35 @@ describe("parseTaskFile", () => {
     expect(result.ok && "timezone" in result.task).toBe(false);
   });
 
+  it("reads suggest_grants as a deduplicated list of tool names", () => {
+    const result = parseTaskFile(
+      "weekly-digest",
+      file(
+        `${VALID}\nsuggest_grants:\n  - gmail_search_messages\n  - gmail_read-message\n  - gmail_search_messages`,
+      ),
+    );
+    expect(result.ok && result.task.suggestedGrants).toEqual([
+      "gmail_search_messages",
+      "gmail_read-message",
+    ]);
+  });
+
+  it("leaves suggestedGrants out when absent or empty", () => {
+    for (const extra of ["", "\nsuggest_grants: []"]) {
+      const result = parseTaskFile("weekly-digest", file(`${VALID}${extra}`));
+      expect(result.ok && "suggestedGrants" in result.task).toBe(false);
+    }
+  });
+
+  it.each([
+    ["a single string", "suggest_grants: gmail_search"],
+    ["a name with spaces", "suggest_grants: [gmail search]"],
+    ["a non-string entry", "suggest_grants: [42]"],
+  ])("rejects suggest_grants as %s", (_case, line) => {
+    const result = parseTaskFile("weekly-digest", file(`${VALID}\n${line}`));
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("suggest_grants") });
+  });
+
   it("rejects an unknown key rather than ignoring it", () => {
     const result = parseTaskFile("weekly-digest", file(`${VALID}\ntools: [run_sql]`));
     expect(result).toMatchObject({ ok: false, error: expect.stringContaining("tools") });

@@ -2,7 +2,6 @@ import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
 import type { Decision, HITLRequest, HITLResponse } from "langchain";
 import type { ApprovalDecision } from "@/types/message";
-import { requiresApproval } from "@/lib/agent/gatedTools";
 
 /**
  * Turns the client's per-call decisions into the middleware's positional `decisions` array.
@@ -66,12 +65,38 @@ export function readPendingBatch(snapshot: GraphSnapshot): PendingBatch {
     | AIMessage
     | undefined;
 
+  const actionRequests = (pending?.actionRequests ?? []).map((a) => ({
+    name: a.name,
+    args: a.args,
+  }));
   return {
-    actionRequests: (pending?.actionRequests ?? []).map((a) => ({ name: a.name, args: a.args })),
-    pausedCalls: (paused?.tool_calls ?? [])
-      .filter((c) => requiresApproval(c.name))
-      .map((c) => ({ id: c.id ?? "", name: c.name, args: c.args })),
+    actionRequests,
+    pausedCalls: matchRequests(paused?.tool_calls ?? [], actionRequests),
   };
+}
+
+const sameCall = (a: { name: string; args: unknown }, b: { name: string; args: unknown }) =>
+  a.name === b.name && JSON.stringify(a.args) === JSON.stringify(b.args);
+
+/**
+ * The calls the gate paused: the message's calls matching its requests, in order. Matched rather
+ * than re-derived from `requiresApproval`, because a task's grants exempt calls the predicate
+ * would name, and a mismatch must refuse the resume, never misalign it. An unmatched request ends
+ * the match, so `resolveDecisions` sees fewer calls than requests and refuses.
+ */
+function matchRequests(
+  calls: { id?: string; name: string; args: unknown }[],
+  requests: PendingAction[],
+): PausedCall[] {
+  const matched: PausedCall[] = [];
+  let next = 0;
+  for (const call of calls) {
+    if (next < requests.length && sameCall(call, requests[next])) {
+      matched.push({ id: call.id ?? "", name: call.name, args: call.args });
+      next++;
+    }
+  }
+  return matched;
 }
 
 export type ResolvedDecisions = { ok: true; decisions: Decision[] } | { ok: false; error: string };

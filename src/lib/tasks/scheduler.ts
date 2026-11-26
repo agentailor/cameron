@@ -13,6 +13,8 @@ import * as taskRepo from "@/lib/repositories/taskRepository";
 import { GenAiTracer } from "@/lib/tracing/genAiTracer";
 import { tracingEnabled } from "@/lib/tracing/config";
 import { defaultTimezone, listTasks } from "./registry";
+import { isGrantable } from "./grants";
+import * as grantRepo from "@/lib/repositories/toolGrantRepository";
 import {
   continuationOf,
   outcomeOf,
@@ -66,9 +68,32 @@ export const executeTask: TaskExecutor = async (task, run, ctx) => {
   }
 };
 
+/**
+ * The tools a run may use without approval: the owner's grants for its task, fixed when the run
+ * starts. Its retries and resumes reuse them, so a grant changed while it is paused can't change
+ * the step it paused on; a change applies from the next run.
+ */
+async function grantsForRun(taskName: string, runId: string): Promise<string[]> {
+  const fixed = await taskRepo.getRunGrants(runId);
+  if (fixed) return fixed;
+  const stored = await grantRepo.listTools({ kind: "task", id: taskName });
+  const grants = stored.filter(isGrantable);
+  await taskRepo.setRunGrants(runId, grants);
+  return grants;
+}
+
+/**
+ * A task's grants for a chat turn on its thread (the owner approving a paused run, say): the
+ * continued turn is still the task's work. None once the run is finished, and none elsewhere.
+ */
+export async function grantsForThread(threadId: string): Promise<string[]> {
+  const run = await taskRepo.findOpenRunByThread(threadId);
+  return run ? grantsForRun(run.taskName, run.id) : [];
+}
+
 async function runOnThread(...[task, run, ctx]: ExecutorArgs) {
   // First, so a missing model fails before a thread is created.
-  const agent = await ensureAgent();
+  const agent = await ensureAgent({ preApprovedTools: await grantsForRun(task.name, run.id) });
   const { threadId, continuing } = await threadFor(task, run, ctx);
   const config = {
     configurable: { thread_id: threadId },

@@ -37,6 +37,7 @@ name: weekly-digest
 description: A summary of last week's spending.
 schedule: "0 8 * * MON"
 timezone: Europe/Paris
+suggest_grants: [gmail_search_messages] # optional: a hint; grants are the app's to decide
 ---
 
 The brief the agent is given.
@@ -143,7 +144,8 @@ change them without a restart.
   every boot. This assumes **one scheduler process per store**: with two live processes, one
   could take over a run the other is still executing.
 - **`runNow`** returns `busy` at the concurrency limit, and ignores `overlap`.
-- **Task files are strict.** The frontmatter keys are a closed set, values must be strings, the
+- **Task files are strict.** The frontmatter keys are a closed set, values must be strings
+  (`suggest_grants` is a list of tool names, letters, digits, `_` and `-`), the
   name must equal its directory, the schedule has five fields (ticks are a minute apart) and the
   body (the brief) can't be empty. A missing `tasks/` directory loads nothing silently; a broken
   task is returned in `failures`.

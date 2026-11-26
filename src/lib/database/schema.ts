@@ -233,6 +233,28 @@ export const taskRuns = pgTable(
     startedAt: timestamp("started_at", { precision: 3, mode: "string" }).notNull(),
     finishedAt: timestamp("finished_at", { precision: 3, mode: "string" }),
     attempts: integer("attempts").default(1).notNull(),
+    // The grants this run started with, kept for its retries and resumes; NULL until it starts.
+    grantedTools: text("granted_tools").array(),
   },
   (table) => [uniqueIndex("task_run_slot_key").on(table.taskName, table.slot)],
+);
+
+// --- Tool grants (v8) ---
+// A tool the owner lets run without stopping for approval, within one scope. Only `task` scopes
+// exist today (scope_id = task name); chat or other triggers can add kinds. See docs/GRANTS.md.
+export const toolGrants = pgTable(
+  "tool_grant",
+  {
+    id: text("id").primaryKey().notNull(),
+    scopeKind: text("scope_kind").notNull(),
+    scopeId: text("scope_id").notNull(),
+    tool: text("tool").notNull(),
+    // The MCP server the tool belongs to (NULL for Cameron's own). Deleting the server deletes
+    // its grants, so one re-added under the same name starts with none.
+    serverId: text("server_id").references(() => mcpServers.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { precision: 3, mode: "string" })
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+  },
+  (table) => [uniqueIndex("tool_grant_key").on(table.scopeKind, table.scopeId, table.tool)],
 );

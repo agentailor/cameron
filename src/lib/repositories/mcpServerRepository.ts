@@ -1,7 +1,7 @@
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 import db from "@/lib/database/db";
 import { columnToDate } from "@/lib/database/timestamps";
-import { mcpServers } from "@/lib/database/schema";
+import { mcpServers, toolGrants } from "@/lib/database/schema";
 import { MCPServerType, type MCPServer } from "@/types/mcp";
 import { ConflictError, isUniqueViolation } from "@/lib/database/errors";
 import { openSecret, sealSecret } from "@/lib/crypto/secretBox";
@@ -149,7 +149,23 @@ export async function update(id: string, patch: UpdateMCPServerPatch): Promise<M
   if (patch.env !== undefined) values.env = seal(id, "env", patch.env);
   if (patch.headers !== undefined) values.headers = seal(id, "headers", patch.headers);
   try {
-    const [row] = await db.update(mcpServers).set(values).where(eq(mcpServers.id, id)).returning();
+    const row = await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select({ name: mcpServers.name })
+        .from(mcpServers)
+        .where(eq(mcpServers.id, id));
+      const [updated] = await tx
+        .update(mcpServers)
+        .set(values)
+        .where(eq(mcpServers.id, id))
+        .returning();
+      // A rename changes every tool name (`server_tool`), so the old grants match nothing; drop
+      // them rather than leave a grant a future server of the old name could match.
+      if (updated && before && before.name !== updated.name) {
+        await tx.delete(toolGrants).where(eq(toolGrants.serverId, id));
+      }
+      return updated;
+    });
     return row ? toDomain(row) : null;
   } catch (err) {
     if (isUniqueViolation(err)) throw new ConflictError("MCP server name already exists");

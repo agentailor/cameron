@@ -109,6 +109,19 @@ export async function setLimits(
   return toSetting(row);
 }
 
+/** The grants a run started with, or null if none were fixed yet. */
+export async function getRunGrants(runId: string): Promise<string[] | null> {
+  const [row] = await db
+    .select({ grantedTools: taskRuns.grantedTools })
+    .from(taskRuns)
+    .where(eq(taskRuns.id, runId));
+  return row?.grantedTools ?? null;
+}
+
+export async function setRunGrants(runId: string, tools: string[]): Promise<void> {
+  await db.update(taskRuns).set({ grantedTools: tools }).where(eq(taskRuns.id, runId));
+}
+
 /** Most recent first. */
 export async function listRuns(options: { limit?: number } = {}): Promise<TaskRun[]> {
   const rows = await db

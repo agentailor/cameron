@@ -88,7 +88,9 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   // The middleware is ALWAYS installed for anything reachable from a request — there is no
   // user-facing switch to turn the gate off. `bypassApprovalForEval` omits it for the eval
   // harness alone, which has no human to answer an interrupt (see AgentConfigOptions).
-  const approval = cfg?.bypassApprovalForEval ? [] : [approvalGateMiddleware()];
+  const approval = cfg?.bypassApprovalForEval
+    ? []
+    : [approvalGateMiddleware({ preApproved: cfg?.preApprovedTools })];
   // Shows the model a list of capabilities and a tool once a search has loaded it, and runs a call
   // on a pooled connection. load_tools is not gated: it only changes visibility.
   const disclosure = mcpServerDisclosureMiddleware(mcp);

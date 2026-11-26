@@ -18,6 +18,11 @@ export interface AgentConfigOptions {
    */
   bypassApprovalForEval?: boolean;
   /**
+   * Tools that run without pausing in this agent: the grants of the scheduled task it runs for
+   * (docs/TASKS.md). Built-in writes pause anyway. Never set from a request's own input.
+   */
+  preApprovedTools?: readonly string[];
+  /**
    * In-process mock MCP servers, used instead of the stored ones. FOR THE EVAL HARNESS ONLY: those
    * cases test whether the model finds and uses capabilities, not MCP plumbing.
    */

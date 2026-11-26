@@ -15,3 +15,4 @@ import "@/app/api/oauth/callback/[serverId]/schema";
 import "@/app/api/tasks/schema";
 import "@/app/api/tasks/[name]/schema";
 import "@/app/api/tasks/[name]/run/schema";
+import "@/app/api/tasks/[name]/grants/schema";

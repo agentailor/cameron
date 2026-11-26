@@ -3,6 +3,7 @@ import * as taskRepo from "@/lib/repositories/taskRepository";
 import { defaultTimezone, listTasks } from "@/lib/tasks/registry";
 import { readGlobalLimits, writeGlobalLimits } from "@/lib/tasks/settings";
 import { toLimitsView, toRunView, toTaskView } from "@/lib/tasks/view";
+import * as grantRepo from "@/lib/repositories/toolGrantRepository";
 import type { TasksResponse } from "@/types/task";
 import { SetTaskLimitsRequest, firstIssue } from "./schema";
 
@@ -18,8 +19,14 @@ export async function GET() {
     ]);
     const byName = new Map(settings.map((s) => [s.taskName, s]));
     const now = new Date();
+    const tasks = listTasks();
+    const grants = await Promise.all(
+      tasks.map((t) => grantRepo.listTools({ kind: "task", id: t.name })),
+    );
     const body: TasksResponse = {
-      tasks: listTasks().map((t) => toTaskView(t, byName.get(t.name), defaultTimezone(), now)),
+      tasks: tasks.map((t, i) =>
+        toTaskView(t, byName.get(t.name), defaultTimezone(), now, grants[i]),
+      ),
       runs: runs.map(toRunView),
       limits: toLimitsView(global),
     };

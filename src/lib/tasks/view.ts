@@ -16,6 +16,7 @@ export function toTaskView(
   setting: TaskSetting | undefined,
   timezone: string,
   now: Date,
+  grantedTools: string[] = [],
 ): TaskView {
   const enabled = setting?.enabled ?? false;
   const zone = task.timezone ?? timezone;
@@ -30,6 +31,8 @@ export function toTaskView(
       timeoutMinutes: setting?.limits.timeoutMinutes ?? null,
       maxRetries: setting?.limits.maxRetries ?? null,
     },
+    grantedTools,
+    suggestedGrants: task.suggestedGrants ?? [],
   };
 }
 
