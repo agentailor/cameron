@@ -94,6 +94,9 @@ export interface BasicMessageData {
   id: string;
   content: string;
   attachments?: FileAttachment[];
+  /** Error messages only: the failure's code, and the raw error behind a toggle. */
+  code?: string;
+  detail?: string;
 }
 
 export interface RecordedDecision {

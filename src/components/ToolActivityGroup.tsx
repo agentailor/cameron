@@ -189,7 +189,11 @@ const ActivityDetail = ({
         <ToolResult toolName={activity.name} content={content} />
       ) : (
         <span className="text-muted-foreground font-mono text-[11px]">
-          {activity.isPending ? "awaiting approval" : "running…"}
+          {activity.isPending
+            ? "awaiting approval"
+            : activity.isUnfinished
+              ? "did not finish: the run stopped before this returned"
+              : "running…"}
         </span>
       )}
     </div>

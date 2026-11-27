@@ -136,6 +136,21 @@ describe("buildThreadItems", () => {
     const items = buildThreadItems([ai("a1", "", [call("run_sql", "c1")])]);
     const [group] = groups(items);
     expect(group.activities[0]).toMatchObject({ isPending: false, result: null });
+    expect(group.activities[0].isUnfinished).toBe(false);
+  });
+
+  it("marks a call with no result as unfinished once nothing is running", () => {
+    // A run that died mid-call saved the call and no result; on reload it is not running.
+    const items = buildThreadItems([ai("a1", "", [call("run_sql", "c1")])], { settled: true });
+    expect(groups(items)[0].activities[0]).toMatchObject({ isUnfinished: true, result: null });
+  });
+
+  it("never marks a call awaiting approval as unfinished", () => {
+    const items = buildThreadItems(
+      [ai("a1", "", [call("log_expense", "c1")]), pendingAi("a1", ["c1"])],
+      { settled: true },
+    );
+    expect(groups(items)[0].activities[0]).toMatchObject({ isPending: true, isUnfinished: false });
   });
 
   it("keeps a result whose call never streamed rather than dropping it", () => {
@@ -217,6 +232,7 @@ describe("summarizeActivities", () => {
     args: {},
     result: toolResult("c1", "run_sql", '{"rowCount":37}'),
     isPending: false,
+    isUnfinished: false,
     isGated: false,
     ...over,
   });
@@ -244,8 +260,14 @@ describe("summarizeActivities", () => {
     );
   });
 
-  it("reports an unfinished call as running", () => {
+  it("reports a call with no result yet as running", () => {
     expect(summarizeActivities([activity({ result: null })])).toBe("running…");
+  });
+
+  it("reports a call the run stopped on as not finished", () => {
+    expect(summarizeActivities([activity({ result: null, isUnfinished: true })])).toBe(
+      "run_sql · did not finish",
+    );
   });
 
   it("says 'written' only for a tool that actually writes", () => {

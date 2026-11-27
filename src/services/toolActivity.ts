@@ -26,6 +26,8 @@ export interface ToolActivity {
   result: MessageResponse | null;
   /** Held at the approval gate: the user must decide before anything runs. */
   isPending: boolean;
+  /** No result, not pending, and nothing is running: the run stopped before the call returned. */
+  isUnfinished: boolean;
   /** Pauses for approval, per `requiresApproval`: built-in writes and every MCP tool. */
   isGated: boolean;
   /**
@@ -86,7 +88,10 @@ function hasVisibleText(message: MessageResponse): boolean {
  * Results are consumed out of the list by id, so a result never renders on its own — that
  * double-rendering is what the old two-component layout did.
  */
-export function buildThreadItems(input: MessageResponse[]): ThreadItem[] {
+export function buildThreadItems(
+  input: MessageResponse[],
+  opts: { settled?: boolean } = {},
+): ThreadItem[] {
   // Dedup by type+id: ids are unique only WITHIN a type (an AI message's synthetic id and a tool
   // message's call id are different namespaces), so keying on id alone can drop a real message.
   //
@@ -151,6 +156,7 @@ export function buildThreadItems(input: MessageResponse[]): ThreadItem[] {
           args: {},
           result: message,
           isPending: false,
+          isUnfinished: false,
           isGated: requiresApproval(message.data.name),
         },
         `tools-${message.data.id || index}`,
@@ -172,7 +178,7 @@ export function buildThreadItems(input: MessageResponse[]): ThreadItem[] {
 
       for (const call of toolCalls) {
         pushActivity(
-          toActivity(call, resultsByCallId, pendingCallIds),
+          toActivity(call, resultsByCallId, pendingCallIds, opts.settled ?? false),
           `tools-${message.data?.id || index}`,
         );
       }
@@ -195,15 +201,18 @@ function toActivity(
   call: ToolCall,
   resultsByCallId: Map<string, MessageResponse>,
   pending: Set<string>,
+  settled: boolean,
 ): ToolActivity {
   const result = resultsByCallId.get(call.id) ?? null;
+  // A result settles the question: a call that ran is no longer awaiting a decision.
+  const isPending = result === null && pending.has(call.id);
   return {
     callId: call.id,
     name: call.name,
     args: call.args ?? {},
     result,
-    // A result settles the question: a call that ran is no longer awaiting a decision.
-    isPending: result === null && pending.has(call.id),
+    isPending,
+    isUnfinished: settled && result === null && !isPending,
     isGated: requiresApproval(call.name),
   };
 }

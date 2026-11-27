@@ -21,6 +21,7 @@ import { createAgent } from "langchain";
 import { mcpServerDisclosureMiddleware } from "@agentailor/mcp-disclosure";
 import { invalidToolCallMiddleware } from "./invalidToolCalls";
 import { contextEditingMiddleware } from "./contextEditing";
+import { toolFailureMiddleware } from "./toolFailures";
 import { loadDisclosureServers } from "@/lib/mcp/catalog";
 import { createToolResolver } from "@/lib/mcp/pool";
 import { approvalGateMiddleware } from "./approvalGate";
@@ -96,7 +97,9 @@ async function buildAgent(cfg?: AgentConfigOptions) {
   const disclosure = mcpServerDisclosureMiddleware(mcp);
   // Inside disclosure, so the retry sees the full tool list, loaded MCP tools included.
   // Context editing is innermost, so retries are trimmed too; it never touches the saved thread.
+  // Tool failures is outermost, so it catches a throw from any tool or middleware below it.
   const middleware = [
+    toolFailureMiddleware(),
     disclosure,
     invalidToolCallMiddleware(),
     contextEditingMiddleware(),

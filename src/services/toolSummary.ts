@@ -50,7 +50,7 @@ export function summarizeActivities(activities: ToolActivity[]): string {
 
   const [only] = activities;
   if (only.isPending) return "awaiting approval";
-  if (!only.result) return "running…";
+  if (!only.result) return only.isUnfinished ? `${only.name} · did not finish` : "running…";
 
   const gist = summarizeResult(contentToString(only.result.data?.content), only.name);
   return gist ? `${only.name} · ${gist}` : only.name;

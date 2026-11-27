@@ -304,6 +304,40 @@ describe("streamMessages results a middleware returned itself", () => {
   });
 });
 
+describe("streamMessages a tool that threw", () => {
+  // The execution stream rejects `output` with the raw error, while the state holds the error
+  // result toolFailureMiddleware returned. This used to fail the whole stream.
+  const threw = (callId: string) => {
+    const output = Promise.reject(new Error("Error calling tool search_threads: 401"));
+    output.catch(() => {});
+    return { name: "gmail_search_threads", callId, output, status: Promise.resolve("error") };
+  };
+  const failed = new ToolMessage({
+    content: '{"ok":false,"error":"tool_failed","message":"gmail_search_threads failed: 401"}',
+    tool_call_id: "call-1",
+    name: "gmail_search_threads",
+    status: "error",
+  });
+
+  it("streams the middleware's result instead of failing the run", async () => {
+    const chunks = await collect({
+      messages: fromArray([aiMessage(["Gmail needs a sign-in."])]),
+      toolCalls: fromArray([threw("call-1")]),
+      values: fromArray([]),
+      // A resumed turn: the call was requested before the pause, so only the tool stream knows it.
+      output: Promise.resolve({ messages: [failed] }),
+    });
+    const results = chunks.filter((c) => c.type === "tool");
+    expect(results).toHaveLength(1);
+    expect(results[0].data).toMatchObject({
+      tool_call_id: "call-1",
+      name: "gmail_search_threads",
+      status: "error",
+      content: expect.stringContaining("tool_failed"),
+    });
+  });
+});
+
 describe("streamMessages malformed tool calls", () => {
   it("also finds one carried only as a v1 content block", async () => {
     const chunks = await collect({
