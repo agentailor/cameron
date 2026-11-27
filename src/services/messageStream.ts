@@ -54,6 +54,8 @@ export function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, v
   // honest signal for "show the approval buttons", and it is not derivable on the client.
   const requestedCalls = new Map<string, { id: string; name: string }>();
   const executedCallIds = new Set<string>();
+  // Calls whose tool threw. Their result is the error the middleware returned, found in the state.
+  const failedCalls = new Map<string, string>();
 
   // A result can reach us twice (execution stream and state), so each is sent once. Sending one
   // also marks its call executed: it has an answer, so it is not awaiting approval.
@@ -71,13 +73,14 @@ export function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, v
   const pushResultsFrom = (snapshot: unknown) => {
     for (const m of (snapshot as { messages?: unknown[] })?.messages ?? []) {
       if (!ToolMessage.isInstance(m) || !m.tool_call_id) continue;
-      if (!requestedCalls.has(m.tool_call_id)) continue;
+      const name = requestedCalls.get(m.tool_call_id)?.name ?? failedCalls.get(m.tool_call_id);
+      if (!name) continue;
       pushResult(m.tool_call_id, {
         id: m.tool_call_id,
         content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
         status: m.status ?? "success",
         tool_call_id: m.tool_call_id,
-        name: m.name ?? requestedCalls.get(m.tool_call_id)!.name,
+        name: m.name ?? name,
         ...(m.artifact !== undefined ? { artifact: m.artifact } : {}),
       });
     }
@@ -127,7 +130,18 @@ export function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, v
 
   const pumpToolCalls = async () => {
     for await (const call of run.toolCalls) {
-      const [output, status] = await Promise.all([call.output, call.status]);
+      // A tool that threw rejects `output` with its raw error, even when toolFailureMiddleware
+      // turned it into a result. Failing the stream on it ended the turn; the result is in the state.
+      const settled = call.output.then(
+        (output) => ({ ok: true as const, output }),
+        () => ({ ok: false as const }),
+      );
+      const [result, status] = await Promise.all([settled, call.status]);
+      if (!result.ok) {
+        if (call.callId) failedCalls.set(call.callId, call.name);
+        continue;
+      }
+      const { output } = result;
       const content = typeof output === "string" ? output : JSON.stringify(output ?? "");
       // Only wait on tools that actually produce an artifact. `undefined` means BOTH "not yet
       // delivered" and "this tool has none", so waiting whenever it is missing parks the pump on

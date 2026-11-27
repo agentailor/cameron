@@ -21,9 +21,11 @@ const ToolActivityGroupCard = dynamic(
 interface MessageListProps {
   messages: MessageResponse[];
   approvalCallbacks?: ToolApprovalCallbacks;
+  /** A response is streaming: a call without a result may still be running. */
+  isSending?: boolean;
 }
 
-const MessageList = ({ messages, approvalCallbacks }: MessageListProps) => {
+const MessageList = ({ messages, approvalCallbacks, isSending = false }: MessageListProps) => {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -31,7 +33,10 @@ const MessageList = ({ messages, approvalCallbacks }: MessageListProps) => {
   }, [messages]);
 
   // Dedup, plus pairing of each call with its result; see services/toolActivity.ts.
-  const items = useMemo(() => buildThreadItems(messages), [messages]);
+  const items = useMemo(
+    () => buildThreadItems(messages, { settled: !isSending }),
+    [messages, isSending],
+  );
 
   return (
     <div className="mx-auto w-full max-w-3xl min-w-0 space-y-6">

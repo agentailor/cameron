@@ -1,7 +1,8 @@
-import { and, count, desc, eq, lt, or } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull, lt, or } from "drizzle-orm";
 import db from "@/lib/database/db";
 import { threads } from "@/lib/database/schema";
 import type { ThreadRecord } from "@/types/mcp";
+import type { RunError } from "@/lib/agent/runErrors";
 import { columnTimestampToIso, toColumnTimestamp } from "@/lib/database/timestamps";
 
 /**
@@ -132,4 +133,33 @@ export async function rename(id: string, title: string): Promise<ThreadRecord | 
 export async function remove(id: string): Promise<boolean> {
   const rows = await db.delete(threads).where(eq(threads.id, id)).returning({ id: threads.id });
   return rows.length > 0;
+}
+
+/** A failed run, as saved on its thread. */
+export interface StoredRunError extends RunError {
+  /** ISO time the run failed. */
+  at: string;
+}
+
+/** Records why the thread's last run failed. Leaves `updatedAt` alone: a failure isn't activity. */
+export async function setRunError(id: string, error: RunError): Promise<void> {
+  const value: StoredRunError = { ...error, at: now() };
+  await db.update(threads).set({ lastError: value }).where(eq(threads.id, id));
+}
+
+/** Clears a recorded failure; a no-op when there is none. */
+export async function clearRunError(id: string): Promise<void> {
+  await db
+    .update(threads)
+    .set({ lastError: null })
+    .where(and(eq(threads.id, id), isNotNull(threads.lastError)));
+}
+
+export async function getRunError(id: string): Promise<StoredRunError | null> {
+  const rows = await db
+    .select({ lastError: threads.lastError })
+    .from(threads)
+    .where(eq(threads.id, id))
+    .limit(1);
+  return (rows[0]?.lastError as StoredRunError | null | undefined) ?? null;
 }

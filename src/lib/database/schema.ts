@@ -40,6 +40,8 @@ export const threads = pgTable("thread", {
     .default(sql`CURRENT_TIMESTAMP`)
     .notNull(),
   updatedAt: timestamp("updated_at", { precision: 3, mode: "string" }).notNull(),
+  // Why the last run failed ({ code, message, detail, at }); cleared when the next run starts.
+  lastError: jsonb("last_error"),
 });
 
 export const mcpServers = pgTable(

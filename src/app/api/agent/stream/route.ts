@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { streamResponse } from "@/services/agentService";
+import { recordRunError, streamResponse } from "@/services/agentService";
 import type { MessageResponse, FileAttachment, ApprovalDecision } from "@/types/message";
 import { ApprovalDecisions } from "./schema";
 
@@ -92,12 +92,11 @@ export async function GET(req: NextRequest) {
           controller.enqueue(encoder.encode("event: done\n"));
           controller.enqueue(encoder.encode("data: {}\n\n"));
         } catch (err: unknown) {
-          // Emit an error event (client onerror will capture general network; providing data for diagnostics)
+          // Saved on the thread too, so the same explanation is there after a reload.
+          const failure = await recordRunError(threadId, err);
           controller.enqueue(encoder.encode("event: error\n"));
           controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ message: (err as Error)?.message || "Stream error", threadId })}\n\n`,
-            ),
+            encoder.encode(`data: ${JSON.stringify({ ...failure, threadId })}\n\n`),
           );
         } finally {
           controller.close();

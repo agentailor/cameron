@@ -9,6 +9,7 @@ import type {
 } from "@/types/message";
 import { createMessageStream, fetchMessageHistory } from "@/services/chatService";
 import { pendingApprovalIds } from "@/services/toolActivity";
+import { runErrorMessage, type RunError } from "@/lib/agent/runErrors";
 
 interface UseChatThreadOptions {
   threadId: string | null;
@@ -148,21 +149,21 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
 
         stream.addEventListener("error", async (ev: Event) => {
           try {
-            // Try to extract a meaningful error message from the event payload
+            // The server sends the same description it saves on the thread (runErrors.ts).
             const dataText = (ev as MessageEvent<string>)?.data;
-            const message = (() => {
-              try {
-                const parsed = dataText ? JSON.parse(dataText) : null;
-                return parsed?.message || "An error occurred while generating a response.";
-              } catch {
-                return "An error occurred while generating a response.";
-              }
-            })();
-            // Surface the error in the chat as a message
-            const errorMsg: MessageResponse = {
-              type: "error",
-              data: { id: `err-${Date.now()}`, content: `⚠️ ${message}` },
-            };
+            let parsed: Partial<RunError> | null = null;
+            try {
+              parsed = dataText ? JSON.parse(dataText) : null;
+            } catch {
+              parsed = null;
+            }
+            const errorMsg = runErrorMessage({
+              code: parsed?.code ?? "network",
+              message:
+                parsed?.message ??
+                "The connection to Cameron dropped before the reply finished. Reload to see where it stopped.",
+              detail: parsed?.detail ?? "",
+            });
             queryClient.setQueryData(["messages", threadId], (old: MessageResponse[] = []) => [
               ...old,
               errorMsg,
@@ -203,8 +204,9 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
           attachments: opts?.attachments,
         },
       };
+      // An earlier failure is superseded by this turn; the server clears its copy too.
       queryClient.setQueryData(["messages", target], (old: MessageResponse[] = []) => [
-        ...old,
+        ...old.filter((m) => m.type !== "error"),
         userMessage,
       ]);
 

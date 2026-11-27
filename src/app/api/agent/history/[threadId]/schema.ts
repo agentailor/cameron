@@ -16,6 +16,11 @@ const HistoryMessageData = z
     status: z.string().optional().openapi({ description: "Tool messages only" }),
     artifact: z.unknown().optional().openapi({ description: "Client-only tool output (charts)" }),
     attachments: z.array(z.unknown()).optional().openapi({ description: "Human messages only" }),
+    code: z
+      .string()
+      .optional()
+      .openapi({ description: "Error messages only: why the last run failed" }),
+    detail: z.string().optional().openapi({ description: "Error messages only: the raw error" }),
   })
   .openapi("HistoryMessageData");
 

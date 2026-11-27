@@ -12,6 +12,9 @@ import { markPendingCalls, projectHistory } from "./historyProjection";
 import { GenAiTracer } from "@/lib/tracing/genAiTracer";
 import { tracingEnabled } from "@/lib/tracing/config";
 import { grantsForThread, syncTaskRun } from "@/lib/tasks/scheduler";
+import { describeRunError, runErrorMessage, type RunError } from "@/lib/agent/runErrors";
+import { readModelSettings } from "@/lib/agent/modelSettings";
+import { getProviderDef } from "@/lib/config/modelSettings";
 
 /** Stream a turn (or resume a paused one) as MessageResponse chunks for the SSE route. */
 export async function streamResponse(params: {
@@ -21,6 +24,8 @@ export async function streamResponse(params: {
 }) {
   const { threadId, userText, opts } = params;
   await ensureThread(threadId, userText);
+  // A new turn supersedes the last failure.
+  await threadRepo.clearRunError(threadId);
 
   // No approval-bypass is threaded through from the request. The gate is Cameron's first rule,
   // so it is not something a client can turn off — `bypassApprovalForEval` exists only for the
@@ -93,6 +98,28 @@ async function buildResumeCommand(
   return toResumeCommand(resolved.decisions);
 }
 
+/**
+ * Saves why a run failed on its thread, so a reload still explains the unanswered message, and
+ * returns the owner-facing description the stream sends live.
+ */
+export async function recordRunError(threadId: string, error: unknown): Promise<RunError> {
+  console.error(`[agent] run failed on thread ${threadId}:`, error);
+  let keyEnvVar: string | undefined;
+  try {
+    const settings = await readModelSettings();
+    if (settings) keyEnvVar = getProviderDef(settings.provider).apiKeyEnvVar;
+  } catch {
+    // The settings read can fail for the same reason the run did; the message still helps.
+  }
+  const described = describeRunError(error, { keyEnvVar });
+  try {
+    await threadRepo.setRunError(threadId, described);
+  } catch (e) {
+    console.error("[agent] could not save the run error:", e);
+  }
+  return described;
+}
+
 /** Fetch prior messages for a thread from the LangGraph checkpoint/memory system. */
 export async function fetchThreadHistory(threadId: string): Promise<MessageResponse[]> {
   const thread = await threadRepo.getById(threadId);
@@ -104,7 +131,10 @@ export async function fetchThreadHistory(threadId: string): Promise<MessageRespo
     ]);
     const batch = readPendingBatch({ tasks: [{ interrupts }], values: { messages: history } });
     const pendingIds = batch.actionRequests.length > 0 ? batch.pausedCalls.map((c) => c.id) : [];
-    return markPendingCalls(projectHistory(history), pendingIds);
+    const messages = markPendingCalls(projectHistory(history), pendingIds);
+    // Cleared when the next run starts, so a saved failure is always about the end of the thread.
+    const runError = await threadRepo.getRunError(threadId);
+    return runError ? [...messages, runErrorMessage(runError)] : messages;
   } catch (e) {
     console.error("fetchThreadHistory error", e);
     return [];

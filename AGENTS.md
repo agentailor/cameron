@@ -399,7 +399,7 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   it, so the caller can replace it. `source_thread_id` has no FK, so deleting a thread keeps its
   memories. Limits (length, count) belong to the tool, not the repository. Not granted to
   `cameron_analytics`, and wiped between eval runs (`RESET_TABLES`).
-- **Tables**: `thread` (minimal metadata; actual history in LangGraph checkpoints) and `mcp_server`
+- **Tables**: `thread` (minimal metadata plus `last_error`, the last failed run; actual history in LangGraph checkpoints) and `mcp_server`
   (stdio/http with conditional fields + OAuth token/state columns; JSON columns for flexible config).
   `drizzle.config.ts`'s `tablesFilter` must list every app table, or drizzle-kit ignores it.
   `id` columns are text (app-generated uuids); `updated_at` is app-managed (set on writes).
@@ -561,6 +561,26 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   `MAX_INVALID_CALL_RETRIES` times with a correction (`invalid_arguments`, or `unknown_tool` for a
   tool not offered) that is never saved to the thread; after that the response ends with a
   visible notice. The stream shows the same notice live for every malformed attempt.
+- **A tool that throws becomes an error result, never a failed run.** With any `wrapToolCall`
+  middleware installed (disclosure is one), langchain rethrows a tool's error instead of
+  returning it, which ended the turn and left the call without a result. `toolFailureMiddleware`
+  (`src/lib/agent/toolFailures.ts`, OUTERMOST) catches it and returns
+  `{ ok: false, error: "tool_failed", message }`, with the message capped at
+  `MAX_TOOL_ERROR_CHARS` (the full error goes to the server log). Interrupts and aborts still
+  propagate. The stream's `run.toolCalls` still rejects that call's `output` with the raw error,
+  so `pumpToolCalls` skips a call with status `error` and sends the result from the state
+  instead. The same middleware answers a call left without a result (a run that died
+  mid-call) with `not_finished`, in the request only, and the chat shows such a call as
+  "did not finish" once nothing is streaming (`buildThreadItems(…, { settled })`).
+- **A failed run is saved on its thread, not in the conversation.** The stream route's catch
+  calls `recordRunError` (`agentService.ts`), which turns the error into
+  `{ code, message, detail }` with `describeRunError` (`src/lib/agent/runErrors.ts`, a leaf the
+  client also imports). The message says what to do, naming the selected provider's key env var
+  for a 401. That is written to `thread.last_error` and sent as the SSE `error` event.
+  `fetchThreadHistory` appends it as a `type: "error"` message, so a reload still explains the
+  unanswered message. `streamResponse` clears it when the next run starts. It never enters the
+  checkpoint, because the model would read it on the next turn. `ErrorMessage` renders it:
+  laid out like an agent reply, with the raw error behind "details".
 - **Old tool results are cleared from the request, never from the thread** (full detail in
   [docs/MEMORY.md](docs/MEMORY.md)). `contextEditingMiddleware` (`src/lib/agent/contextEditing.ts`,
   the innermost `wrapModelCall`) runs langchain's `ClearToolUsesEdit` past `CONTEXT_CLEAR_TRIGGER`

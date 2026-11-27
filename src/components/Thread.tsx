@@ -88,7 +88,11 @@ export const Thread = ({ threadId }: ThreadProps) => {
                 the column at the viewport width. */}
             <ScrollArea className="h-full [&>[data-slot=scroll-area-viewport]>div]:block!">
               <div className="min-w-0 space-y-4 px-4 py-4">
-                <MessageList messages={messages} approvalCallbacks={approvalCallbacks} />
+                <MessageList
+                  messages={messages}
+                  approvalCallbacks={approvalCallbacks}
+                  isSending={isSending}
+                />
               </div>
             </ScrollArea>
           </div>
