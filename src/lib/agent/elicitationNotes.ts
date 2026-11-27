@@ -44,9 +44,6 @@ export function withNote(message: ToolMessage, note: string): ToolMessage {
   });
 }
 
-/** The server part of a `server_tool` name, for the note's wording. */
-const serverOf = (toolName: string) => toolName.split("_")[0] || toolName;
-
 export function elicitationNoteMiddleware() {
   return createMiddleware({
     name: "ElicitationNotes",
@@ -57,7 +54,7 @@ export function elicitationNoteMiddleware() {
       if (!ToolMessage.isInstance(result) || (action !== "decline" && action !== "cancel")) {
         return result;
       }
-      return withNote(result, withheldNote(action, serverOf(request.toolCall.name)));
+      return withNote(result, withheldNote(action));
     },
   });
 }

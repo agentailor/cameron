@@ -6,6 +6,8 @@ import type { ElicitationCallbacks } from "@/types/message";
 import {
   answerProblem,
   fieldKind,
+  formContent,
+  initialFieldValue,
   isUrlRequest,
   type ElicitationAnswer,
   type ElicitationProperty,
@@ -46,13 +48,6 @@ function singleChoice(request: FormRequest) {
   const [key, property] = entries[0];
   const field = fieldKind(property);
   return field.kind === "choice" ? { key, property, choices: field.choices } : null;
-}
-
-function initialValue(property: ElicitationProperty): ElicitationValue | undefined {
-  const d = property.default;
-  if (typeof d === "string" || typeof d === "number" || typeof d === "boolean") return d;
-  if (Array.isArray(d)) return d.map(String);
-  return fieldKind(property).kind === "boolean" ? false : undefined;
 }
 
 function Field({
@@ -139,12 +134,6 @@ function Field({
 
 type Draft = Record<string, Record<string, ElicitationValue | undefined>>;
 
-function contentOf(values: Record<string, ElicitationValue | undefined> = {}) {
-  return Object.fromEntries(
-    Object.entries(values).filter((e): e is [string, ElicitationValue] => e[1] !== undefined),
-  );
-}
-
 export function ElicitationCard({
   elicitation,
   callbacks,
@@ -162,7 +151,7 @@ export function ElicitationCard({
           : Object.fromEntries(
               Object.entries(r.requestedSchema.properties ?? {}).map(([k, p]) => [
                 k,
-                initialValue(p),
+                initialFieldValue(p, (r.requestedSchema.required ?? []).includes(k)),
               ]),
             ),
       ]),
@@ -262,7 +251,7 @@ export function ElicitationCard({
                   all((key, r) =>
                     isUrlRequest(r)
                       ? { action: "accept" }
-                      : { action: "accept", content: contentOf(draft[key]) },
+                      : { action: "accept", content: formContent(draft[key]) },
                   )
                 }
               >

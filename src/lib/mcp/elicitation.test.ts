@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { answerProblem, fieldKind, type FormRequest, type UrlRequest } from "./elicitation";
+import {
+  answerProblem,
+  fieldKind,
+  formContent,
+  initialFieldValue,
+  withheldNote,
+  type FormRequest,
+  type UrlRequest,
+} from "./elicitation";
 
 // The shape a hosted mail server sends before it shares message content.
 const permission: FormRequest = {
@@ -91,5 +99,29 @@ describe("answerProblem", () => {
   it("accepts a link request with no content and refuses one with content", () => {
     expect(answerProblem(link, { action: "accept" })).toBeNull();
     expect(answerProblem(link, { action: "accept", content: { a: "b" } })).toMatch(/no form/);
+  });
+});
+
+describe("form defaults", () => {
+  it("leaves an untouched optional checkbox out, and starts a required one unticked", () => {
+    expect(initialFieldValue({ type: "boolean" }, false)).toBeUndefined();
+    expect(initialFieldValue({ type: "boolean" }, true)).toBe(false);
+    expect(initialFieldValue({ type: "boolean", default: true }, false)).toBe(true);
+  });
+
+  it("sends a cleared optional text field as left empty", () => {
+    const form: FormRequest = {
+      message: "Note?",
+      requestedSchema: { properties: { note: { type: "string", minLength: 3 } } },
+    };
+    const content = formContent({ note: "", flag: undefined });
+    expect(content).toEqual({});
+    expect(answerProblem(form, { action: "accept", content })).toBeNull();
+  });
+});
+
+describe("withheldNote", () => {
+  it("does not name the server, whose name may contain the tool separator", () => {
+    expect(withheldNote("decline")).toContain("the server's request");
   });
 });

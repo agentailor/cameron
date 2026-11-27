@@ -230,12 +230,14 @@ function toActivity(
 }
 
 /**
- * Server questions in the thread, latest per interrupt. Collected thread-wide like approval ids:
- * the marker is its own message, and its call can sit on an earlier run's message.
+ * Server questions still waiting, latest per interrupt. The marker is its own message and its call
+ * can sit on an earlier run's message, so they are read across the turn; only markers after the
+ * owner's last message count, because a new message moves the thread past an unanswered one.
  */
 export function pendingElicitationsIn(messages: MessageResponse[]): PendingElicitation[] {
+  const lastHuman = messages.findLastIndex((m) => m.type === "human");
   const latest = new Map<string, PendingElicitation>();
-  for (const message of messages) {
+  for (const message of messages.slice(lastHuman + 1)) {
     if (message.type !== "ai") continue;
     for (const e of (message.data as AIMessageData).pendingElicitations ?? []) {
       latest.delete(e.interruptId);

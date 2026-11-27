@@ -302,18 +302,34 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
         ...next,
         ...Object.fromEntries(waitingIds.map((id) => [id, { responses: answers[id], sent: true }])),
       });
+      // Answered: the markers are done. A server that asks again sends a fresh one.
+      queryClient.setQueryData(["messages", threadId], (old: MessageResponse[] = []) =>
+        old.filter(
+          (m) => !(m.type === "ai" && (m.data as AIMessageData).pendingElicitations?.length),
+        ),
+      );
       void handleStreamResponse({
         threadId,
         text: "",
         opts: { answers },
-        // Refused or failed: nothing resumed, so the questions are unanswered again.
-        onError: () =>
+        // Refused or failed: reload what the server is really waiting on, unanswered again.
+        onError: () => {
           setElicitationAnswers((d) =>
             Object.fromEntries(Object.entries(d).filter(([id]) => !waitingIds.includes(id))),
-          ),
+          );
+          void refetchMessagesQuery();
+        },
       });
     },
-    [threadId, isSending, waitingIds, elicitationAnswers, handleStreamResponse],
+    [
+      threadId,
+      isSending,
+      waitingIds,
+      elicitationAnswers,
+      handleStreamResponse,
+      queryClient,
+      refetchMessagesQuery,
+    ],
   );
 
   const undoToolDecision = useCallback((toolCallId: string) => {

@@ -122,6 +122,32 @@ export function fieldKind(property: ElicitationProperty): FieldKind {
 }
 
 /**
+ * A form field's starting value: the schema's default, else nothing. An optional field the owner
+ * never touched is left out, not sent as "no"; a required checkbox starts unticked, since
+ * unticked is itself an answer.
+ */
+export function initialFieldValue(
+  property: ElicitationProperty,
+  required: boolean,
+): ElicitationValue | undefined {
+  const d = property.default;
+  if (typeof d === "string" || typeof d === "number" || typeof d === "boolean") return d;
+  if (Array.isArray(d)) return d.map(String);
+  return required && fieldKind(property).kind === "boolean" ? false : undefined;
+}
+
+/** What a form sends: unset fields and cleared text fields are left out. */
+export function formContent(
+  values: Record<string, ElicitationValue | undefined> = {},
+): Record<string, ElicitationValue> {
+  return Object.fromEntries(
+    Object.entries(values).filter(
+      (e): e is [string, ElicitationValue] => e[1] !== undefined && e[1] !== "",
+    ),
+  );
+}
+
+/**
  * Why an answer would be refused, or null when it is valid. Checked before resuming, because
  * the adapter fails the whole call on an answer its schema rejects, where the owner should just
  * get the form back. The adapter still validates against the full schema afterwards.
@@ -193,10 +219,10 @@ function valueProblem(property: ElicitationProperty, value: ElicitationValue): s
 }
 
 /** Told to the agent beside a result the owner declined or cancelled: content may be missing. */
-export function withheldNote(action: "decline" | "cancel", server: string): string {
+export function withheldNote(action: "decline" | "cancel"): string {
   const verb = action === "decline" ? "declined" : "dismissed";
   return (
-    `The owner ${verb} ${server}'s request for confirmation during this call, so the server may ` +
+    `The owner ${verb} the server's request for confirmation during this call, so the server may ` +
     "have withheld content. An empty or partial result here does not mean nothing matched; say " +
     "that the owner did not allow it."
   );

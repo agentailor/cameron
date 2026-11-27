@@ -492,10 +492,11 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
 
 Full detail in [docs/MCP_ELICITATION.md](docs/MCP_ELICITATION.md). The load-bearing invariants:
 
-- **A server's question is not an approval.** It comes during a call the gate already approved, so
-  `streamMessages` reads it from the graph state when the run settles (`readElicitations`), leaves
-  its call out of `pendingToolCallIds`, and sends a `pendingElicitations` marker. The client
-  collects markers thread-wide and renders `ElicitationCard` on the matched call.
+- **A server's question is not an approval.** It comes during a call the gate already approved. A
+  run pauses on one or the other, never both, and the run's output (`__interrupt__`) says which:
+  on a question, `streamMessages` reports no pending approvals and sends a `pendingElicitations`
+  marker (read via `readElicitations`). The client counts only markers after the owner's last
+  message, clears them once answered, and renders `ElicitationCard` on the matched call.
 - **A suspended call has no result.** langchain settles a call still paused at the end of a run
   with `undefined` output; `pumpToolCalls` skips it, since `""` would close the call and hide the card.
 - **Answers are refused, never defaulted**: `resolveElicitationAnswers`

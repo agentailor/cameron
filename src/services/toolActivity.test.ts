@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildThreadItems, pendingApprovalIds, type ToolActivityGroup } from "./toolActivity";
+import {
+  buildThreadItems,
+  pendingApprovalIds,
+  pendingElicitationsIn,
+  type ToolActivityGroup,
+} from "./toolActivity";
 import { summarizeActivities } from "./toolSummary";
 import type { MessageResponse, ToolCall } from "@/types/message";
 
@@ -338,6 +343,14 @@ describe("server questions (MCP elicitation)", () => {
     expect(activity.isPending).toBe(false);
     expect(activity.isUnfinished).toBe(false);
     expect(pendingApprovalIds(messages)).toEqual([]);
+  });
+
+  it("drops a question the owner moved past with a new message", () => {
+    const later: MessageResponse = { type: "human", data: { id: "h2", content: "never mind" } };
+    const messages = [ai("a1", "", [call("mail_search_threads", "m1")]), marker, later];
+    expect(pendingElicitationsIn(messages)).toEqual([]);
+    const [activity] = groups(buildThreadItems(messages))[0].activities;
+    expect(activity.elicitation).toBeUndefined();
   });
 
   it("drops the question once the call has a result", () => {

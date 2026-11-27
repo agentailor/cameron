@@ -57,10 +57,16 @@ sequenceDiagram
   an unanswered call on the last AI message by `server_tool` name and arguments, then by name.
   The match only places the card; the resume is addressed by interrupt id.
 - **Not an approval.** A call paused this way also never executed, which is the stream's
-  approval signal. `streamMessages` therefore reads the questions from the graph state when the
-  run settles, leaves their calls out of `pendingToolCallIds`, and sends them as their own marker
-  chunk. langchain settles a still-suspended call with no output at the end of the run, so a
-  result with `undefined` output is not sent (it would close the call and hide the card).
+  approval signal. A run pauses on one or the other, never both, and the run's own output
+  (`__interrupt__`) says which: on a question, `streamMessages` reports no pending approvals and
+  sends the questions, read from the graph state, as their own marker chunk. So a failed read
+  shows no card until a reload rather than an approval card nothing can resume. langchain settles
+  a still-suspended call with no output at the end of the run, so a result with `undefined`
+  output is not sent (it would close the call and hide the card).
+- **Which questions are waiting.** Only markers after the owner's last message count: a new
+  message moves the thread past an unanswered question. Sending answers removes the markers from
+  the client's cache (a server that asks again sends a fresh one); a refused resume reloads the
+  history, which rebuilds what the server is really waiting on.
 - **Answers are checked before resuming.** `resolveElicitationAnswers` refuses a missing,
   unknown or invalid answer and nothing resumes, like `resolveDecisions`. The adapter would fail
   the whole call on an answer its schema rejects; here the owner just gets the form back.
@@ -95,4 +101,5 @@ nothing matched. The thread never hangs: decline and dismiss resume like accept.
   you". The owner answers in the thread as usual. What lets a granted tool run unattended is the
   server's own "always allow", if it offers one.
 - **Evals**: the runner declines every question (`declineAll`) through the same resolver, so a
-  case never ends paused on one.
+  case never ends paused on one. Approvals and questions are answered in one loop, whatever is
+  pending each round, so an approval asked for after a decline is still recorded and answered.

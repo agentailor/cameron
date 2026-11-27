@@ -183,54 +183,46 @@ export async function runCase(agentFor: AgentFactory, testCase: EvalCase): Promi
       seen = result.messages.length;
       let turnText = lastAssistantText(fresh);
 
-      // With `approval` set the middleware is live, so a gated call pauses instead of running.
-      if (testCase.approval) {
-        let batch = await pendingBatch(agent, threadId);
-        const record = () => {
-          if (batch.actionRequests.length === 0) return;
-          interrupts.push(...callsOf(batch));
-          scoped.interrupts.push(...callsOf(batch));
-          interruptBatches.push(callsOf(batch));
-        };
-        record();
+      // With `approval` set the gate is live, so a gated call pauses; a connected server's question
+      // can pause any case, and no one is here to answer it, so it is declined. A turn can pause
+      // more than once, in either way and in any order, so each round answers whatever is pending
+      // now until nothing is. See "Approval cases" in eval/README.md.
+      const empty: PendingBatch = { actionRequests: [], pausedCalls: [] };
+      let batch = testCase.approval ? await pendingBatch(agent, threadId) : empty;
+      const record = () => {
+        if (batch.actionRequests.length === 0) return;
+        interrupts.push(...callsOf(batch));
+        scoped.interrupts.push(...callsOf(batch));
+        interruptBatches.push(callsOf(batch));
+      };
+      record();
 
-        // A turn can pause more than once — keep resuming until nothing is pending.
-        // See "Approval cases" in eval/README.md for why answering only the first breaks a case.
-        for (
-          let guard = 0;
-          batch.actionRequests.length > 0 && guard < LIMITS.recursionLimit;
-          guard++
-        ) {
-          result = await agent.invoke(resumeFor(testCase.approval, batch), config);
-          fresh = result.messages.slice(seen);
-          take(fresh);
-          seen = result.messages.length;
-          turnText = lastAssistantText(fresh) || turnText;
-
-          batch = await pendingBatch(agent, threadId);
-          record();
-        }
-
-        // Still pending: the agent is waiting, not finished — a distinction `trajectory` can't make.
-        pausedAtEnd = batch.actionRequests.length > 0;
-      }
-
-      // No one is here to answer a server's question, so every one is declined: the thread must
-      // never be left paused on one. Approvals the agent asks for afterwards are not re-answered.
       for (let guard = 0; guard < LIMITS.recursionLimit; guard++) {
-        const asked = await pendingElicitations(agent, threadId);
-        if (asked.length === 0) break;
-        const resolved = resolveElicitationAnswers({ pending: asked, answers: declineAll(asked) });
-        if (!resolved.ok) throw new Error(`elicitation decline refused: ${resolved.error}`);
-        result = await agent.invoke(toElicitationResume(resolved.resume), {
-          ...config,
-          configurable: { ...config.configurable, [ELICITATION_OUTCOMES_KEY]: resolved.outcomes },
-        });
+        if (testCase.approval && batch.actionRequests.length > 0) {
+          result = await agent.invoke(resumeFor(testCase.approval, batch), config);
+        } else {
+          const asked = await pendingElicitations(agent, threadId);
+          if (asked.length === 0) break;
+          const answers = declineAll(asked);
+          const resolved = resolveElicitationAnswers({ pending: asked, answers });
+          if (!resolved.ok) throw new Error(`elicitation decline refused: ${resolved.error}`);
+          const outcomes = { [ELICITATION_OUTCOMES_KEY]: resolved.outcomes };
+          result = await agent.invoke(toElicitationResume(resolved.resume), {
+            ...config,
+            configurable: { ...config.configurable, ...outcomes },
+          });
+        }
         fresh = result.messages.slice(seen);
         take(fresh);
         seen = result.messages.length;
         turnText = lastAssistantText(fresh) || turnText;
+
+        batch = testCase.approval ? await pendingBatch(agent, threadId) : empty;
+        record();
       }
+
+      // Still pending: the agent is waiting, not finished — a distinction `trajectory` can't make.
+      if (testCase.approval) pausedAtEnd = batch.actionRequests.length > 0;
 
       return turnText;
     }

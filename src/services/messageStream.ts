@@ -39,6 +39,13 @@ export interface AgentRun {
 // `run.messages` (token-level AI text) and `run.toolCalls` (tool results) are independent async
 // iterables, so we pump both into a shared queue and drain it as MessageResponse chunks until the
 // run settles.
+/** True when the run's final output says it paused on a connected server's question. */
+export function pausedOnQuestion(output: unknown): boolean {
+  const interrupts = (output as { __interrupt__?: { value?: { type?: unknown } }[] } | null)
+    ?.__interrupt__;
+  return Array.isArray(interrupts) && interrupts.some((i) => i?.value?.type === "mcp_elicitation");
+}
+
 export interface StreamOptions {
   /**
    * The server questions the run is paused on, read from the graph once it settles. A call paused
@@ -188,10 +195,10 @@ export function streamMessages(
   // A requested call that never executed was paused by the approval gate. Re-emit its AI message
   // marked with the pending ids so the client gates on the graph's real state rather than on the
   // message's position in the list.
-  const pushPendingApprovals = (asking: Set<string>) => {
+  const pushPendingApprovals = () => {
     const pendingByMessage = new Map<string, string[]>();
     for (const [callId, { id }] of requestedCalls) {
-      if (executedCallIds.has(callId) || asking.has(callId)) continue;
+      if (executedCallIds.has(callId)) continue;
       pendingByMessage.set(id, [...(pendingByMessage.get(id) ?? []), callId]);
     }
     for (const [id, pendingToolCallIds] of pendingByMessage) {
@@ -201,14 +208,16 @@ export function streamMessages(
 
   // A server question gets its own marker chunk: its call may belong to an earlier run's message,
   // and the client collects markers thread-wide, as it does approval ids.
-  const pushPendingQuestions = async () => {
+  const pushPendingQuestions = async (output: unknown) => {
     let asked: PendingElicitation[] = [];
     try {
       asked = (await opts.readElicitations?.()) ?? [];
     } catch (error) {
       console.error("[elicitation] could not read pending requests:", error);
     }
-    pushPendingApprovals(new Set(asked.flatMap((a) => (a.toolCallId ? [a.toolCallId] : []))));
+    // A run pauses on a server question or on the approval gate, never both. The run's own output
+    // says which, so a failed read above never turns a question into an approval card.
+    if (asked.length === 0 && !pausedOnQuestion(output)) pushPendingApprovals();
     if (asked.length > 0) {
       push({
         type: "ai",
@@ -219,8 +228,10 @@ export function streamMessages(
 
   const runPromise = Promise.all([pumpMessages(), pumpValues(), pumpToolCalls(), run.output])
     // A snapshot can arrive before its call is known, so check the final state once more.
-    .then(([, , , output]) => pushResultsFrom(output))
-    .then(pushPendingQuestions)
+    .then(async ([, , , output]) => {
+      pushResultsFrom(output);
+      await pushPendingQuestions(output);
+    })
     .catch((e) => {
       failure = e;
     })
