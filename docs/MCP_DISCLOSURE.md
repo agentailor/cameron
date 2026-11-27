@@ -37,9 +37,9 @@ The connector runs on `@langchain/mcp-adapters` 2.x (MCP TypeScript SDK v2,
   the connector keys its tools by the adapter's name and `getTool` / `resolveTool` take the name
   as the model called it. A server name may itself contain `_`; `createToolServerIndex` resolves
   that by preferring the server whose catalog lists the remainder.
-- **Elicitation is the one default overridden.** v2 raises a server's elicitation request as a LangGraph interrupt. The approval
-  flow only answers `humanInTheLoopMiddleware` interrupts, so such a pause would hang the thread.
-  `toServerConfig` sets `elicitation: false` on every server until it is supported (Deferred).
+- **Elicitation is on.** `toServerConfig` sets `elicitation: true`: v2 raises a server's question
+  as a LangGraph interrupt inside the tool call, which the owner answers on a card in the thread.
+  See [MCP_ELICITATION.md](MCP_ELICITATION.md).
 
 ## Overview
 
@@ -354,6 +354,6 @@ model was offered (see [OBSERVABILITY.md](OBSERVABILITY.md)).
 - Resuming a run after sign-in in place (an interrupt with the authorization URL), instead of
   asking the user to reconnect on the Connections page and ask again.
 - Provider-native tool search (`defer_loading`). The same tool could sit in front of it.
-- MCP elicitation: answering a server's `mcp_elicitation` interrupt in the chat, beside the
-  approval card. Disabled per server until then.
+- Elicitation from servers on the older (2025) protocol, which needs the server's request held
+  open while the owner answers ([MCP_ELICITATION.md](MCP_ELICITATION.md)).
 - Background refresh jobs.

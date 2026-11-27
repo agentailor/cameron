@@ -382,3 +382,100 @@ describe("streamMessages malformed tool calls", () => {
     expect(text).toContain("The call to notes_list_notes had arguments that were not valid JSON");
   });
 });
+
+describe("streamMessages server requests (MCP elicitation)", () => {
+  const mcpCall: ToolCall = {
+    name: "mail_search_threads",
+    args: { query: "in:inbox" },
+    id: "mcp-1",
+    type: "tool_call",
+  };
+  const asked = {
+    interruptId: "int-1",
+    toolCallId: "mcp-1",
+    server: "mail",
+    tool: "search_threads",
+    requests: { choice: { message: "Allow?", requestedSchema: { properties: {} } } },
+  };
+
+  it("reports a call paused on a server question as asking, never as awaiting approval", async () => {
+    const run: AgentRun = {
+      messages: fromArray([aiMessage([""], [mcpCall])]),
+      toolCalls: fromArray([]),
+      values: fromArray([]),
+      output: Promise.resolve({ messages: [] }),
+    };
+
+    const out: MessageResponse[] = [];
+    for await (const chunk of streamMessages(run, { readElicitations: async () => [asked] })) {
+      out.push(chunk);
+    }
+
+    const approvals = out.flatMap(
+      (c) => (c.data as { pendingToolCallIds?: string[] }).pendingToolCallIds ?? [],
+    );
+    expect(approvals).toEqual([]);
+    const marker = out.find(
+      (c) => (c.data as { pendingElicitations?: unknown }).pendingElicitations,
+    );
+    expect((marker!.data as { pendingElicitations: unknown[] }).pendingElicitations).toEqual([
+      asked,
+    ]);
+  });
+
+  it("shows no approval card when the questions cannot be read", async () => {
+    // The run's own output says it paused on a server question, so the call is not an approval.
+    const run: AgentRun = {
+      messages: fromArray([aiMessage([""], [mcpCall])]),
+      toolCalls: fromArray([]),
+      values: fromArray([]),
+      output: Promise.resolve({
+        __interrupt__: [{ id: "int-1", value: { type: "mcp_elicitation" } }],
+      }),
+    };
+    const out: MessageResponse[] = [];
+    const failing = async () => {
+      throw new Error("db down");
+    };
+    for await (const chunk of streamMessages(run, { readElicitations: failing })) out.push(chunk);
+    expect(out.some((c) => (c.data as { pendingToolCallIds?: string[] }).pendingToolCallIds)).toBe(
+      false,
+    );
+  });
+
+  it("still reports a real approval pause when the read fails", async () => {
+    const run: AgentRun = {
+      messages: fromArray([aiMessage([""], [mcpCall])]),
+      toolCalls: fromArray([]),
+      values: fromArray([]),
+      output: Promise.resolve({ __interrupt__: [{ id: "h1", value: { actionRequests: [] } }] }),
+    };
+    const out: MessageResponse[] = [];
+    const failing = async () => {
+      throw new Error("db down");
+    };
+    for await (const chunk of streamMessages(run, { readElicitations: failing })) out.push(chunk);
+    expect(out.some((c) => (c.data as { pendingToolCallIds?: string[] }).pendingToolCallIds)).toBe(
+      true,
+    );
+  });
+});
+
+describe("streamMessages suspended calls", () => {
+  it("sends no result for a call the run ended while it was paused", async () => {
+    // langchain settles a still-pending call at the end of the run with no output.
+    const suspended = {
+      name: "mail_search_threads",
+      callId: "mcp-1",
+      output: Promise.resolve(undefined),
+      status: Promise.resolve("finished"),
+    };
+    const run: AgentRun = {
+      messages: fromArray([]),
+      toolCalls: fromArray([suspended]),
+      values: fromArray([]),
+      output: Promise.resolve({ messages: [] }),
+    };
+    expect((await collect(run)).filter((c) => c.type === "tool")).toEqual([]);
+  });
+});

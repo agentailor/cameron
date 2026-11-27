@@ -2,6 +2,7 @@ import { ToolMessage } from "@langchain/core/messages";
 import type { MessageResponse, ToolCall, ToolMessageData } from "@/types/message";
 import { producesArtifact } from "@/lib/agent/artifactTools";
 import { findInvalidCalls, invalidCallNotice } from "@/lib/agent/invalidCallNotice";
+import type { PendingElicitation } from "@/lib/mcp/elicitation";
 
 /**
  * Turns a LangGraph run's independent projections into the ordered MessageResponse chunks the SSE
@@ -38,7 +39,25 @@ export interface AgentRun {
 // `run.messages` (token-level AI text) and `run.toolCalls` (tool results) are independent async
 // iterables, so we pump both into a shared queue and drain it as MessageResponse chunks until the
 // run settles.
-export function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, void, unknown> {
+/** True when the run's final output says it paused on a connected server's question. */
+export function pausedOnQuestion(output: unknown): boolean {
+  const interrupts = (output as { __interrupt__?: { value?: { type?: unknown } }[] } | null)
+    ?.__interrupt__;
+  return Array.isArray(interrupts) && interrupts.some((i) => i?.value?.type === "mcp_elicitation");
+}
+
+export interface StreamOptions {
+  /**
+   * The server questions the run is paused on, read from the graph once it settles. A call paused
+   * this way also never executed, so without it the call would be reported as awaiting approval.
+   */
+  readElicitations?: () => Promise<PendingElicitation[]>;
+}
+
+export function streamMessages(
+  run: AgentRun,
+  opts: StreamOptions = {},
+): AsyncGenerator<MessageResponse, void, unknown> {
   const queue: MessageResponse[] = [];
   let notify: (() => void) | null = null;
   let done = false;
@@ -54,7 +73,8 @@ export function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, v
   // honest signal for "show the approval buttons", and it is not derivable on the client.
   const requestedCalls = new Map<string, { id: string; name: string }>();
   const executedCallIds = new Set<string>();
-  // Calls whose tool threw. Their result is the error the middleware returned, found in the state.
+  // Calls whose result is read from the state instead: the tool threw (the result is the error
+  // the middleware returned), or the stream settled the call with no output.
   const failedCalls = new Map<string, string>();
 
   // A result can reach us twice (execution stream and state), so each is sent once. Sending one
@@ -142,6 +162,13 @@ export function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, v
         continue;
       }
       const { output } = result;
+      // A call still suspended when the run ends (a server question pausing it) is settled with
+      // no output. It has no result yet; sending "" would close the call and hide the question.
+      // Any real result it has is in the state, which the final pass reads by this name.
+      if (output === undefined) {
+        if (call.callId) failedCalls.set(call.callId, call.name);
+        continue;
+      }
       const content = typeof output === "string" ? output : JSON.stringify(output ?? "");
       // Only wait on tools that actually produce an artifact. `undefined` means BOTH "not yet
       // delivered" and "this tool has none", so waiting whenever it is missing parks the pump on
@@ -179,10 +206,32 @@ export function streamMessages(run: AgentRun): AsyncGenerator<MessageResponse, v
     }
   };
 
+  // A server question gets its own marker chunk: its call may belong to an earlier run's message,
+  // and the client collects markers thread-wide, as it does approval ids.
+  const pushPendingQuestions = async (output: unknown) => {
+    let asked: PendingElicitation[] = [];
+    try {
+      asked = (await opts.readElicitations?.()) ?? [];
+    } catch (error) {
+      console.error("[elicitation] could not read pending requests:", error);
+    }
+    // A run pauses on a server question or on the approval gate, never both. The run's own output
+    // says which, so a failed read above never turns a question into an approval card.
+    if (asked.length === 0 && !pausedOnQuestion(output)) pushPendingApprovals();
+    if (asked.length > 0) {
+      push({
+        type: "ai",
+        data: { id: `elicit-${asked[0].interruptId}`, content: "", pendingElicitations: asked },
+      });
+    }
+  };
+
   const runPromise = Promise.all([pumpMessages(), pumpValues(), pumpToolCalls(), run.output])
     // A snapshot can arrive before its call is known, so check the final state once more.
-    .then(([, , , output]) => pushResultsFrom(output))
-    .then(pushPendingApprovals)
+    .then(async ([, , , output]) => {
+      pushResultsFrom(output);
+      await pushPendingQuestions(output);
+    })
     .catch((e) => {
       failure = e;
     })

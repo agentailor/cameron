@@ -1,3 +1,9 @@
+import type {
+  ElicitationAnswers,
+  ElicitationResponses,
+  PendingElicitation,
+} from "@/lib/mcp/elicitation";
+
 export interface Thread {
   id: string;
   title?: string;
@@ -22,6 +28,8 @@ export interface MessageOptions {
   tools?: string[];
   /** Resume a paused batch: one decision per pending tool call, keyed by call id. */
   decisions?: Record<string, ApprovalDecision>;
+  /** Resume a call a server paused with a question: answers keyed by interrupt id. */
+  answers?: ElicitationAnswers;
   attachments?: FileAttachment[];
   /** Client-only: send into this thread instead of the hook's current one. Never serialized. */
   targetThreadId?: string;
@@ -75,6 +83,11 @@ export interface AIMessageData {
    * the message list is not, since tool results and later AI text arrive after the call.
    */
   pendingToolCallIds?: string[];
+  /**
+   * Questions a connected server asked mid-call (MCP elicitation), sent once the run settles. A
+   * call paused this way already passed the approval gate, so it is never in `pendingToolCallIds`.
+   */
+  pendingElicitations?: PendingElicitation[];
 }
 
 export interface ToolMessageData {
@@ -118,6 +131,17 @@ export interface ToolApprovalCallbacks {
   undecided: number;
   /** Gated calls in the current batch, decided or not. */
   batchSize: number;
+}
+
+/** The chat's side of a server's question (MCP elicitation); see ElicitationCard. */
+export interface ElicitationCallbacks {
+  onAnswer: (interruptId: string, responses: ElicitationResponses) => void;
+  /** Per interrupt id: whether an answer is recorded, and whether it was sent. */
+  answered: Record<string, { sent: boolean }>;
+  /** Questions in this round still without an answer. */
+  unanswered: number;
+  /** A response is streaming; answering waits for it. */
+  busy: boolean;
 }
 
 export interface MessageResponse {

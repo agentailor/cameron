@@ -1,10 +1,15 @@
-import type { MessageResponse, ToolApprovalCallbacks } from "@/types/message";
+import type { ElicitationCallbacks, MessageResponse, ToolApprovalCallbacks } from "@/types/message";
+import type { PendingElicitation } from "@/lib/mcp/elicitation";
 import { HumanMessage } from "./HumanMessage";
 import { AIMessage } from "./AIMessage";
 import { ErrorMessage } from "./ErrorMessage";
 import { useEffect, useMemo, useRef } from "react";
 import { buildThreadItems } from "@/services/toolActivity";
 import dynamic from "next/dynamic";
+
+const ElicitationCard = dynamic(() => import("./ElicitationCard").then((m) => m.ElicitationCard), {
+  ssr: false,
+});
 
 const ToolActivityGroupCard = dynamic(
   () => import("./ToolActivityGroup").then((m) => m.ToolActivityGroupCard),
@@ -21,11 +26,20 @@ const ToolActivityGroupCard = dynamic(
 interface MessageListProps {
   messages: MessageResponse[];
   approvalCallbacks?: ToolApprovalCallbacks;
+  elicitationCallbacks?: ElicitationCallbacks;
+  /** Every waiting server question; one not matched to a call renders after the thread. */
+  elicitations?: PendingElicitation[];
   /** A response is streaming: a call without a result may still be running. */
   isSending?: boolean;
 }
 
-const MessageList = ({ messages, approvalCallbacks, isSending = false }: MessageListProps) => {
+const MessageList = ({
+  messages,
+  approvalCallbacks,
+  elicitationCallbacks,
+  elicitations = [],
+  isSending = false,
+}: MessageListProps) => {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -47,6 +61,7 @@ const MessageList = ({ messages, approvalCallbacks, isSending = false }: Message
               key={item.id}
               activities={item.activities}
               approvalCallbacks={approvalCallbacks}
+              elicitationCallbacks={elicitationCallbacks}
             />
           );
         }
@@ -61,6 +76,16 @@ const MessageList = ({ messages, approvalCallbacks, isSending = false }: Message
         }
         return null;
       })}
+      {elicitationCallbacks &&
+        elicitations
+          .filter((e) => !e.toolCallId)
+          .map((e) => (
+            <ElicitationCard
+              key={`ask-${e.interruptId}`}
+              elicitation={e}
+              callbacks={elicitationCallbacks}
+            />
+          ))}
       <div ref={bottomRef} className="h-px" />
     </div>
   );

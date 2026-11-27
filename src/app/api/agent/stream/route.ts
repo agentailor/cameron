@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { recordRunError, streamResponse } from "@/services/agentService";
 import type { MessageResponse, FileAttachment, ApprovalDecision } from "@/types/message";
-import { ApprovalDecisions } from "./schema";
+import type { ElicitationAnswers } from "@/lib/mcp/elicitation";
+import { ApprovalDecisions, ElicitationAnswersParam } from "./schema";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -54,6 +55,20 @@ export async function GET(req: NextRequest) {
     else decisionsError = "Invalid approval decisions; nothing was resumed.";
   }
 
+  let answers: ElicitationAnswers | undefined;
+  const answersParam = searchParams.get("answers");
+  if (answersParam !== null) {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(answersParam);
+    } catch {
+      raw = undefined;
+    }
+    const parsed = ElicitationAnswersParam.safeParse(raw);
+    if (parsed.success && decisionsParam === null) answers = parsed.data;
+    else decisionsError = "Invalid answers to the server's request; nothing was resumed.";
+  }
+
   // Thread existence handled in service.
 
   const encoder = new TextEncoder();
@@ -78,6 +93,7 @@ export async function GET(req: NextRequest) {
               provider,
               tools,
               decisions,
+              answers,
               attachments,
             },
           });

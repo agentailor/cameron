@@ -452,8 +452,9 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
 - **Adapter is `@langchain/mcp-adapters` 2.x on MCP SDK v2 (`@modelcontextprotocol/client`)**;
   `@modelcontextprotocol/sdk` (v1) is gone, OAuth code included. Tool names are the adapter's
   default `server_tool`, and the disclosure package builds the same names (`prefixedToolName()`),
-  so the connector renames nothing. The one default overridden is elicitation (`elicitation: false`
-  per server — its interrupt is one the approval flow cannot answer, so the thread would hang). v2 config is strict: unknown
+  so the connector renames nothing. Elicitation is on (`elicitation: true` per server): a server's
+  question mid-call is an `mcp_elicitation` interrupt the owner answers on a card, see
+  [docs/MCP_ELICITATION.md](docs/MCP_ELICITATION.md). v2 config is strict: unknown
   keys throw at construction, and stdio `args` is required.
 - Tool names are prefixed `server_tool`; server names are restricted to `[A-Za-z0-9_-]` in the form
   because the prefix becomes part of a provider tool name.
@@ -486,6 +487,28 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   server is removed or turned off, and a call to it returns `server_unavailable`. The logic
   is the workspace package `packages/mcp-disclosure`, which must not import app code or the MCP
   client library; `src/lib/mcp/connector.ts` is the only file using the adapters.
+
+### Server questions (MCP elicitation)
+
+Full detail in [docs/MCP_ELICITATION.md](docs/MCP_ELICITATION.md). The load-bearing invariants:
+
+- **A server's question is not an approval.** It comes during a call the gate already approved. A
+  run pauses on one or the other, never both, and the run's output (`__interrupt__`) says which:
+  on a question, `streamMessages` reports no pending approvals and sends a `pendingElicitations`
+  marker (read via `readElicitations`). The client counts only markers after the owner's last
+  message, clears them once answered, and renders `ElicitationCard` on the matched call.
+- **A suspended call has no result.** langchain settles a call still paused at the end of a run
+  with `undefined` output; `pumpToolCalls` skips it, since `""` would close the call and hide the card.
+- **Answers are refused, never defaulted**: `resolveElicitationAnswers`
+  (`src/services/elicitationAnswers.ts`) checks every answer against the pending questions and
+  their schema before the resume (`answers=` on the stream route, built by `toElicitationResume`).
+- **Declined or dismissed** results get a `[cameron]` note (`elicitationNoteMiddleware`, keyed by
+  call id through the run's `configurable`), because the server's withheld result looks like "no
+  matches".
+- **Grants never answer a question**: a task run pauses with reason `server_request`. The eval
+  runner declines every question (`declineAll`).
+- The server's message is untrusted (it can quote an email subject): the card renders `**bold**`
+  only.
 
 ### Tool Approval Workflow
 

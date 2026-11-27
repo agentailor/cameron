@@ -6,11 +6,19 @@ import { AGENT_RECURSION_LIMIT } from "@/lib/agent/recursion";
  * Pure helpers for running a task on the agent. Free of I/O so they test without a database.
  */
 
-/** Where a run stands once the agent stops: waiting on the approval gate, or finished. */
+const asksForInput = (value: unknown) =>
+  (value as { type?: unknown } | null)?.type === "mcp_elicitation";
+
+/**
+ * Where a run stands once the agent stops: waiting on the approval gate, on a connected server's
+ * question (a grant never answers one), or finished.
+ */
 export function outcomeOf(snapshot: GraphSnapshot): ExecutionOutcome {
   if (readPendingBatch(snapshot).actionRequests.length > 0) {
     return { status: "paused", reason: "approval" };
   }
+  const values = snapshot.tasks?.flatMap((t) => (t.interrupts ?? []).map((i) => i.value)) ?? [];
+  if (values.some(asksForInput)) return { status: "paused", reason: "server_request" };
   const interrupted = snapshot.tasks?.some((t) => (t.interrupts ?? []).length > 0);
   return interrupted ? { status: "paused", reason: "interrupt" } : { status: "done" };
 }

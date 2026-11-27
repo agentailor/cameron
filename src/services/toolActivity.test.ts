@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildThreadItems, pendingApprovalIds, type ToolActivityGroup } from "./toolActivity";
+import {
+  buildThreadItems,
+  pendingApprovalIds,
+  pendingElicitationsIn,
+  type ToolActivityGroup,
+} from "./toolActivity";
 import { summarizeActivities } from "./toolSummary";
 import type { MessageResponse, ToolCall } from "@/types/message";
 
@@ -311,5 +316,50 @@ describe("pendingApprovalIds", () => {
   it("never treats a read-only call as needing approval", () => {
     const messages = [ai("a1", "", [call("run_sql", "c1")]), pendingAi("a1", ["c1"])];
     expect(pendingApprovalIds(messages)).toEqual([]);
+  });
+});
+
+describe("server questions (MCP elicitation)", () => {
+  const question = {
+    interruptId: "int-1",
+    toolCallId: "m1",
+    server: "mail",
+    tool: "search_threads",
+    requests: { choice: { message: "Allow?", requestedSchema: { properties: {} } } },
+  };
+  const marker: MessageResponse = {
+    type: "ai",
+    data: { id: "elicit-int-1", content: "", pendingElicitations: [question] },
+  };
+
+  it("puts the question on its call, never as an approval or an unfinished call", () => {
+    const messages = [
+      ai("a1", "", [call("mail_search_threads", "m1")]),
+      pendingAi("a1", ["m1"]),
+      marker,
+    ];
+    const [activity] = groups(buildThreadItems(messages, { settled: true }))[0].activities;
+    expect(activity.elicitation).toEqual(question);
+    expect(activity.isPending).toBe(false);
+    expect(activity.isUnfinished).toBe(false);
+    expect(pendingApprovalIds(messages)).toEqual([]);
+  });
+
+  it("drops a question the owner moved past with a new message", () => {
+    const later: MessageResponse = { type: "human", data: { id: "h2", content: "never mind" } };
+    const messages = [ai("a1", "", [call("mail_search_threads", "m1")]), marker, later];
+    expect(pendingElicitationsIn(messages)).toEqual([]);
+    const [activity] = groups(buildThreadItems(messages))[0].activities;
+    expect(activity.elicitation).toBeUndefined();
+  });
+
+  it("drops the question once the call has a result", () => {
+    const messages = [
+      ai("a1", "", [call("mail_search_threads", "m1")]),
+      marker,
+      toolResult("m1", "mail_search_threads"),
+    ];
+    const [activity] = groups(buildThreadItems(messages))[0].activities;
+    expect(activity.elicitation).toBeUndefined();
   });
 });

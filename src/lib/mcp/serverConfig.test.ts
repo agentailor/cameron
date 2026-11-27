@@ -38,7 +38,7 @@ describe("toServerConfig", () => {
       command: "npx",
       args: ["-y", "pkg"],
       env: { TOKEN: "x" },
-      elicitation: false,
+      elicitation: true,
     });
   });
 
@@ -50,7 +50,7 @@ describe("toServerConfig", () => {
       transport: "http",
       url: "https://x.dev/mcp",
       headers: { A: "b" },
-      elicitation: false,
+      elicitation: true,
     });
   });
 
