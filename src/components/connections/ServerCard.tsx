@@ -17,6 +17,7 @@ interface ServerCardProps {
   onToggle: (enabled: boolean) => void;
   onDelete: () => Promise<unknown>;
   onOAuthChecked: () => void;
+  callbackUrl: string | null;
 }
 
 type Mode = "view" | "edit" | "confirm-delete";
@@ -34,6 +35,7 @@ export function ServerCard({
   onToggle,
   onDelete,
   onOAuthChecked,
+  callbackUrl,
 }: ServerCardProps) {
   const [mode, setMode] = useState<Mode>("view");
   const [busy, setBusy] = useState<"delete" | "oauth" | null>(null);
@@ -41,10 +43,15 @@ export function ServerCard({
 
   const input = inputFromServer(server);
   const target = server.type === "stdio" ? [input.command, ...input.args].join(" ") : input.url;
-  const secrets = countLabel(
-    Object.keys(server.type === "stdio" ? input.env : input.headers).length,
-    server.type === "stdio" ? "env var" : "header",
-  );
+  const secrets = [
+    countLabel(
+      Object.keys(server.type === "stdio" ? input.env : input.headers).length,
+      server.type === "stdio" ? "env var" : "header",
+    ),
+    server.type === "http" && server.oauthClient ? "own OAuth client" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const remove = async () => {
     setBusy("delete");
@@ -153,6 +160,7 @@ export function ServerCard({
               initial={input}
               existingNames={otherNames}
               submitLabel="Save changes"
+              callbackUrl={callbackUrl}
               onSave={async (next) => {
                 await onUpdate(next);
                 setMode("view");

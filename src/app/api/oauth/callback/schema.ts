@@ -3,18 +3,17 @@ import { registry } from "@/lib/api/openapi/registry";
 
 registry.registerPath({
   method: "get",
-  path: "/api/oauth/callback/{serverId}",
+  path: "/api/oauth/callback",
   operationId: "oauthCallback",
   summary: "OAuth callback",
   description:
-    "OAuth redirect target. Exchanges the authorization code for tokens, then redirects to the " +
-    "app root with `?oauth_success=true&server=<name>` on success or `?oauth_error=<message>` on failure.",
+    "The single OAuth redirect URI for every MCP server; `state` identifies the server and is " +
+    "single-use. Exchanges the authorization code for tokens, then redirects to the app root " +
+    "with `?oauth_success=true&server=<name>` on success or `?oauth_error=<message>` on failure.",
   tags: ["OAuth"],
   request: {
-    params: z.object({
-      serverId: z.string().openapi({ description: "MCP server id" }),
-    }),
     query: z.object({
+      state: z.string().optional().openapi({ description: "The state Cameron sent" }),
       code: z.string().optional().openapi({ description: "Authorization code from the provider" }),
       error: z.string().optional().openapi({ description: "OAuth error code" }),
       error_description: z.string().optional().openapi({ description: "OAuth error detail" }),

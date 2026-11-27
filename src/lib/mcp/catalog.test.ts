@@ -41,7 +41,9 @@ const server: MCPServer = {
   authTokens: null,
   clientInfo: null,
   codeVerifier: null,
+  oauthState: null,
   oauthStatus: null,
+  oauthClient: null,
   createdAt: new Date(0),
   updatedAt: new Date(0),
 };

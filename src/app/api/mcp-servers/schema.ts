@@ -4,6 +4,36 @@ import { ErrorResponse, SuccessResponse } from "@/lib/api/openapi/common";
 
 const ServerType = z.enum(["stdio", "http"]);
 
+// A pre-registered OAuth client, for servers that don't support dynamic client registration.
+export const OAuthClientBody = z
+  .object({
+    clientId: z.string().trim().min(1),
+    clientSecret: z
+      .string()
+      .nullable()
+      .optional()
+      .openapi({ description: "Set to replace, null to remove, omit to keep the stored one" }),
+    scope: z
+      .union([z.string(), z.array(z.string())])
+      .nullable()
+      .optional()
+      .openapi({ description: "Space-separated string or list" }),
+    authorizationParams: z
+      .record(z.string(), z.string())
+      .optional()
+      .openapi({ description: "Extra authorization URL parameters, e.g. access_type=offline" }),
+  })
+  .openapi("OAuthClientBody");
+
+const PublicOAuthClient = z
+  .object({
+    clientId: z.string(),
+    hasSecret: z.boolean(),
+    scope: z.string().nullable(),
+    authorizationParams: z.record(z.string(), z.string()),
+  })
+  .openapi("OAuthClient");
+
 // Response shape mirrors the MCPServer domain object returned by the handlers.
 export const MCPServerResponse = z
   .object({
@@ -19,6 +49,7 @@ export const MCPServerResponse = z
     headers: z.record(z.string(), z.string()).nullable().optional(),
     requiresAuth: z.boolean().nullable().optional(),
     oauthStatus: z.string().nullable().optional(),
+    oauthClient: PublicOAuthClient.nullable().optional(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
@@ -42,6 +73,7 @@ export const CreateMCPServerBody = z
       type: z.literal("http"),
       url: z.string().url(),
       headers: z.record(z.string(), z.string()).optional(),
+      oauthClient: OAuthClientBody.nullable().optional(),
     }),
   ])
   .openapi("CreateMCPServerBody");
@@ -58,6 +90,9 @@ export const UpdateMCPServerBody = z
     env: z.record(z.string(), z.string()).optional(),
     url: z.string().url().optional(),
     headers: z.record(z.string(), z.string()).optional(),
+    oauthClient: OAuthClientBody.nullable()
+      .optional()
+      .openapi({ description: "null removes the client; omit to leave it unchanged" }),
   })
   .openapi("UpdateMCPServerBody");
 
