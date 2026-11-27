@@ -7,7 +7,7 @@ export interface StdioMCPServerConfig {
   command: string;
   args: string[];
   env?: Record<string, string>;
-  elicitation: false;
+  elicitation: true;
 }
 
 export interface HttpMCPServerConfig {
@@ -15,7 +15,7 @@ export interface HttpMCPServerConfig {
   url: string;
   headers?: Record<string, string>;
   authProvider?: OAuthClientProvider;
-  elicitation: false;
+  elicitation: true;
 }
 
 export type MCPServerConfig = StdioMCPServerConfig | HttpMCPServerConfig;
@@ -31,7 +31,8 @@ export function usesOAuth(server: MCPServer): boolean {
  * Turns a stored row into an MCPAdapter connection config, or null when the row is missing its
  * command/url. Shared by the agent and the per-server tools probe so both connect the same way.
  * `authProvider` is injected to keep this module free of the database.
- * Elicitation is off: its interrupt is one the approval flow cannot answer.
+ * Elicitation is on: a server question pauses the call until the owner answers it
+ * (docs/MCP_ELICITATION.md).
  */
 export function toServerConfig(
   server: MCPServer,
@@ -43,14 +44,14 @@ export function toServerConfig(
       transport: "stdio",
       command: server.command,
       args: args.filter((arg): arg is string => typeof arg === "string"),
-      elicitation: false,
+      elicitation: true,
     };
     if (isRecord(server.env)) config.env = server.env as Record<string, string>;
     return config;
   }
 
   if (server.type === "http" && server.url) {
-    const config: HttpMCPServerConfig = { transport: "http", url: server.url, elicitation: false };
+    const config: HttpMCPServerConfig = { transport: "http", url: server.url, elicitation: true };
     if (isRecord(server.headers)) config.headers = server.headers as Record<string, string>;
     if (authProvider && usesOAuth(server)) config.authProvider = authProvider(server);
     return config;

@@ -68,6 +68,9 @@ to show it). Many servers don't set it, so the page warns rather than refuses.
   continued turn is still the task's work: `streamResponse` takes the run's grants from the thread
   (`grantsForThread`). Never from the request: `approvalGate.test.ts` pins that the stream route
   and `MessageOptions` can't carry them. Ordinary chat has none.
+- **A grant never answers a server's question.** A granted MCP call skips the approval gate, but
+  a question its server asks mid-call (MCP elicitation) still pauses the run, with reason
+  `server_request`. See [MCP_ELICITATION.md](MCP_ELICITATION.md).
 
 ## Mixed steps
 

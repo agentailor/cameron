@@ -6,7 +6,7 @@ import { useThreads } from "@/hooks/useThreads";
 import { Loader2 } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { MessageOptions, ToolApprovalCallbacks } from "@/types/message";
+import type { ElicitationCallbacks, MessageOptions, ToolApprovalCallbacks } from "@/types/message";
 import { useModelSettings } from "@/hooks/useModelSettings";
 import { NotConfiguredNotice } from "./NotConfiguredNotice";
 import { deriveThreadTitle } from "@/lib/format/threadTitle";
@@ -30,6 +30,9 @@ export const Thread = ({ threadId }: ThreadProps) => {
     undoToolDecision,
     decisions,
     batchIds,
+    elicitations,
+    answerElicitation,
+    elicitationAnswers,
   } = useChatThread({ threadId: activeId });
   const approvalCallbacks = useMemo<ToolApprovalCallbacks>(
     () => ({
@@ -41,6 +44,15 @@ export const Thread = ({ threadId }: ThreadProps) => {
       batchSize: batchIds.length,
     }),
     [decideToolCall, undoToolDecision, decisions, batchIds],
+  );
+  const elicitationCallbacks = useMemo<ElicitationCallbacks>(
+    () => ({
+      onAnswer: answerElicitation,
+      answered: elicitationAnswers,
+      unanswered: elicitations.filter((e) => !elicitationAnswers[e.interruptId]).length,
+      busy: isSending,
+    }),
+    [answerElicitation, elicitationAnswers, elicitations, isSending],
   );
   const { createThread } = useThreads();
   const { settings } = useModelSettings();
@@ -91,6 +103,8 @@ export const Thread = ({ threadId }: ThreadProps) => {
                 <MessageList
                   messages={messages}
                   approvalCallbacks={approvalCallbacks}
+                  elicitationCallbacks={elicitationCallbacks}
+                  elicitations={elicitations}
                   isSending={isSending}
                 />
               </div>

@@ -6,6 +6,14 @@ import { getHistory, getPendingInterrupts } from "@/lib/agent/memory";
 import { HumanMessage } from "@langchain/core/messages";
 import type { Command } from "@langchain/langgraph";
 import { readPendingBatch, resolveDecisions, toResumeCommand } from "./approvalDecisions";
+import {
+  readPendingElicitations,
+  resolveElicitationAnswers,
+  toElicitationResume,
+  type RawInterrupt,
+} from "./elicitationAnswers";
+import type { ElicitationAction, ElicitationAnswers } from "@/lib/mcp/elicitation";
+import { ELICITATION_OUTCOMES_KEY } from "@/lib/agent/elicitationNotes";
 import { processAttachmentsForAI } from "@/lib/storage/content";
 import { streamMessages, type AgentRun } from "./messageStream";
 import { markPendingCalls, projectHistory } from "./historyProjection";
@@ -39,20 +47,55 @@ export async function streamResponse(params: {
     preApprovedTools: await grantsForThread(threadId),
   });
 
+  // A pending approval or server question resumes its interrupt; otherwise start a fresh turn.
+  let inputs: unknown;
+  let outcomes: Record<string, ElicitationAction> = {};
+  if (opts?.answers) {
+    const resumed = await buildElicitationResume(agent, threadId, opts.answers);
+    inputs = resumed.command;
+    outcomes = resumed.outcomes;
+  } else if (opts?.decisions) {
+    inputs = await buildResumeCommand(agent, threadId, opts.decisions);
+  } else {
+    inputs = {
+      messages: [new HumanMessage({ content: await buildMessageContent(userText, opts) })],
+    };
+  }
+
   const config = {
     version: "v3" as const,
-    configurable: { thread_id: threadId },
+    // The owner's answers per call, read by elicitationNoteMiddleware when the result comes back.
+    configurable: { thread_id: threadId, [ELICITATION_OUTCOMES_KEY]: outcomes },
     ...(tracingEnabled() ? { callbacks: [new GenAiTracer()] } : {}),
   };
 
-  // A pending approval resumes the interrupt; otherwise start a fresh turn from the user message.
-  const inputs = opts?.decisions
-    ? await buildResumeCommand(agent, threadId, opts.decisions)
-    : { messages: [new HumanMessage({ content: await buildMessageContent(userText, opts) })] };
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const run = (await agent.streamEvents(inputs as any, config)) as unknown as AgentRun;
-  return withTaskSync(streamMessages(run), agent, threadId);
+  const readElicitations = () => pendingElicitationsOf(agent, threadId);
+  return withTaskSync(streamMessages(run, { readElicitations }), agent, threadId);
+}
+
+/** The server questions a thread is paused on, from the graph's own state. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function pendingElicitationsOf(agent: any, threadId: string) {
+  const snapshot = await agent.graph.getState({ configurable: { thread_id: threadId } });
+  const interrupts: RawInterrupt[] = (snapshot.tasks ?? []).flatMap(
+    (t: { interrupts?: RawInterrupt[] }) => t.interrupts ?? [],
+  );
+  return readPendingElicitations(interrupts, snapshot.values?.messages ?? []);
+}
+
+// Same shape as buildResumeCommand: read what is pending, refuse anything that does not match it.
+async function buildElicitationResume(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  agent: any,
+  threadId: string,
+  answers: ElicitationAnswers,
+) {
+  const pending = await pendingElicitationsOf(agent, threadId);
+  const resolved = resolveElicitationAnswers({ pending, answers });
+  if (!resolved.ok) throw new Error(resolved.error);
+  return { command: toElicitationResume(resolved.resume), outcomes: resolved.outcomes };
 }
 
 /** Once the turn has streamed, a task run whose thread this is records where it now stands. */
@@ -131,7 +174,14 @@ export async function fetchThreadHistory(threadId: string): Promise<MessageRespo
     ]);
     const batch = readPendingBatch({ tasks: [{ interrupts }], values: { messages: history } });
     const pendingIds = batch.actionRequests.length > 0 ? batch.pausedCalls.map((c) => c.id) : [];
+    const asked = readPendingElicitations(interrupts as RawInterrupt[], history);
     const messages = markPendingCalls(projectHistory(history), pendingIds);
+    if (asked.length > 0) {
+      messages.push({
+        type: "ai",
+        data: { id: `elicit-${asked[0].interruptId}`, content: "", pendingElicitations: asked },
+      });
+    }
     // Cleared when the next run starts, so a saved failure is always about the end of the thread.
     const runError = await threadRepo.getRunError(threadId);
     return runError ? [...messages, runErrorMessage(runError)] : messages;

@@ -313,3 +313,40 @@ describe("pendingApprovalIds", () => {
     expect(pendingApprovalIds(messages)).toEqual([]);
   });
 });
+
+describe("server questions (MCP elicitation)", () => {
+  const question = {
+    interruptId: "int-1",
+    toolCallId: "m1",
+    server: "mail",
+    tool: "search_threads",
+    requests: { choice: { message: "Allow?", requestedSchema: { properties: {} } } },
+  };
+  const marker: MessageResponse = {
+    type: "ai",
+    data: { id: "elicit-int-1", content: "", pendingElicitations: [question] },
+  };
+
+  it("puts the question on its call, never as an approval or an unfinished call", () => {
+    const messages = [
+      ai("a1", "", [call("mail_search_threads", "m1")]),
+      pendingAi("a1", ["m1"]),
+      marker,
+    ];
+    const [activity] = groups(buildThreadItems(messages, { settled: true }))[0].activities;
+    expect(activity.elicitation).toEqual(question);
+    expect(activity.isPending).toBe(false);
+    expect(activity.isUnfinished).toBe(false);
+    expect(pendingApprovalIds(messages)).toEqual([]);
+  });
+
+  it("drops the question once the call has a result", () => {
+    const messages = [
+      ai("a1", "", [call("mail_search_threads", "m1")]),
+      marker,
+      toolResult("m1", "mail_search_threads"),
+    ];
+    const [activity] = groups(buildThreadItems(messages))[0].activities;
+    expect(activity.elicitation).toBeUndefined();
+  });
+});

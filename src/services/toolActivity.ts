@@ -1,4 +1,5 @@
-import type { MessageResponse, ToolCall } from "@/types/message";
+import type { AIMessageData, MessageResponse, ToolCall } from "@/types/message";
+import type { PendingElicitation } from "@/lib/mcp/elicitation";
 import { requiresApproval } from "@/lib/agent/gatedTools";
 import { linkPreviews } from "./editPreview";
 import { linkDocumentReadings } from "./documentPreview";
@@ -30,6 +31,8 @@ export interface ToolActivity {
   isUnfinished: boolean;
   /** Pauses for approval, per `requiresApproval`: built-in writes and every MCP tool. */
   isGated: boolean;
+  /** A question the call's server asked mid-call, waiting for the owner. */
+  elicitation?: PendingElicitation;
   /**
    * For a transaction edit: the validation result previewing exactly this plan, or null if there
    * is none. Unset for every other tool. See editPreview.ts.
@@ -65,6 +68,9 @@ function mergeInto(target: MessageResponse, extra: MessageResponse): void {
   }
   if (Array.isArray(from.pendingToolCallIds) && from.pendingToolCallIds.length > 0) {
     into.pendingToolCallIds = from.pendingToolCallIds;
+  }
+  if (Array.isArray(from.pendingElicitations) && from.pendingElicitations.length > 0) {
+    into.pendingElicitations = from.pendingElicitations;
   }
   if (typeof from.content === "string" && from.content.trim() !== "" && !into.content) {
     into.content = from.content;
@@ -132,6 +138,9 @@ export function buildThreadItems(
     }
   }
 
+  const asking = new Map<string, PendingElicitation>();
+  for (const e of pendingElicitationsIn(messages)) if (e.toolCallId) asking.set(e.toolCallId, e);
+
   const items: ThreadItem[] = [];
   let openGroup: ToolActivityGroup | null = null;
 
@@ -178,7 +187,7 @@ export function buildThreadItems(
 
       for (const call of toolCalls) {
         pushActivity(
-          toActivity(call, resultsByCallId, pendingCallIds, opts.settled ?? false),
+          toActivity(call, resultsByCallId, pendingCallIds, asking, opts.settled ?? false),
           `tools-${message.data?.id || index}`,
         );
       }
@@ -201,20 +210,39 @@ function toActivity(
   call: ToolCall,
   resultsByCallId: Map<string, MessageResponse>,
   pending: Set<string>,
+  asking: Map<string, PendingElicitation>,
   settled: boolean,
 ): ToolActivity {
   const result = resultsByCallId.get(call.id) ?? null;
   // A result settles the question: a call that ran is no longer awaiting a decision.
-  const isPending = result === null && pending.has(call.id);
+  const elicitation = result === null ? asking.get(call.id) : undefined;
+  const isPending = result === null && !elicitation && pending.has(call.id);
   return {
     callId: call.id,
     name: call.name,
     args: call.args ?? {},
     result,
     isPending,
-    isUnfinished: settled && result === null && !isPending,
+    isUnfinished: settled && result === null && !isPending && !elicitation,
     isGated: requiresApproval(call.name),
+    ...(elicitation ? { elicitation } : {}),
   };
+}
+
+/**
+ * Server questions in the thread, latest per interrupt. Collected thread-wide like approval ids:
+ * the marker is its own message, and its call can sit on an earlier run's message.
+ */
+export function pendingElicitationsIn(messages: MessageResponse[]): PendingElicitation[] {
+  const latest = new Map<string, PendingElicitation>();
+  for (const message of messages) {
+    if (message.type !== "ai") continue;
+    for (const e of (message.data as AIMessageData).pendingElicitations ?? []) {
+      latest.delete(e.interruptId);
+      latest.set(e.interruptId, e);
+    }
+  }
+  return [...latest.values()];
 }
 
 /** Ids of the gated calls awaiting a human decision, in thread order. */

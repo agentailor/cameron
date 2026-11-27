@@ -175,7 +175,7 @@ const ThreadLink = ({ run, children }: { run: TaskRunView; children: React.React
     <span>{children}</span>
   );
 
-/** Runs paused on the approval gate: the one thing on this page that needs the owner. */
+/** Runs paused on the owner (an approval, or a server's question): the one thing needing them. */
 const WaitingForYou = ({ runs }: { runs: TaskRunView[] }) => {
   if (runs.length === 0) return null;
   return (
@@ -192,6 +192,9 @@ const WaitingForYou = ({ runs }: { runs: TaskRunView[] }) => {
               <div className="text-muted-foreground font-mono text-[11px]">
                 started {when(run.startedAt)}
                 {run.pauseReason === "approval" ? " · an action needs your approval" : ""}
+                {run.pauseReason === "server_request"
+                  ? " · a connected server is asking for your permission"
+                  : ""}
               </div>
             </div>
             {run.threadId && (

@@ -8,6 +8,15 @@ import {
   type GraphSnapshot,
   type PendingBatch,
 } from "../src/services/approvalDecisions.ts";
+import {
+  declineAll,
+  readPendingElicitations,
+  resolveElicitationAnswers,
+  toElicitationResume,
+  type RawInterrupt,
+} from "../src/services/elicitationAnswers.ts";
+import type { PendingElicitation } from "../src/lib/mcp/elicitation.ts";
+import { ELICITATION_OUTCOMES_KEY } from "../src/lib/agent/elicitationNotes.ts";
 import { LIMITS } from "./config.mts";
 import { runSimulatedConversation } from "./simulatedUser.mts";
 import type {
@@ -76,6 +85,16 @@ function lastAssistantText(messages: BaseMessage[]): string {
 async function pendingBatch(agent: Agent, threadId: string): Promise<PendingBatch> {
   const snapshot = await agent.graph.getState({ configurable: { thread_id: threadId } });
   return readPendingBatch(snapshot as GraphSnapshot);
+}
+
+/** A connected server's questions, read the way the app reads them. */
+async function pendingElicitations(agent: Agent, threadId: string): Promise<PendingElicitation[]> {
+  const snapshot = (await agent.graph.getState({ configurable: { thread_id: threadId } })) as {
+    tasks?: { interrupts?: RawInterrupt[] }[];
+    values?: { messages?: BaseMessage[] };
+  };
+  const interrupts = (snapshot.tasks ?? []).flatMap((t) => t.interrupts ?? []);
+  return readPendingElicitations(interrupts, snapshot.values?.messages ?? []);
 }
 
 const callsOf = (batch: PendingBatch): ToolCall[] =>
@@ -194,6 +213,23 @@ export async function runCase(agentFor: AgentFactory, testCase: EvalCase): Promi
 
         // Still pending: the agent is waiting, not finished — a distinction `trajectory` can't make.
         pausedAtEnd = batch.actionRequests.length > 0;
+      }
+
+      // No one is here to answer a server's question, so every one is declined: the thread must
+      // never be left paused on one. Approvals the agent asks for afterwards are not re-answered.
+      for (let guard = 0; guard < LIMITS.recursionLimit; guard++) {
+        const asked = await pendingElicitations(agent, threadId);
+        if (asked.length === 0) break;
+        const resolved = resolveElicitationAnswers({ pending: asked, answers: declineAll(asked) });
+        if (!resolved.ok) throw new Error(`elicitation decline refused: ${resolved.error}`);
+        result = await agent.invoke(toElicitationResume(resolved.resume), {
+          ...config,
+          configurable: { ...config.configurable, [ELICITATION_OUTCOMES_KEY]: resolved.outcomes },
+        });
+        fresh = result.messages.slice(seen);
+        take(fresh);
+        seen = result.messages.length;
+        turnText = lastAssistantText(fresh) || turnText;
       }
 
       return turnText;

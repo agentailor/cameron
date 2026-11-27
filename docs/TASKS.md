@@ -111,6 +111,10 @@ A paused thread shows its approval card on reload because `fetchThreadHistory` r
 `markPendingCalls`). Before this, the ids existed only on the live stream, so a paused thread
 opened later had no buttons; chat threads get the same fix.
 
+A run can also pause on a connected server's question (MCP elicitation), with reason
+`server_request`; `/tasks` says a server is asking for permission, and the thread shows the
+server's card instead of the approval card ([MCP_ELICITATION.md](MCP_ELICITATION.md)).
+
 ## The loop
 
 `src/instrumentation.node.ts` starts it at server start (Node runtime only). One scheduler per

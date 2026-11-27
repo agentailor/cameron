@@ -8,7 +8,8 @@ import type {
   RecordedDecision,
 } from "@/types/message";
 import { createMessageStream, fetchMessageHistory } from "@/services/chatService";
-import { pendingApprovalIds } from "@/services/toolActivity";
+import { pendingApprovalIds, pendingElicitationsIn } from "@/services/toolActivity";
+import type { ElicitationResponses, PendingElicitation } from "@/lib/mcp/elicitation";
 import { runErrorMessage, type RunError } from "@/lib/agent/runErrors";
 
 interface UseChatThreadOptions {
@@ -29,6 +30,17 @@ export interface UseChatThreadReturn {
   decisions: Record<string, RecordedDecision>;
   /** The gated calls in the batch still to be sent, decided or not. */
   batchIds: string[];
+  /** Server questions waiting for the owner, answered or not. */
+  elicitations: PendingElicitation[];
+  /** Record one question's answers; they are sent once every waiting question has one. */
+  answerElicitation: (interruptId: string, responses: ElicitationResponses) => void;
+  elicitationAnswers: Record<string, RecordedAnswer>;
+}
+
+export interface RecordedAnswer {
+  responses: ElicitationResponses;
+  /** Sent to the server; no longer changeable. */
+  sent: boolean;
 }
 
 export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThreadReturn {
@@ -38,6 +50,7 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
   const [sendError, setSendError] = useState<Error | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [decisions, setDecisions] = useState<Record<string, RecordedDecision>>({});
+  const [elicitationAnswers, setElicitationAnswers] = useState<Record<string, RecordedAnswer>>({});
 
   const {
     data: messages = [],
@@ -93,6 +106,14 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
             // Extract the data from the MessageResponse
             const data = messageResponse.data as AIMessageData;
 
+            // A server can ask again under the same interrupt id; an earlier answer is not this one.
+            const asked = data.pendingElicitations?.map((e) => e.interruptId);
+            if (asked?.length) {
+              setElicitationAnswers((d) =>
+                Object.fromEntries(Object.entries(d).filter(([id]) => !asked.includes(id))),
+              );
+            }
+
             // First chunk for this response id: create a new message entry
             if (!currentMessageRef.current || currentMessageRef.current.data.id !== data.id) {
               currentMessageRef.current = messageResponse;
@@ -117,6 +138,9 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
                   ...(data.tool_calls && { tool_calls: data.tool_calls }),
                   ...(data.pendingToolCallIds && {
                     pendingToolCallIds: data.pendingToolCallIds,
+                  }),
+                  ...(data.pendingElicitations && {
+                    pendingElicitations: data.pendingElicitations,
                   }),
                   ...(data.additional_kwargs && { additional_kwargs: data.additional_kwargs }),
                   ...(data.response_metadata && { response_metadata: data.response_metadata }),
@@ -258,6 +282,40 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
     [threadId, isSending, batchIds, decisions, handleStreamResponse],
   );
 
+  // Questions still to answer: an answered one stays recorded until the server asks again.
+  const elicitations = useMemo(() => pendingElicitationsIn(messages), [messages]);
+  const waitingIds = useMemo(
+    () => elicitations.map((e) => e.interruptId).filter((id) => !elicitationAnswers[id]?.sent),
+    [elicitations, elicitationAnswers],
+  );
+
+  const answerElicitation = useCallback(
+    (interruptId: string, responses: ElicitationResponses) => {
+      if (!threadId || isSending || !waitingIds.includes(interruptId)) return;
+      const next = { ...elicitationAnswers, [interruptId]: { responses, sent: false } };
+      if (!waitingIds.every((id) => next[id])) {
+        setElicitationAnswers(next);
+        return;
+      }
+      const answers = Object.fromEntries(waitingIds.map((id) => [id, next[id].responses]));
+      setElicitationAnswers({
+        ...next,
+        ...Object.fromEntries(waitingIds.map((id) => [id, { responses: answers[id], sent: true }])),
+      });
+      void handleStreamResponse({
+        threadId,
+        text: "",
+        opts: { answers },
+        // Refused or failed: nothing resumed, so the questions are unanswered again.
+        onError: () =>
+          setElicitationAnswers((d) =>
+            Object.fromEntries(Object.entries(d).filter(([id]) => !waitingIds.includes(id))),
+          ),
+      });
+    },
+    [threadId, isSending, waitingIds, elicitationAnswers, handleStreamResponse],
+  );
+
   const undoToolDecision = useCallback((toolCallId: string) => {
     setDecisions((d) => {
       if (!d[toolCallId] || d[toolCallId].sent) return d;
@@ -290,5 +348,8 @@ export function useChatThread({ threadId }: UseChatThreadOptions): UseChatThread
     undoToolDecision,
     decisions,
     batchIds,
+    elicitations,
+    answerElicitation,
+    elicitationAnswers,
   };
 }

@@ -22,6 +22,19 @@ describe("outcomeOf", () => {
     expect(outcomeOf(pausedOn("log_expense"))).toEqual({ status: "paused", reason: "approval" });
   });
 
+  it("is paused on a server's question, even for a granted tool", () => {
+    const snapshot = {
+      tasks: [
+        {
+          interrupts: [
+            { value: { type: "mcp_elicitation", server: "mail", tool: "search", requests: {} } },
+          ],
+        },
+      ],
+    };
+    expect(outcomeOf(snapshot)).toEqual({ status: "paused", reason: "server_request" });
+  });
+
   it("is paused, not done, on any other interrupt", () => {
     expect(outcomeOf({ tasks: [{ interrupts: [{ value: "something else" }] }] })).toEqual({
       status: "paused",

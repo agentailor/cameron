@@ -2,7 +2,12 @@
 
 import React, { useState } from "react";
 import { ChevronDown, ChevronRight, Check, X, Lock } from "lucide-react";
-import type { RecordedDecision, ToolApprovalCallbacks } from "@/types/message";
+import type {
+  ElicitationCallbacks,
+  RecordedDecision,
+  ToolApprovalCallbacks,
+} from "@/types/message";
+import { ElicitationCard } from "./ElicitationCard";
 import type { ToolActivity } from "@/services/toolActivity";
 import { summarizeActivities, summarizeResult } from "@/services/toolSummary";
 import { ToolArgs, ToolResult, renderersFor } from "./toolRenderers";
@@ -191,9 +196,11 @@ const ActivityDetail = ({
         <span className="text-muted-foreground font-mono text-[11px]">
           {activity.isPending
             ? "awaiting approval"
-            : activity.isUnfinished
-              ? "did not finish: the run stopped before this returned"
-              : "running…"}
+            : activity.elicitation
+              ? "waiting for your answer to the server"
+              : activity.isUnfinished
+                ? "did not finish: the run stopped before this returned"
+                : "running…"}
         </span>
       )}
     </div>
@@ -203,11 +210,13 @@ const ActivityDetail = ({
 interface ToolActivityGroupProps {
   activities: ToolActivity[];
   approvalCallbacks?: ToolApprovalCallbacks;
+  elicitationCallbacks?: ElicitationCallbacks;
 }
 
 export const ToolActivityGroupCard = ({
   activities,
   approvalCallbacks,
+  elicitationCallbacks,
 }: ToolActivityGroupProps) => {
   const [open, setOpen] = useState(false);
 
@@ -223,8 +232,12 @@ export const ToolActivityGroupCard = ({
   // A result the user is asked to review (a delete preview) is not machinery either.
   const shown = activities.filter((a) => isShown(a));
   const shownIds = new Set(shown.map((a) => a.callId));
+  // A server's question is never collapsed either: the call cannot finish without an answer.
+  const asking = elicitationCallbacks ? activities.filter((a) => a.elicitation) : [];
+  const askingIds = new Set(asking.map((a) => a.callId));
   const collapsible = activities.filter(
-    (a) => !isGated(a) && !drawn.has(a.callId) && !shownIds.has(a.callId),
+    (a) =>
+      !isGated(a) && !drawn.has(a.callId) && !shownIds.has(a.callId) && !askingIds.has(a.callId),
   );
 
   return (
@@ -279,6 +292,14 @@ export const ToolActivityGroupCard = ({
 
       {gated.map((activity) => (
         <ApprovalGate key={activity.callId} activity={activity} callbacks={approvalCallbacks!} />
+      ))}
+
+      {asking.map((activity) => (
+        <ElicitationCard
+          key={`ask-${activity.elicitation!.interruptId}`}
+          elicitation={activity.elicitation!}
+          callbacks={elicitationCallbacks!}
+        />
       ))}
     </div>
   );
