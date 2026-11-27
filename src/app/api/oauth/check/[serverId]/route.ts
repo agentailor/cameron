@@ -6,7 +6,10 @@ import {
   isTokenExpired,
   OAuthStatus,
 } from "@/lib/mcp/oauth-detection";
-import type { OAuthStatus as OAuthStatusType } from "@/lib/mcp/oauth-detection";
+import type {
+  OAuthDetectionResult,
+  OAuthStatus as OAuthStatusType,
+} from "@/lib/mcp/oauth-detection";
 import { ServerOAuthProvider } from "@/lib/mcp/oauth-provider";
 import { auth } from "@modelcontextprotocol/client";
 
@@ -67,9 +70,12 @@ export async function GET(
     await updateServerOAuthStatus(serverId, OAuthStatus.EXPIRED);
   }
 
-  // Detect if server requires OAuth
+  // A configured client says OAuth is required; probing can't, since some servers answer
+  // everything but tool calls without credentials.
   const serverUrl = server.url!;
-  const detection = await detectOAuthRequirement(serverUrl);
+  const detection: OAuthDetectionResult = server.oauthClient
+    ? { requiresAuth: true }
+    : await detectOAuthRequirement(serverUrl);
 
   if (!detection.requiresAuth) {
     await updateServerOAuthStatus(serverId, OAuthStatus.NOT_REQUIRED);
@@ -83,14 +89,15 @@ export async function GET(
 
   await updateServerOAuthStatus(serverId, OAuthStatus.REQUIRED);
 
-  const authProvider = new ServerOAuthProvider(serverId, server.name);
+  const authProvider = new ServerOAuthProvider(server);
 
   try {
     // The SDK runs discovery, scope selection, registration and PKCE, so the authorization
-    // request matches what its token exchange in the callback expects.
+    // request matches what its token exchange in the callback expects. A configured scope is
+    // passed here because the SDK prefers the server's advertised scopes to the client metadata.
     const result = await auth(authProvider, {
       serverUrl,
-      scope: detection.scope,
+      scope: authProvider.requestedScope ?? detection.scope,
       resourceMetadataUrl: toUrl(detection.resourceMetadataUrl),
     });
 

@@ -3,10 +3,13 @@ import {
   draftFromInput,
   emptyDraft,
   inputFromDraft,
+  keepStoredSecret,
   parseServerConfig,
   serializeServers,
   splitCommandLine,
+  toRequestBody,
   validateDraft,
+  type OAuthClientInput,
   type ParseResult,
   type ServerInput,
 } from "./configParse";
@@ -19,6 +22,7 @@ const stdio = (overrides: Partial<ServerInput> = {}): ServerInput => ({
   env: { ROOT: "/data" },
   url: "",
   headers: {},
+  oauth: null,
   ...overrides,
 });
 
@@ -30,6 +34,7 @@ const http = (overrides: Partial<ServerInput> = {}): ServerInput => ({
   env: {},
   url: "https://docs.example.com/mcp",
   headers: { Authorization: "Bearer t" },
+  oauth: null,
   ...overrides,
 });
 
@@ -225,5 +230,102 @@ describe("splitCommandLine", () => {
       String.raw`C:\My Files`,
       'say "hi"',
     ]);
+  });
+});
+
+describe("OAuth client", () => {
+  const google = {
+    clientId: "123.apps.googleusercontent.com",
+    clientSecret: "s3cret",
+    scope: ["https://www.googleapis.com/auth/gmail.readonly"],
+    authorizationParams: { access_type: "offline", prompt: "consent" },
+  };
+  const client = (overrides: Partial<OAuthClientInput> = {}): OAuthClientInput => ({
+    clientId: "a",
+    scope: "",
+    authorizationParams: {},
+    ...overrides,
+  });
+
+  it("reads an oauth block, normalizing a scope list to a string", () => {
+    const [entry] = entries(
+      parseServerConfig(JSON.stringify({ gmail: { url: "https://g.dev/mcp", oauth: google } })),
+    );
+    expect(entry).toEqual({
+      name: "gmail",
+      input: http({
+        name: "gmail",
+        url: "https://g.dev/mcp",
+        headers: {},
+        oauth: {
+          clientId: google.clientId,
+          clientSecret: "s3cret",
+          scope: "https://www.googleapis.com/auth/gmail.readonly",
+          authorizationParams: google.authorizationParams,
+        },
+      }),
+    });
+  });
+
+  it("rejects an oauth block without a client id or with a reserved parameter", () => {
+    const read = (oauth: unknown) =>
+      entries(parseServerConfig(JSON.stringify({ g: { url: "https://g.dev", oauth } })))[0];
+    expect(read({ clientSecret: "x" })).toEqual({
+      name: "g",
+      error: '"oauth" needs a "clientId".',
+    });
+    expect(read({ clientId: "a", authorizationParams: { redirect_uri: "x" } })).toHaveProperty(
+      "error",
+    );
+  });
+
+  it("rejects a misspelt oauth key instead of dropping its value", () => {
+    const [entry] = entries(
+      parseServerConfig(
+        JSON.stringify({ g: { url: "https://g.dev", oauth: { clientId: "a", scopes: "x" } } }),
+      ),
+    );
+    expect(entry).toHaveProperty("error", expect.stringContaining('"oauth.scopes"'));
+  });
+
+  it("never serializes a stored secret, only one typed in this form", () => {
+    const stored = http({ oauth: client({ hasStoredSecret: true }) });
+    expect(serializeServers([stored])).not.toContain("clientSecret");
+    const typed = http({ oauth: client({ clientSecret: "new" }) });
+    expect(JSON.parse(serializeServers([typed])).mcpServers.docs.oauth.clientSecret).toBe("new");
+  });
+
+  it("sends an omitted secret as keep, a removed one as null, and no client as null", () => {
+    const body = (oauth: ServerInput["oauth"]) =>
+      toRequestBody(http({ oauth })) as { oauthClient: Record<string, unknown> | null };
+    expect(body(client({ hasStoredSecret: true })).oauthClient).not.toHaveProperty("clientSecret");
+    expect(body(client({ clientSecret: null })).oauthClient).toHaveProperty("clientSecret", null);
+    expect(body(null).oauthClient).toBeNull();
+  });
+
+  it("keeps knowing a secret is stored when the JSON round-trip drops it", () => {
+    const edited = draftFromInput(http({ oauth: client({ hasStoredSecret: true }) }));
+    const reparsed = entries(parseServerConfig(serializeServers([inputFromDraft(edited)])))[0];
+    if ("error" in reparsed) throw new Error(reparsed.error);
+    const next = keepStoredSecret(draftFromInput(reparsed.input), edited);
+    expect(next.oauth.secretStored).toBe(true);
+    expect(inputFromDraft(next).oauth).not.toHaveProperty("clientSecret");
+    // A different client is a different secret.
+    const other = { ...next, oauth: { ...next.oauth, clientId: "b", secretStored: false } };
+    expect(keepStoredSecret(other, edited).oauth.secretStored).toBe(false);
+  });
+
+  it("requires a client id once any OAuth field is filled", () => {
+    const remote = { ...emptyDraft(), name: "a", type: "http" as const, url: "https://x.dev" };
+    const oauth = { ...remote.oauth, scope: "read" };
+    expect(validateDraft({ ...remote, oauth }).oauth).toContain("client ID");
+    expect(validateDraft({ ...remote, oauth: { ...oauth, clientId: "id" } })).toEqual({});
+    const reserved = { ...oauth, clientId: "id", params: [{ key: "state", value: "x" }] };
+    expect(validateDraft({ ...remote, oauth: reserved }).oauth).toContain("state");
+  });
+
+  it("drops the client when switching to stdio", () => {
+    const draft = draftFromInput(http({ oauth: client() }));
+    expect(inputFromDraft({ ...draft, type: "stdio", command: "x" }).oauth).toBeNull();
   });
 });

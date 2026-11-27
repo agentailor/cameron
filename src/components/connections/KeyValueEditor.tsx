@@ -10,7 +10,10 @@ interface KeyValueEditorProps {
   rows: KeyValue[];
   onChange: (rows: KeyValue[]) => void;
   keyPlaceholder: string;
+  valuePlaceholder?: string;
   addLabel: string;
+  /** False for rows that hold no secrets (e.g. authorization parameters). */
+  masked?: boolean;
 }
 
 const LINE = /^\s*(?:export\s+)?([^=:\s]+)\s*[=:]\s*(.*?)\s*$/;
@@ -24,7 +27,9 @@ export function KeyValueEditor({
   rows,
   onChange,
   keyPlaceholder,
+  valuePlaceholder = "value",
   addLabel,
+  masked = true,
 }: KeyValueEditorProps) {
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
@@ -61,7 +66,10 @@ export function KeyValueEditor({
   return (
     <div className="space-y-1.5">
       {rows.map((row, i) => (
-        <div key={i} className="grid grid-cols-[2fr_3fr_auto_auto] items-center gap-1.5">
+        <div
+          key={i}
+          className={`grid ${masked ? "grid-cols-[2fr_3fr_auto_auto]" : "grid-cols-[2fr_3fr_auto]"} items-center gap-1.5`}
+        >
           <input
             id={i === 0 ? id : undefined}
             value={row.key}
@@ -73,22 +81,28 @@ export function KeyValueEditor({
             className={`${field} font-mono`}
           />
           <input
-            type={revealed.has(i) ? "text" : "password"}
+            type={!masked || revealed.has(i) ? "text" : "password"}
             value={row.value}
             onChange={(e) => set(i, { value: e.target.value })}
-            placeholder="value"
+            placeholder={valuePlaceholder}
             aria-label={`Value ${i + 1}`}
             autoComplete="off"
             className={`${field} font-mono`}
           />
-          <button
-            type="button"
-            onClick={() => toggle(i)}
-            className={iconButton}
-            aria-label={revealed.has(i) ? `Hide value ${i + 1}` : `Show value ${i + 1}`}
-          >
-            {revealed.has(i) ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-          </button>
+          {masked && (
+            <button
+              type="button"
+              onClick={() => toggle(i)}
+              className={iconButton}
+              aria-label={revealed.has(i) ? `Hide value ${i + 1}` : `Show value ${i + 1}`}
+            >
+              {revealed.has(i) ? (
+                <EyeOff className="h-3.5 w-3.5" />
+              ) : (
+                <Eye className="h-3.5 w-3.5" />
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => remove(i)}

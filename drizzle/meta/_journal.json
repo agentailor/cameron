@@ -99,6 +99,13 @@
       "when": 1795779672987,
       "tag": "0013_thread_last_error",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795783170363,
+      "tag": "0014_mcp_oauth_client",
+      "breakpoints": true
     }
   ]
 }

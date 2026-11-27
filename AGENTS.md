@@ -386,7 +386,7 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
 - **Error translation** lives in the repositories: a duplicate name surfaces as `ConflictError`
   (→ HTTP 409); a missing row returns `null`/`false` (→ HTTP 404). Routes check return values, not
   driver error codes.
-- **Encrypted columns**: `mcp_server.env`, `headers`, `auth_tokens`, `client_info` hold
+- **Encrypted columns**: `mcp_server.env`, `headers`, `auth_tokens`, `client_info`, `oauth_client` hold
   `secretBox` envelopes; the row id + column are bound as AAD (`secretContext()`), so a value
   copied between rows won't decrypt. Never read or write them outside the repository.
 - **`config` is settings, not a secret store**: `(key, value, updated_at)` only — no `description`
@@ -430,11 +430,17 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   `type`/`transport` is absent, and judges each server separately. Switching JSON → form is refused
   while the JSON is invalid, so nothing is silently dropped. A paste holding several servers opens a
   checklist (`BatchReview`) and adds them one at a time with a per-server outcome.
-- **Env values, headers, OAuth tokens and client info are encrypted at rest** (AES-256-GCM,
-  `CAMERON_SECRET_KEY`), inside `mcpServerRepository` ONLY — see "Token Storage Security" in
-  [docs/OAUTH.md](docs/OAUTH.md). Legacy plaintext reads through; every write seals; a missing key
-  throws on the first secret write or envelope read, never writes plaintext.
-  Servers created before encryption must be recreated. `code_verifier` is deliberately not covered.
+- **Env values, headers, OAuth tokens, client info and pre-registered clients are encrypted at
+  rest** (AES-256-GCM, `CAMERON_SECRET_KEY`), inside `mcpServerRepository` ONLY — see "Token
+  Storage Security" in [docs/OAUTH.md](docs/OAUTH.md). Legacy plaintext reads through; every write
+  seals; a missing key throws on the first secret write or envelope read, never writes plaintext.
+  Servers created before encryption must be recreated. `code_verifier` and `oauth_state` are
+  deliberately not covered.
+- **The API never returns credentials**: every `/api/mcp-servers` response goes through
+  `toPublicServer()` (`src/lib/mcp/publicServer.ts`), an ALLOWLIST — tokens, `client_info`, the
+  verifier, the state and the client secret (reduced to `hasSecret`) stay server-side, and a new
+  `MCPServer` field does too until it is listed. `env`/`headers` are sent because the form edits
+  them. Until this, `GET` returned the whole decrypted row, tokens included.
 - **Tools are listed on demand, one server at a time**: `GET /api/mcp-servers/{id}/tools` connects to
   that server only (enabled or not), then closes the client. Listing tools means connecting (for stdio,
   spawning a process), so nothing connects on page load and no tool count is stored — a stored count
@@ -456,6 +462,23 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   renders for `REQUIRED` / `EXPIRED` / `UNKNOWN`, so a NULL status hid sign-in entirely), and a
   401 at connect time records `REQUIRED`/`EXPIRED` and returns `auth_required`. The check route
   delegates to the SDK's `auth()` — never hardcode a scope in the client metadata.
+  - **Two client sources, one flow** (`src/lib/mcp/clientSource.ts`): dynamic (DCR, cached in
+    `client_info`, disposable) or pre-registered (`oauth_client`, the owner's config: never
+    deleted by invalidation, which drops only the sign-in). Set means pre-registered, no mode
+    flag. A pre-registered server is `REQUIRED` by declaration, not by probe — a server may
+    answer everything but `tools/call` unauthenticated. Its scope goes to `auth()`
+    (`provider.requestedScope`): the SDK ranks the server's `scopes_supported` above client
+    metadata. Its `authorizationParams` (extra query parameters the owner adds) are added in `redirectToAuthorization`; reserved ones (`RESERVED_AUTHORIZATION_PARAMS` in the
+    zero-import `src/lib/mcp/oauthClient.ts`) are refused on save and skipped there.
+  - **One callback, `/api/oauth/callback`** (`oauthCallbackUrl()`), shown with a copy button on
+    `/connections` so it can be pasted into an OAuth client first. The server is found by the
+    single-use `oauth_state` the provider's `state()` stored (unique index); an unknown state is
+    refused — that is the CSRF check. A dynamic client registered for another redirect URI
+    (the old per-server path) reads as absent, so the SDK re-registers.
+  - **The client secret is write-only**: an edit that omits it keeps it, `null` removes it, the
+    JSON tab never shows a stored one. A new client id, scope or authorization parameter clears
+    the tokens and asks for Connect again (`sameSignIn`): kept tokens would stay `CONNECTED`
+    under the old consent, hiding Connect. A new secret alone keeps them.
 - **Progressive disclosure** ([docs/MCP_DISCLOSURE.md](docs/MCP_DISCLOSURE.md), read it before
   changing this code): the model sees a short list of capabilities plus `load_tools`, and a tool's
   definition only once a search has loaded it; nothing connects until a tool is called. A loaded

@@ -9,7 +9,7 @@ import { primaryButton } from "./styles";
 
 const sectionLabel = "text-muted-foreground text-xs font-semibold tracking-wide uppercase";
 
-export function ConnectionsView() {
+export function ConnectionsView({ callbackUrl }: { callbackUrl: string | null }) {
   const { servers, isLoading, loadError, create, update, setEnabled, remove, refresh } =
     useMCPServers();
   const [adding, setAdding] = useState(false);
@@ -66,6 +66,7 @@ export function ConnectionsView() {
           <ServerForm
             existingNames={names}
             submitLabel="Add server"
+            callbackUrl={callbackUrl}
             onSave={async (input) => {
               await create(input);
             }}
@@ -98,6 +99,7 @@ export function ConnectionsView() {
               onToggle={(enabled) => setEnabled(server.id, enabled)}
               onDelete={() => remove(server.id)}
               onOAuthChecked={refresh}
+              callbackUrl={callbackUrl}
             />
           ))}
         </ul>

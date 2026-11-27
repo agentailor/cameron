@@ -65,13 +65,20 @@ export const mcpServers = pgTable(
     authTokens: json("auth_tokens"),
     clientInfo: json("client_info"),
     codeVerifier: varchar("code_verifier"),
+    // The `state` of the sign-in in progress: how the shared callback finds this server.
+    oauthState: varchar("oauth_state"),
     oauthStatus: varchar("oauth_status"),
+    // A pre-registered client (sealed). Set means no dynamic registration.
+    oauthClient: json("oauth_client"),
     createdAt: timestamp("created_at", { precision: 3, mode: "string" })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
     updatedAt: timestamp("updated_at", { precision: 3, mode: "string" }).notNull(),
   },
-  (table) => [uniqueIndex("mcp_server_name_key").using("btree", table.name.asc().nullsLast())],
+  (table) => [
+    uniqueIndex("mcp_server_name_key").using("btree", table.name.asc().nullsLast()),
+    uniqueIndex("mcp_server_oauth_state_key").on(table.oauthState),
+  ],
 );
 
 // Cached `tools/list` per server, so the agent can describe a server without connecting to it.

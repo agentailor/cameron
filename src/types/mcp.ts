@@ -1,3 +1,5 @@
+import type { PreregisteredClient } from "@/lib/mcp/oauthClient";
+
 export enum MCPServerType {
   stdio = "stdio",
   http = "http",
@@ -23,7 +25,10 @@ export interface MCPServer {
   authTokens: unknown;
   clientInfo: unknown;
   codeVerifier: string | null;
+  oauthState: string | null;
   oauthStatus: string | null;
+  /** Server-only: holds the client secret. Browsers get {@link toPublicServer} instead. */
+  oauthClient: PreregisteredClient | null;
   createdAt: Date;
   updatedAt: Date;
 }

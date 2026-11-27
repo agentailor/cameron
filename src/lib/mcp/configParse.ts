@@ -1,10 +1,23 @@
 /**
  * Pure conversions between the three shapes an MCP server takes in the connections UI: pasted
- * JSON, the editable form draft, and the request body. No imports, so it runs in the browser
- * and under `pnpm test` alike.
+ * JSON, the editable form draft, and the request body. Imports only the zero-import OAuth client
+ * leaf, so it runs in the browser and under `pnpm test` alike.
  */
 
+import { authorizationParamsError, normalizeScope } from "./oauthClient";
+
 export type ServerTransport = "stdio" | "http";
+
+/** A pre-registered OAuth client as the form and JSON edit it. */
+export interface OAuthClientInput {
+  clientId: string;
+  /** A string sets it, null removes the stored one, absent keeps it. */
+  clientSecret?: string | null;
+  /** Display only: a secret is stored on the server. Never sent. */
+  hasStoredSecret?: boolean;
+  scope: string;
+  authorizationParams: Record<string, string>;
+}
 
 /** A complete server definition. Fields for the other transport stay empty. */
 export interface ServerInput {
@@ -17,6 +30,8 @@ export interface ServerInput {
   env: Record<string, string>;
   url: string;
   headers: Record<string, string>;
+  /** Remote servers only. Null registers a client dynamically, as before. */
+  oauth?: OAuthClientInput | null;
 }
 
 export interface KeyValue {
@@ -34,9 +49,22 @@ export interface ServerDraft {
   env: KeyValue[];
   url: string;
   headers: KeyValue[];
+  oauth: OAuthDraft;
 }
 
-export type DraftErrors = Partial<Record<"name" | "command" | "url" | "env" | "headers", string>>;
+export interface OAuthDraft {
+  clientId: string;
+  /** A newly typed secret; the stored one never reaches the browser. */
+  clientSecret: string;
+  secretStored: boolean;
+  removeSecret: boolean;
+  scope: string;
+  params: KeyValue[];
+}
+
+export type DraftErrors = Partial<
+  Record<"name" | "command" | "url" | "env" | "headers" | "oauth", string>
+>;
 
 /** One server found in a paste: either usable, or rejected with a reason. */
 export type ParsedEntry = { name: string; input: ServerInput } | { name: string; error: string };
@@ -55,9 +83,20 @@ export const emptyDraft = (): ServerDraft => ({
   env: [],
   url: "",
   headers: [],
+  oauth: emptyOAuthDraft(),
+});
+
+const emptyOAuthDraft = (): OAuthDraft => ({
+  clientId: "",
+  clientSecret: "",
+  secretStored: false,
+  removeSecret: false,
+  scope: "",
+  params: [],
 });
 
 export function draftFromInput(input: ServerInput): ServerDraft {
+  const oauth = input.oauth;
   return {
     name: input.name,
     description: input.description ?? "",
@@ -67,6 +106,47 @@ export function draftFromInput(input: ServerInput): ServerDraft {
     env: toRows(input.env),
     url: input.url,
     headers: toRows(input.headers),
+    oauth: oauth
+      ? {
+          clientId: oauth.clientId,
+          clientSecret: typeof oauth.clientSecret === "string" ? oauth.clientSecret : "",
+          secretStored: !!oauth.hasStoredSecret,
+          removeSecret: oauth.clientSecret === null,
+          scope: oauth.scope,
+          params: toRows(oauth.authorizationParams),
+        }
+      : emptyOAuthDraft(),
+  };
+}
+
+/**
+ * A draft re-read from JSON doesn't know a secret is stored (JSON never shows it); keep knowing it
+ * while the client id is the same one.
+ */
+export function keepStoredSecret(next: ServerDraft, previous: ServerDraft): ServerDraft {
+  const same = next.oauth.clientId.trim() === previous.oauth.clientId.trim();
+  if (!same || !previous.oauth.secretStored || next.oauth.clientSecret) return next;
+  return {
+    ...next,
+    oauth: { ...next.oauth, secretStored: true, removeSecret: previous.oauth.removeSecret },
+  };
+}
+
+const hasOAuthInput = (o: OAuthDraft) =>
+  !!(o.clientId.trim() || o.clientSecret || o.scope.trim() || o.params.some((r) => r.key.trim()));
+
+function oauthFromDraft(o: OAuthDraft): OAuthClientInput | null {
+  if (!o.clientId.trim()) return null;
+  return {
+    clientId: o.clientId.trim(),
+    ...(o.clientSecret
+      ? { clientSecret: o.clientSecret }
+      : o.removeSecret
+        ? { clientSecret: null }
+        : {}),
+    hasStoredSecret: o.secretStored && !o.removeSecret && !o.clientSecret,
+    scope: normalizeScope(o.scope) ?? "",
+    authorizationParams: toRecord(o.params),
   };
 }
 
@@ -82,6 +162,7 @@ export function inputFromDraft(draft: ServerDraft): ServerInput {
     env: stdio ? toRecord(draft.env) : {},
     url: stdio ? "" : draft.url.trim(),
     headers: stdio ? {} : toRecord(draft.headers),
+    oauth: stdio ? null : oauthFromDraft(draft.oauth),
   };
 }
 
@@ -104,9 +185,19 @@ export function validateDraft(draft: ServerDraft, existingNames: string[] = []):
     else if (!isHttpUrl(url)) errors.url = "Enter a full http:// or https:// URL.";
     const headers = rowsError(draft.headers, "header");
     if (headers) errors.headers = headers;
+    const oauth = oauthDraftError(draft.oauth);
+    if (oauth) errors.oauth = oauth;
   }
 
   return errors;
+}
+
+function oauthDraftError(o: OAuthDraft): string | undefined {
+  if (!hasOAuthInput(o)) return undefined;
+  if (!o.clientId.trim()) return "Enter the client ID, or clear the other OAuth client fields.";
+  return (
+    rowsError(o.params, "parameter") ?? authorizationParamsError(toRecord(o.params)) ?? undefined
+  );
 }
 
 /** The body POST/PATCH /api/mcp-servers expects. Empty collections clear stored values on edit. */
@@ -121,7 +212,23 @@ export function toRequestBody(input: ServerInput) {
         args: input.args,
         env: input.env,
       }
-    : { name: input.name, description, type: input.type, url: input.url, headers: input.headers };
+    : {
+        name: input.name,
+        description,
+        type: input.type,
+        url: input.url,
+        headers: input.headers,
+        oauthClient: input.oauth ? oauthBody(input.oauth) : null,
+      };
+}
+
+function oauthBody(oauth: OAuthClientInput) {
+  return {
+    clientId: oauth.clientId,
+    ...(oauth.clientSecret !== undefined ? { clientSecret: oauth.clientSecret } : {}),
+    scope: oauth.scope || null,
+    authorizationParams: oauth.authorizationParams,
+  };
 }
 
 /** Serializes to the `mcpServers` shape most MCP clients and READMEs use. */
@@ -137,10 +244,23 @@ export function serializeServers(inputs: ServerInput[]): string {
     } else {
       entry.url = input.url;
       if (Object.keys(input.headers).length) entry.headers = input.headers;
+      if (input.oauth) entry.oauth = serializeOAuth(input.oauth);
     }
     mcpServers[input.name] = entry;
   }
   return JSON.stringify({ mcpServers }, null, 2);
+}
+
+// A stored secret is not in the browser to write out; only one typed in this form is.
+function serializeOAuth(oauth: OAuthClientInput): Record<string, unknown> {
+  return {
+    clientId: oauth.clientId,
+    ...(oauth.clientSecret ? { clientSecret: oauth.clientSecret } : {}),
+    ...(oauth.scope ? { scope: oauth.scope } : {}),
+    ...(Object.keys(oauth.authorizationParams).length
+      ? { authorizationParams: oauth.authorizationParams }
+      : {}),
+  };
 }
 
 /**
@@ -214,6 +334,7 @@ function readServer(name: string, raw: unknown): ParsedEntry {
     env: {},
     url: "",
     headers: {},
+    oauth: null,
   };
 
   if (type === "stdio") {
@@ -229,7 +350,42 @@ function readServer(name: string, raw: unknown): ParsedEntry {
   if (typeof raw.url !== "string" || !raw.url.trim()) return { name, error: 'Missing "url".' };
   const headers = readStringRecord(raw.headers);
   if (headers === null) return { name, error: '"headers" must map names to string values.' };
-  return { name, input: { ...base, url: raw.url.trim(), headers } };
+  const oauth = readOAuth(raw.oauth);
+  if (typeof oauth === "string") return { name, error: oauth };
+  return { name, input: { ...base, url: raw.url.trim(), headers, oauth } };
+}
+
+const OAUTH_KEYS = ["clientId", "clientSecret", "scope", "authorizationParams"];
+
+/** `"oauth": { clientId, clientSecret?, scope?, authorizationParams? }`; a string is an error. */
+function readOAuth(value: unknown): OAuthClientInput | null | string {
+  if (value === undefined || value === null) return null;
+  if (!isObject(value)) return '"oauth" must be an object.';
+  // Closed: a misspelt key (`scopes`, `client_id`) would otherwise drop its value unnoticed.
+  const unknown = Object.keys(value).find((key) => !OAUTH_KEYS.includes(key));
+  if (unknown)
+    return `Unknown "oauth.${unknown}". Use ${OAUTH_KEYS.map((k) => `"${k}"`).join(", ")}.`;
+  if (typeof value.clientId !== "string" || !value.clientId.trim())
+    return '"oauth" needs a "clientId".';
+  if (value.clientSecret !== undefined && typeof value.clientSecret !== "string")
+    return '"oauth.clientSecret" must be a string.';
+  const scope = value.scope;
+  if (
+    scope !== undefined &&
+    typeof scope !== "string" &&
+    !(Array.isArray(scope) && scope.every((s) => typeof s === "string"))
+  )
+    return '"oauth.scope" must be a string or a list of strings.';
+  const params = readStringRecord(value.authorizationParams);
+  if (params === null) return '"oauth.authorizationParams" must map names to string values.';
+  const paramsError = authorizationParamsError(params);
+  if (paramsError) return paramsError;
+  return {
+    clientId: value.clientId.trim(),
+    ...(value.clientSecret ? { clientSecret: value.clientSecret as string } : {}),
+    scope: normalizeScope(scope as string | string[] | undefined) ?? "",
+    authorizationParams: params,
+  };
 }
 
 function readArgs(value: unknown): string[] | null {

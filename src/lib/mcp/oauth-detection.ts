@@ -57,14 +57,8 @@ export async function detectOAuthRequirement(url: string): Promise<OAuthDetectio
  * Example: Bearer resource_metadata="https://example.com/.well-known/oauth-protected-resource"
  */
 function extractResourceMetadataUrl(wwwAuthHeader: string): string | undefined {
-  const resourceMetadataMatch = wwwAuthHeader.match(/resource_metadata="([^"]+)"/);
-  if (resourceMetadataMatch) {
-    return resourceMetadataMatch[1];
-  }
-
-  // Fallback: try to extract realm
-  const realmMatch = wwwAuthHeader.match(/realm="([^"]+)"/);
-  return realmMatch?.[1];
+  // Not `realm`: it can name the authorization server, not the resource metadata. Without this parameter the SDK finds the metadata at its well-known URL.
+  return wwwAuthHeader.match(/resource_metadata="([^"]+)"/)?.[1];
 }
 
 /**
@@ -94,6 +88,12 @@ export function isTokenExpired(tokens: { expires_at?: number } | null | undefine
  * NOT_REQUIRED. Returns the status written.
  */
 export async function recordOAuthRequirement(serverId: string, url: string): Promise<OAuthStatus> {
+  const server = await mcpServerRepo.getById(serverId);
+  if (server?.oauthClient) {
+    // A configured client declares sign-in; a probe can't see it on every server.
+    await mcpServerRepo.setOAuthStatus(serverId, OAuthStatus.REQUIRED);
+    return OAuthStatus.REQUIRED;
+  }
   const detection = await detectOAuthRequirement(url);
   const status = detection.requiresAuth
     ? OAuthStatus.REQUIRED

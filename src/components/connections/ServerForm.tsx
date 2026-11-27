@@ -6,6 +6,7 @@ import {
   draftFromInput,
   emptyDraft,
   inputFromDraft,
+  keepStoredSecret,
   looksLikeJson,
   parseServerConfig,
   serializeServers,
@@ -20,6 +21,7 @@ import { ArgsEditor } from "./ArgsEditor";
 import { BatchReview } from "./BatchReview";
 import { JsonEditor, type JsonStatus } from "./JsonEditor";
 import { KeyValueEditor } from "./KeyValueEditor";
+import { OAuthClientFields } from "./OAuthClientFields";
 import { field, fieldError, fieldLabel, primaryButton, secondaryButton } from "./styles";
 
 interface ServerFormProps {
@@ -34,6 +36,8 @@ interface ServerFormProps {
   onCancel?: () => void;
   /** Enables multi-server pastes (adding only). */
   onBatchDone?: (added: number) => void;
+  /** The OAuth redirect URI to show for pre-registered clients. */
+  callbackUrl: string | null;
 }
 
 type Tab = "form" | "json";
@@ -59,6 +63,7 @@ export function ServerForm({
   onSaved,
   onCancel,
   onBatchDone,
+  callbackUrl,
 }: ServerFormProps) {
   const uid = useId();
   const editing = !!initial;
@@ -116,7 +121,12 @@ export function ServerForm({
       return false;
     }
     // A bare server object has no name; keep the one already typed.
-    setDraft(draftFromInput({ ...entry.input, name: entry.input.name || draft.name }));
+    setDraft(
+      keepStoredSecret(
+        draftFromInput({ ...entry.input, name: entry.input.name || draft.name }),
+        draft,
+      ),
+    );
     setTab("form");
     return true;
   };
@@ -182,7 +192,10 @@ export function ServerForm({
         setJsonStatus({ tone: "error", text: entry.error });
         return;
       }
-      target = draftFromInput({ ...entry.input, name: entry.input.name || draft.name });
+      target = keepStoredSecret(
+        draftFromInput({ ...entry.input, name: entry.input.name || draft.name }),
+        draft,
+      );
       if (Object.keys(validateDraft(target, existingNames)).length) {
         // Field-level errors read better on the form than as one JSON status line.
         setDraft(target);
@@ -433,10 +446,20 @@ export function ServerForm({
                 />
                 {shown.headers && <p className={fieldError}>{shown.headers}</p>}
               </div>
+
+              <OAuthClientFields
+                id={`${uid}-oauth`}
+                value={draft.oauth}
+                onChange={(oauth) => update({ oauth })}
+                callbackUrl={callbackUrl}
+                error={shown.oauth}
+              />
             </>
           )}
 
-          {(draft.env.length > 0 || draft.headers.length > 0) && (
+          {(draft.env.length > 0 ||
+            draft.headers.length > 0 ||
+            (draft.type === "http" && !!draft.oauth.clientSecret)) && (
             <p className="text-muted-foreground text-xs">
               Values are hidden on screen and encrypted in your database with your
               CAMERON_SECRET_KEY.

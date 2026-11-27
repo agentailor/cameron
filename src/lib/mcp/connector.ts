@@ -54,7 +54,7 @@ export async function openSession(server: MCPServer): Promise<McpSession> {
   if (needsAuth(server)) {
     throw new ConnectError("auth_required", "Connect this server with OAuth first.");
   }
-  const config = toServerConfig(server, () => new ServerOAuthProvider(server.id, server.name));
+  const config = toServerConfig(server, () => new ServerOAuthProvider(server));
   if (!config) {
     throw new ConnectError(
       "invalid_config",

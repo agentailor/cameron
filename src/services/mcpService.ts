@@ -1,7 +1,11 @@
 import type { MCPTool } from "@/types/mcp";
 import { toRequestBody, type ServerInput, type ServerTransport } from "@/lib/mcp/configParse";
+import type { PublicOAuthClient } from "@/lib/mcp/oauthClient";
 
-/** An MCP server as `GET /api/mcp-servers` returns it (dates are ISO strings on the wire). */
+/**
+ * An MCP server as `GET /api/mcp-servers` returns it (dates are ISO strings on the wire): the
+ * `toPublicServer` shape, so no tokens, client registration or client secret.
+ */
 export interface MCPServerView {
   id: string;
   name: string;
@@ -15,6 +19,7 @@ export interface MCPServerView {
   headers: unknown;
   requiresAuth: boolean | null;
   oauthStatus: string | null;
+  oauthClient: PublicOAuthClient | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -95,6 +100,14 @@ export function inputFromServer(server: MCPServerView): ServerInput {
     env: asStringRecord(server.env),
     url: server.url ?? "",
     headers: asStringRecord(server.headers),
+    oauth: server.oauthClient
+      ? {
+          clientId: server.oauthClient.clientId,
+          hasStoredSecret: server.oauthClient.hasSecret,
+          scope: server.oauthClient.scope ?? "",
+          authorizationParams: server.oauthClient.authorizationParams,
+        }
+      : null,
   };
 }
 

@@ -5,6 +5,7 @@ import { mcpServers, toolGrants } from "@/lib/database/schema";
 import { MCPServerType, type MCPServer } from "@/types/mcp";
 import { ConflictError, isUniqueViolation } from "@/lib/database/errors";
 import { openSecret, sealSecret } from "@/lib/crypto/secretBox";
+import { readPreregisteredClient, type PreregisteredClient } from "@/lib/mcp/oauthClient";
 
 /**
  * Persistence for MCP server configs, including the OAuth token/state columns. This is
@@ -14,7 +15,7 @@ import { openSecret, sealSecret } from "@/lib/crypto/secretBox";
  * Error translation (unique violation -> {@link ConflictError}) lives in
  * `@/lib/database/errors` and is shared with the other repositories.
  *
- * Credential columns (`env`, `headers`, `auth_tokens`, `client_info`) are encrypted here and
+ * Credential columns (`env`, `headers`, `auth_tokens`, `client_info`, `oauth_client`) are encrypted here and
  * nowhere else: writes always seal, reads open envelopes and pass legacy plaintext through.
  */
 
@@ -23,7 +24,7 @@ export { ConflictError };
 
 type MCPServerRow = typeof mcpServers.$inferSelect;
 
-export type SecretColumn = "env" | "headers" | "auth_tokens" | "client_info";
+export type SecretColumn = "env" | "headers" | "auth_tokens" | "client_info" | "oauth_client";
 
 // Bound as associated data, so an envelope copied to another row or column will not open.
 function secretContext(id: string, column: SecretColumn): string {
@@ -54,7 +55,9 @@ function toDomain(row: MCPServerRow): MCPServer {
     authTokens: open(row.id, "auth_tokens", row.authTokens) as MCPServer["authTokens"],
     clientInfo: open(row.id, "client_info", row.clientInfo) as MCPServer["clientInfo"],
     codeVerifier: row.codeVerifier,
+    oauthState: row.oauthState,
     oauthStatus: row.oauthStatus,
+    oauthClient: readPreregisteredClient(open(row.id, "oauth_client", row.oauthClient)),
     createdAt: columnToDate(row.createdAt),
     updatedAt: columnToDate(row.updatedAt),
   };
@@ -73,6 +76,7 @@ export interface CreateMCPServerInput {
   env?: unknown;
   url?: string | null;
   headers?: unknown;
+  oauthClient?: PreregisteredClient | null;
 }
 
 export interface UpdateMCPServerPatch {
@@ -85,6 +89,7 @@ export interface UpdateMCPServerPatch {
   env?: unknown;
   url?: string | null;
   headers?: unknown;
+  oauthClient?: PreregisteredClient | null;
 }
 
 export async function list(): Promise<MCPServer[]> {
@@ -129,6 +134,7 @@ export async function create(input: CreateMCPServerInput): Promise<MCPServer> {
         env: seal(id, "env", input.env ?? null),
         url: input.url ?? null,
         headers: seal(id, "headers", input.headers ?? null),
+        oauthClient: seal(id, "oauth_client", input.oauthClient ?? null),
         createdAt: timestamp,
         updatedAt: timestamp,
       })
@@ -148,6 +154,8 @@ export async function update(id: string, patch: UpdateMCPServerPatch): Promise<M
   const values: Record<string, unknown> = { ...patch, updatedAt: now() };
   if (patch.env !== undefined) values.env = seal(id, "env", patch.env);
   if (patch.headers !== undefined) values.headers = seal(id, "headers", patch.headers);
+  if (patch.oauthClient !== undefined)
+    values.oauthClient = seal(id, "oauth_client", patch.oauthClient);
   try {
     const row = await db.transaction(async (tx) => {
       const [before] = await tx
@@ -241,15 +249,44 @@ export async function setOAuthStatus(id: string, oauthStatus: string): Promise<v
   await db.update(mcpServers).set({ oauthStatus, updatedAt: now() }).where(eq(mcpServers.id, id));
 }
 
-/** Mark a server successfully connected and clear the transient code verifier. */
-export async function markConnected(id: string): Promise<void> {
+export async function saveOAuthState(id: string, oauthState: string): Promise<void> {
+  await db.update(mcpServers).set({ oauthState, updatedAt: now() }).where(eq(mcpServers.id, id));
+}
+
+/** The server whose sign-in is waiting on this `state`, or null. */
+export async function getByOAuthState(oauthState: string): Promise<MCPServer | null> {
+  const rows = await db
+    .select()
+    .from(mcpServers)
+    .where(eq(mcpServers.oauthState, oauthState))
+    .limit(1);
+  return rows[0] ? toDomain(rows[0]) : null;
+}
+
+/** Ends a sign-in that failed: its `state` and verifier are single-use. */
+export async function abandonSignIn(id: string, oauthStatus: string): Promise<void> {
   await db
     .update(mcpServers)
-    .set({ oauthStatus: "CONNECTED", requiresAuth: true, codeVerifier: null, updatedAt: now() })
+    .set({ oauthStatus, oauthState: null, codeVerifier: null, updatedAt: now() })
     .where(eq(mcpServers.id, id));
 }
 
-export type OAuthCredentialScope = "all" | "client" | "tokens" | "verifier";
+/** Mark a server successfully connected and clear the transient sign-in state. */
+export async function markConnected(id: string): Promise<void> {
+  await db
+    .update(mcpServers)
+    .set({
+      oauthStatus: "CONNECTED",
+      requiresAuth: true,
+      codeVerifier: null,
+      oauthState: null,
+      updatedAt: now(),
+    })
+    .where(eq(mcpServers.id, id));
+}
+
+/** `signin` drops tokens and sign-in state but keeps both kinds of client. */
+export type OAuthCredentialScope = "all" | "client" | "tokens" | "verifier" | "signin";
 
 /**
  * Drops stored OAuth credentials the SDK reported as invalid. Losing tokens (or the client they
@@ -260,15 +297,19 @@ export async function clearOAuthCredentials(
   scope: OAuthCredentialScope,
 ): Promise<void> {
   const all = scope === "all";
+  const signin = scope === "signin";
   const client = all || scope === "client";
-  const tokens = client || scope === "tokens";
+  const tokens = client || signin || scope === "tokens";
+  const verifier = all || signin || scope === "verifier";
   // Only ever writes null to the sealed columns; a non-null value here must go through seal().
   await db
     .update(mcpServers)
     .set({
       ...(client ? { clientInfo: null } : {}),
-      ...(tokens ? { authTokens: null, oauthStatus: client ? "REQUIRED" : "EXPIRED" } : {}),
-      ...(all || scope === "verifier" ? { codeVerifier: null } : {}),
+      ...(tokens
+        ? { authTokens: null, oauthStatus: client || signin ? "REQUIRED" : "EXPIRED" }
+        : {}),
+      ...(verifier ? { codeVerifier: null, oauthState: null } : {}),
       updatedAt: now(),
     })
     .where(eq(mcpServers.id, id));
