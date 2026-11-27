@@ -70,8 +70,8 @@ export async function GET(
     await updateServerOAuthStatus(serverId, OAuthStatus.EXPIRED);
   }
 
-  // A configured client says OAuth is required; probing can't, since some servers (Google's)
-  // answer everything but tool calls without credentials.
+  // A configured client says OAuth is required; probing can't, since some servers answer
+  // everything but tool calls without credentials.
   const serverUrl = server.url!;
   const detection: OAuthDetectionResult = server.oauthClient
     ? { requiresAuth: true }

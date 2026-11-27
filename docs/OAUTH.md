@@ -108,15 +108,15 @@ Columns on `mcp_server` (`src/lib/database/schema.ts`):
 ### 1. OAuth Detection
 
 A server with a pre-registered client skips detection: it is `REQUIRED` until connected. A probe
-can't be relied on for every server — Google's answers `initialize` and `tools/list` without
-credentials and returns 401 only on `tools/call`, so a probe records `NOT_REQUIRED` and Connect
+can't be relied on for every server — some answer `initialize` and `tools/list` without
+credentials and return 401 only on `tools/call`, so a probe records `NOT_REQUIRED` and Connect
 never shows.
 
 Otherwise, on save and again when the user clicks "Connect", the app sends a GET to the MCP
 server (5s timeout). If the server responds with:
 
 - **401 Unauthorized** → OAuth is required; the `WWW-Authenticate` header's `resource_metadata`
-  and `scope` are kept for the next step. `realm` is not used as a fallback: it names the
+  and `scope` are kept for the next step. `realm` is not used as a fallback: it can name the
   authorization server, not the resource metadata.
 - **any other status** → OAuth is not required
 - **no response** → `UNKNOWN`
@@ -131,8 +131,8 @@ expects. It:
 2. Picks the **scope**: the scope passed to `auth()`, else the resource's `scopes_supported`, else
    the client metadata's, plus `offline_access` when the server offers it. A pre-registered
    client's scope is therefore passed to `auth()`, not only set in the client metadata — the
-   SDK prefers the server's `scopes_supported` to the metadata, which for Gmail is every Gmail
-   scope. A dynamic client's metadata carries no scope: a hardcoded `read write` made Keycloak's
+   SDK prefers the server's `scopes_supported` to the metadata, which can be every scope the
+   server offers. A dynamic client's metadata carries no scope: a hardcoded `read write` made Keycloak's
    client-scope policy refuse registration (HTTP 403).
 3. Gets the client from the `ClientSource`; for a dynamic one with none stored, registers and
    stores `clientInfo`
@@ -166,7 +166,7 @@ owner's client and drops only the sign-in. `discovery` is a no-op — nothing is
 Editing a server's client — a different client id, scope or authorization parameter, or adding
 or removing the client — clears the tokens and sets `REQUIRED` (`sameSignIn` in
 `oauthClient.ts`): tokens belong to the consent that issued them, a refresh never widens scope,
-and Google issues a refresh token only on an offline consent. Kept, they would stay `CONNECTED`
+and an authorization parameter can decide whether a refresh token is issued at all. Kept, they would stay `CONNECTED`
 under the old consent and Connect would never show. A new secret alone keeps them.
 
 All OAuth helpers and types come from `@modelcontextprotocol/client` (MCP SDK v2).
@@ -199,14 +199,14 @@ The JSON tab takes the same fields:
 ```json
 {
   "mcpServers": {
-    "gmail": {
+    "example": {
       "type": "http",
-      "url": "https://gmailmcp.googleapis.com/mcp/v1",
+      "url": "https://mcp.example.com/mcp",
       "oauth": {
-        "clientId": "1234-abc.apps.googleusercontent.com",
-        "clientSecret": "GOCSPX-…",
-        "scope": ["https://www.googleapis.com/auth/gmail.readonly"],
-        "authorizationParams": { "access_type": "offline", "prompt": "consent" }
+        "clientId": "your-client-id",
+        "clientSecret": "your-client-secret",
+        "scope": ["scope-a", "scope-b"],
+        "authorizationParams": { "param": "value" }
       }
     }
   }
@@ -217,31 +217,15 @@ The JSON tab takes the same fields:
 `oauth_client`, the API returns only `hasSecret`, the JSON tab never shows a stored one, and an
 edit that leaves the field empty keeps it (`clientSecret: null` in the API removes it).
 
-### Google Workspace (Gmail) setup
+Setting one up:
 
-Google's MCP servers need a pre-registered client. Setup and troubleshooting are in Google's
-[Configure the Workspace MCP servers](https://developers.google.com/workspace/guides/configure-mcp-servers);
-what matters for Cameron:
-
-1. Follow Google's [Gmail MCP setup guide](https://developers.google.com/workspace/gmail/api/guides/configure-mcp-server)
-   to enable the server for your Google Cloud project, and create an OAuth client of type
-   **Web application**. Check **Use this client for an AI-powered agent** — without it requests
-   fail with a generic `invalid token`.
-2. Add Cameron's callback URL (copy it from `/connections`) as an **authorized redirect URI**.
-   `http://localhost` works for local use; anything else must be https.
-3. Add the server in Cameron with URL `https://gmailmcp.googleapis.com/mcp/v1`, the client ID and
-   secret, and the scopes you want — e.g. `https://www.googleapis.com/auth/gmail.readonly`, plus
-   `gmail.compose` for drafts or `gmail.modify` for labels. Leaving scope empty requests every
-   scope the server lists, including `https://mail.google.com/`.
-4. Add the authorization parameters `access_type=offline` and `prompt=consent` (the form's "add
-   them" link). A web client is online-only by default, so without them there is no refresh token
-   and the connection expires every hour.
+1. Create an OAuth client on the authorization server, following the MCP server's own docs.
+2. Add Cameron's callback URL (copy it from `/connections`) as an allowed redirect URI.
+3. Add the server in Cameron with the client ID, the secret and the scopes you want. Empty scope
+   lets the server choose, which can mean every scope it offers.
+4. Add any authorization parameters the server's docs require — some issue a refresh token only
+   when asked for one in the sign-in URL.
 5. Save, then Connect.
-
-The server's tool list includes sending, replying, forwarding and trashing; what works depends on
-the scopes granted. Every MCP tool call passes Cameron's approval gate either way. Usage counts
-against the project's Workspace MCP quota (Standard tier: 5,000 requests per day per product;
-some tools count as several).
 
 ## Production Considerations
 
@@ -323,9 +307,10 @@ port, path). Copy it from `/connections`.
 The callback's `state` matched no sign-in in progress: the link was opened twice, or another
 Connect started since. Click Connect again.
 
-### Signed out every hour (Google)
+### Signed out when the access token expires
 
-No refresh token was issued: add `access_type=offline` and `prompt=consent` and Connect again.
+No refresh token was issued. Check the authorization server's docs for the parameter that
+requests one, add it under **Authorization parameters**, and Connect again.
 
 ### Tokens expire immediately
 

@@ -57,8 +57,7 @@ export async function detectOAuthRequirement(url: string): Promise<OAuthDetectio
  * Example: Bearer resource_metadata="https://example.com/.well-known/oauth-protected-resource"
  */
 function extractResourceMetadataUrl(wwwAuthHeader: string): string | undefined {
-  // Not `realm`: it names the authorization server (Google's is accounts.google.com), not the
-  // resource metadata. Without this parameter the SDK finds the metadata at its well-known URL.
+  // Not `realm`: it can name the authorization server, not the resource metadata. Without this parameter the SDK finds the metadata at its well-known URL.
   return wwwAuthHeader.match(/resource_metadata="([^"]+)"/)?.[1];
 }
 

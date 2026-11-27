@@ -15,12 +15,6 @@ interface OAuthClientFieldsProps {
   error?: string;
 }
 
-// Without both, a Google web client signs Cameron out every hour (no refresh token).
-const OFFLINE_PARAMS = [
-  { key: "access_type", value: "offline" },
-  { key: "prompt", value: "consent" },
-];
-
 /**
  * An optional pre-registered OAuth client for a remote server. Empty keeps dynamic client
  * registration. Collapsed unless a client is set.
@@ -34,7 +28,6 @@ export function OAuthClientFields({
 }: OAuthClientFieldsProps) {
   const [open, setOpen] = useState(() => !!value.clientId);
   const set = (patch: Partial<OAuthDraft>) => onChange({ ...value, ...patch });
-  const missingOffline = OFFLINE_PARAMS.filter((p) => !value.params.some((r) => r.key === p.key));
 
   return (
     <div className="border-border rounded-md border">
@@ -60,8 +53,9 @@ export function OAuthClientFields({
       {open && (
         <div className="border-border space-y-4 border-t px-3 pt-3 pb-3.5">
           <p className="text-muted-foreground text-xs leading-relaxed">
-            Most servers register Cameron on their own: leave this empty for them. Some, like
-            Google&apos;s, need a client you create on their side; enter its details here.
+            Most servers register Cameron on their own: leave this empty for them. Servers whose
+            authorization server has no dynamic registration need a client you create on their side;
+            enter its details here.
           </p>
 
           <div className="space-y-1.5">
@@ -81,7 +75,7 @@ export function OAuthClientFields({
               id={`${id}-client-id`}
               value={value.clientId}
               onChange={(e) => set({ clientId: e.target.value })}
-              placeholder="1234-abc.apps.googleusercontent.com"
+              placeholder="your-client-id"
               autoComplete="off"
               className={`${field} font-mono`}
             />
@@ -141,7 +135,7 @@ export function OAuthClientFields({
               id={`${id}-scope`}
               value={value.scope}
               onChange={(e) => set({ scope: e.target.value })}
-              placeholder="https://www.googleapis.com/auth/gmail.readonly"
+              placeholder="scope-a scope-b"
               autoComplete="off"
               className={`${field} font-mono`}
             />
@@ -164,20 +158,8 @@ export function OAuthClientFields({
               masked={false}
             />
             <p className="text-muted-foreground text-xs">
-              Added to the sign-in URL. Google needs access_type=offline and prompt=consent, or it
-              asks you to sign in again every hour.
-              {missingOffline.length > 0 && (
-                <>
-                  {" "}
-                  <button
-                    type="button"
-                    className={linkButton}
-                    onClick={() => set({ params: [...value.params, ...missingOffline] })}
-                  >
-                    add them
-                  </button>
-                </>
-              )}
+              Extra query parameters for the sign-in URL, if the authorization server documents any
+              (e.g. to issue a refresh token).
             </p>
           </div>
 

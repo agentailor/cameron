@@ -465,11 +465,10 @@ cameron_analytics` migration, and `analytics.test.ts` fails if the two differ. M
   - **Two client sources, one flow** (`src/lib/mcp/clientSource.ts`): dynamic (DCR, cached in
     `client_info`, disposable) or pre-registered (`oauth_client`, the owner's config: never
     deleted by invalidation, which drops only the sign-in). Set means pre-registered, no mode
-    flag. A pre-registered server is `REQUIRED` by declaration, not by probe — Google's MCP
-    server answers everything but `tools/call` unauthenticated. Its scope goes to `auth()`
+    flag. A pre-registered server is `REQUIRED` by declaration, not by probe — a server may
+    answer everything but `tools/call` unauthenticated. Its scope goes to `auth()`
     (`provider.requestedScope`): the SDK ranks the server's `scopes_supported` above client
-    metadata. Its `authorizationParams` (e.g. `access_type=offline`, `prompt=consent`) are
-    added in `redirectToAuthorization`; reserved ones (`RESERVED_AUTHORIZATION_PARAMS` in the
+    metadata. Its `authorizationParams` (extra query parameters the owner adds) are added in `redirectToAuthorization`; reserved ones (`RESERVED_AUTHORIZATION_PARAMS` in the
     zero-import `src/lib/mcp/oauthClient.ts`) are refused on save and skipped there.
   - **One callback, `/api/oauth/callback`** (`oauthCallbackUrl()`), shown with a copy button on
     `/connections` so it can be pasted into an OAuth client first. The server is found by the

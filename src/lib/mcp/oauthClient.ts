@@ -1,6 +1,6 @@
 /**
- * A pre-registered OAuth client: one the owner created on the authorization server (e.g. a Google
- * Cloud OAuth client) and typed into Cameron, for servers that don't support dynamic client
+ * A pre-registered OAuth client: one the owner created on the authorization server and typed into
+ * Cameron, for servers that don't support dynamic client
  * registration. Zero imports, so the form, the routes and the provider all share it.
  * See docs/OAUTH.md.
  */
@@ -85,8 +85,8 @@ export function mergeOAuthClient(
 
 /**
  * Whether existing tokens still match the configured sign-in. A new client id, scope or
- * authorization parameter needs a new consent (a refresh never widens scope, and Google only
- * issues a refresh token on an offline consent); a new secret alone does not.
+ * authorization parameter needs a new consent (a refresh never widens scope, and a parameter
+ * can decide whether a refresh token is issued); a new secret alone does not.
  */
 export function sameSignIn(
   a: PreregisteredClient | null | undefined,

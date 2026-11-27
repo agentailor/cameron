@@ -31,8 +31,7 @@ export default function ConnectionsPage() {
 
         <div className="mt-4 space-y-1.5">
           <p className="text-muted-foreground text-xs">
-            OAuth callback URL, for servers that need an OAuth client you create yourself (e.g.
-            Google&apos;s):
+            OAuth callback URL, for servers that need an OAuth client you create yourself:
           </p>
           <CallbackUrl url={callbackUrl} />
         </div>
